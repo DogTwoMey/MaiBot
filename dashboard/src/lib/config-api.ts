@@ -158,7 +158,11 @@ export async function fetchProviderModels(
     endpoint,
   })
   const response = await fetchWithAuth(`/api/webui/models/list?${params}`)
-  return parseResponse<ModelListItem[]>(response)
+  const result = await parseResponse<FetchModelsResponse>(response)
+  if (!result.success) {
+    return result
+  }
+  return { success: true, data: result.data?.models ?? [] }
 }
 
 /**

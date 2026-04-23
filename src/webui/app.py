@@ -207,10 +207,10 @@ def _setup_static_files(app: FastAPI):
 def _resolve_static_path() -> Path | None:
     # 临时仅允许使用已安装的 maibot-dashboard 包，不使用仓库本地 dashboard/dist。
     # 如需恢复本地回退逻辑，可取消下方注释。
-    # base_dir = _get_project_root()
-    # static_path = base_dir / "dashboard" / "dist"
-    # if static_path.is_dir() and (static_path / "index.html").exists():
-    #     return static_path
+    base_dir = _get_project_root()
+    static_path = base_dir / "dashboard" / "dist"
+    if static_path.is_dir() and (static_path / "index.html").exists():
+        return static_path
 
     try:
         module = import_module("maibot_dashboard")
