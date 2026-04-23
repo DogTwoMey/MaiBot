@@ -146,6 +146,10 @@ async def _fetch_models_from_provider(
         client_config = build_openai_compatible_client_config(provider)
         headers.update(client_config.default_headers)
         params.update(client_config.default_query)
+        # 标准 bearer 鉴权时 build_openai_compatible_client_config 会把 api_key 留给 SDK 使用，
+        # 但这里走的是裸 httpx，需要显式补上 Authorization 头，否则上游会返回 401。
+        if client_config.api_key and "Authorization" not in headers:
+            headers["Authorization"] = f"Bearer {client_config.api_key}"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
