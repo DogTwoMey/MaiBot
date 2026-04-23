@@ -1,3 +1,4 @@
+import os
 import re
 from typing import Annotated, List, Optional
 
@@ -18,9 +19,11 @@ class EmojiResponse(BaseModel):
 
     id: int
     full_path: str
+    format: str
     emoji_hash: str
     description: str
     query_count: int
+    usage_count: int
     is_registered: bool
     is_banned: bool
     emotion: Optional[str]
@@ -137,9 +140,12 @@ def emoji_to_response(image: Images) -> EmojiResponse:
             deduped_emotions.append(item)
     emotion = ",".join(deduped_emotions) if deduped_emotions else None
 
+    ext = os.path.splitext(image.full_path or "")[1].lstrip(".").lower() if image.full_path else ""
     return EmojiResponse(
         id=image.id if image.id is not None else 0,
         full_path=image.full_path,
+        format=ext or "unknown",
+        usage_count=image.query_count,
         emoji_hash=image.image_hash,
         description=image.description,
         query_count=image.query_count,
