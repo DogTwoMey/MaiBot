@@ -6,6 +6,7 @@ import hashlib
 from src.common.logger import get_logger
 from src.common.database.database_model import BinaryData
 from src.common.database.database import get_db_session
+from src.common.utils.path_utils import resolve_stored_path, to_stored_path
 
 logger = get_logger("file_utils")
 
@@ -30,7 +31,7 @@ class FileUtils:
                 # 计算数据哈希
                 data_hash = hashlib.sha256(data).hexdigest()
                 # 创建 BinaryData 记录
-                binary_data_record = BinaryData(data_hash=data_hash, full_path=str(file_path))
+                binary_data_record = BinaryData(data_hash=data_hash, full_path=to_stored_path(file_path))
                 session.add(binary_data_record)
                 session.commit()
         except Exception as e:
@@ -51,6 +52,6 @@ class FileUtils:
         with get_db_session() as session:
             statement = select(BinaryData).filter_by(data_hash=data_hash).limit(1)
             if binary_data := session.exec(statement).first():
-                return Path(binary_data.full_path)
+                return resolve_stored_path(binary_data.full_path)
             else:
                 raise FileNotFoundError(f"未找到哈希值为 {data_hash} 的数据文件记录")

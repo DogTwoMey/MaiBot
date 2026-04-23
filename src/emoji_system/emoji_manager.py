@@ -18,6 +18,7 @@ from src.common.data_models.llm_service_data_models import LLMGenerationOptions
 from src.common.database.database import get_db_session, get_db_session_manual
 from src.common.database.database_model import Images, ImageType
 from src.common.logger import get_logger
+from src.common.utils.path_utils import resolve_stored_path, to_stored_path
 from src.common.utils.utils_image import ImageUtils
 from src.config.config import config_manager, global_config
 from src.plugin_runtime.hook_schema_utils import build_object_schema
@@ -211,7 +212,7 @@ def _is_available_emoji_record(record: Images) -> bool:
     if record.no_file_flag:
         return False
 
-    record_path = Path(record.full_path)
+    record_path = resolve_stored_path(record.full_path)
     return record_path.exists() and record_path.is_file()
 
 
@@ -296,11 +297,11 @@ class EmojiManager:
             with get_db_session() as session:
                 statement = select(Images).filter_by(image_hash=emoji_hash, image_type=ImageType.EMOJI).limit(1)
                 if result := session.exec(statement).first():
-                    record_path = Path(result.full_path) if result.full_path else None
+                    record_path = resolve_stored_path(result.full_path) if result.full_path else None
                     if emoji_bytes and (result.no_file_flag or record_path is None or not record_path.exists()):
                         try:
                             restored_emoji = await self.ensure_emoji_saved(emoji_bytes, emoji_hash=emoji_hash)
-                            result.full_path = str(restored_emoji.full_path)
+                            result.full_path = to_stored_path(restored_emoji.full_path)
                             result.no_file_flag = False
                         except Exception as e:
                             logger.warning(f"数据库命中表情包记录但本地文件缺失，回填失败: {e}")
@@ -337,7 +338,7 @@ class EmojiManager:
             with get_db_session() as session:
                 statement = select(Images).filter_by(image_hash=hash_str, image_type=ImageType.EMOJI).limit(1)
                 if record := session.exec(statement).first():
-                    record_path = Path(record.full_path)
+                    record_path = resolve_stored_path(record.full_path)
                     if not record.no_file_flag and record_path.exists():
                         record.last_used_time = datetime.now()
                         record.query_count += 1
@@ -359,7 +360,7 @@ class EmojiManager:
             with get_db_session() as session:
                 statement = select(Images).filter_by(image_hash=emoji.file_hash, image_type=ImageType.EMOJI).limit(1)
                 if existing_record := session.exec(statement).first():
-                    existing_record.full_path = str(emoji.full_path)
+                    existing_record.full_path = to_stored_path(emoji.full_path)
                     existing_record.no_file_flag = False
                     existing_record.is_banned = False
                     existing_record.last_used_time = datetime.now()
@@ -439,7 +440,7 @@ class EmojiManager:
             try:
                 statement = select(Images).filter_by(image_hash=new_emoji.file_hash, image_type=ImageType.EMOJI).limit(1)
                 if image_record := session.exec(statement).first():
-                    image_record.full_path = str(new_emoji.full_path)
+                    image_record.full_path = to_stored_path(new_emoji.full_path)
                     image_record.description = new_emoji.description
                     image_record.no_file_flag = False
                     image_record.is_banned = False
@@ -508,7 +509,7 @@ class EmojiManager:
                     normalized_emotions = _normalize_emoji_tag_text(normalized_description)
                     register_time = existing_record.register_time or datetime.now()
 
-                    existing_record.full_path = str(emoji.full_path)
+                    existing_record.full_path = to_stored_path(emoji.full_path)
                     existing_record.description = normalized_description
                     existing_record.query_count = max(int(existing_record.query_count), int(emoji.query_count))
                     existing_record.last_used_time = emoji.last_used_time or existing_record.last_used_time

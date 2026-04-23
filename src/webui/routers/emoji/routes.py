@@ -39,6 +39,8 @@ from .schemas import (
     ThumbnailPreheatResponse,
     emoji_to_response,
 )
+from src.common.utils.path_utils import resolve_stored_path, to_stored_path
+
 from .support import (
     EMOJI_DIR,
     THUMBNAIL_CACHE_DIR,
@@ -402,7 +404,8 @@ async def get_emoji_thumbnail(
 
             if not emoji:
                 raise HTTPException(status_code=404, detail=f"未找到 ID 为 {emoji_id} 的表情包")
-            if not os.path.exists(emoji.full_path):
+            fs_path = resolve_stored_path(emoji.full_path)
+            if not fs_path.exists():
                 raise HTTPException(status_code=404, detail="表情包文件不存在")
 
             if original:
@@ -414,10 +417,10 @@ async def get_emoji_thumbnail(
                     "webp": "image/webp",
                     "bmp": "image/bmp",
                 }
-                suffix = Path(emoji.full_path).suffix.lower().lstrip(".")
+                suffix = fs_path.suffix.lower().lstrip(".")
                 media_type = mime_types.get(suffix, "application/octet-stream")
                 return FileResponse(
-                    path=emoji.full_path,
+                    path=str(fs_path),
                     media_type=media_type,
                     filename=f"{emoji.image_hash}.{suffix}",
                 )
@@ -435,7 +438,7 @@ async def get_emoji_thumbnail(
             with generating_lock:
                 if emoji.image_hash not in generating_thumbnails:
                     generating_thumbnails.add(emoji.image_hash)
-                    get_thumbnail_executor().submit(background_generate_thumbnail, emoji.full_path, emoji.image_hash)
+                    get_thumbnail_executor().submit(background_generate_thumbnail, str(fs_path), emoji.image_hash)
 
             return JSONResponse(
                 status_code=202,
@@ -573,7 +576,7 @@ async def upload_emoji(
         with get_db_session() as session:
             emoji = Images(
                 image_type=ImageType.EMOJI,
-                full_path=full_path,
+                full_path=to_stored_path(full_path),
                 image_hash=emoji_hash,
                 description=final_description,
                 emotion=None,
@@ -684,7 +687,7 @@ async def batch_upload_emoji(
                 with get_db_session() as session:
                     emoji = Images(
                         image_type=ImageType.EMOJI,
-                        full_path=full_path,
+                        full_path=to_stored_path(full_path),
                         image_hash=emoji_hash,
                         description=final_description,
                         emotion=None,
@@ -799,14 +802,15 @@ async def preheat_thumbnail_cache(
             if cache_path.exists():
                 skipped += 1
                 continue
-            if not os.path.exists(emoji.full_path):
+            fs_path = resolve_stored_path(emoji.full_path)
+            if not fs_path.exists():
                 failed += 1
                 continue
 
             try:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
-                    get_thumbnail_executor(), generate_thumbnail, emoji.full_path, emoji.image_hash
+                    get_thumbnail_executor(), generate_thumbnail, str(fs_path), emoji.image_hash
                 )
                 generated += 1
             except Exception as e:
