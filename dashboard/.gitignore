@@ -1,1 +1,7 @@
+# Vite dev-server caches (rebuilt on every `pnpm dev`)
+.vite/
+dist/
+node_modules/
 
+# Prefer pnpm - don't commit npm's lockfile
+package-lock.json
