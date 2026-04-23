@@ -352,16 +352,16 @@ async def get_jargon_stats():
         with get_db_session() as session:
             jargons = session.exec(select(Jargon)).all()
 
-        total = len(jargons)
-        confirmed_jargon = sum(jargon.is_jargon is True for jargon in jargons)
-        confirmed_not_jargon = sum(jargon.is_jargon is False for jargon in jargons)
-        pending = sum(jargon.is_jargon is None for jargon in jargons)
-        complete_count = sum(jargon.is_complete for jargon in jargons)
+            total = len(jargons)
+            confirmed_jargon = sum(jargon.is_jargon is True for jargon in jargons)
+            confirmed_not_jargon = sum(jargon.is_jargon is False for jargon in jargons)
+            pending = sum(jargon.is_jargon is None for jargon in jargons)
+            complete_count = sum(jargon.is_complete for jargon in jargons)
 
-        top_chats_counter: Dict[str, int] = {}
-        for jargon in jargons:
-            for session_id in parse_session_id_dict(jargon.session_id_dict):
-                top_chats_counter[session_id] = top_chats_counter.get(session_id, 0) + 1
+            top_chats_counter: Dict[str, int] = {}
+            for jargon in jargons:
+                for session_id in parse_session_id_dict(jargon.session_id_dict):
+                    top_chats_counter[session_id] = top_chats_counter.get(session_id, 0) + 1
 
         top_chats_dict = dict(sorted(top_chats_counter.items(), key=lambda item: item[1], reverse=True)[:5])
         chat_count = len(top_chats_counter)
