@@ -130,8 +130,6 @@ def emoji_to_response(image: Images) -> EmojiResponse:
         emotions.extend(
             item.strip() for item in re.split(r"[,，、;；\s]+", image.description) if item and item.strip()
         )
-    if not emotions and image.emotion:
-        emotions.extend(item.strip() for item in re.split(r"[,，、;；\s]+", image.emotion) if item and item.strip())
 
     deduped_emotions: list[str] = []
     for item in emotions:
