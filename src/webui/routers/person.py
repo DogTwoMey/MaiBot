@@ -194,7 +194,9 @@ async def get_person_list(
                 count_statement = count_statement.where(col(PersonInfo.platform) == platform)
             total = len(session.exec(count_statement).all())
 
-        data = [person_to_response(person) for person in persons]
+            # 必须在 session 仍然打开时把 ORM 实例转成纯数据，
+            # 否则 session 关闭后读取属性会触发 DetachedInstanceError。
+            data = [person_to_response(person) for person in persons]
 
         return PersonListResponse(success=True, total=total, page=page, page_size=page_size, data=data)
 
@@ -221,10 +223,12 @@ async def get_person_detail(person_id: str):
             statement = select(PersonInfo).where(col(PersonInfo.person_id) == person_id).limit(1)
             person = session.exec(statement).first()
 
-        if not person:
-            raise HTTPException(status_code=404, detail=f"未找到 ID 为 {person_id} 的人物信息")
+            if not person:
+                raise HTTPException(status_code=404, detail=f"未找到 ID 为 {person_id} 的人物信息")
 
-        return PersonDetailResponse(success=True, data=person_to_response(person))
+            data = person_to_response(person)
+
+        return PersonDetailResponse(success=True, data=data)
 
     except HTTPException:
         raise
@@ -274,12 +278,13 @@ async def update_person(
                 if hasattr(db_person, field):
                     setattr(db_person, field, value)
             session.add(db_person)
-            person = db_person
+            session.flush()
+            data = person_to_response(db_person)
 
         logger.info(f"人物信息已更新: {person_id}, 字段: {list(update_data.keys())}")
 
         return PersonUpdateResponse(
-            success=True, message=f"成功更新 {len(update_data)} 个字段", data=person_to_response(person)
+            success=True, message=f"成功更新 {len(update_data)} 个字段", data=data
         )
 
     except HTTPException:
