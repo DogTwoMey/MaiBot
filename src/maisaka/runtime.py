@@ -747,6 +747,15 @@ class MaisakaHeartFlowChatting:
         if pending_count <= 0:
             return
 
+        # @/提及消息已将 Timing Gate 预置为 continue。此类消息应立即唤醒主循环，
+        # 不受 trigger_threshold 与回复延迟历史限制——否则 talk_value 较低时，
+        # 初次 @ 会因为 pending_count < threshold 且无历史延迟而永远进不了队列。
+        if self._force_next_timing_continue:
+            self._cancel_deferred_message_turn_task()
+            self._message_turn_scheduled = True
+            self._internal_turn_queue.put_nowait("message")
+            return
+
         trigger_threshold = self._get_message_trigger_threshold()
         if pending_count >= trigger_threshold or self._should_trigger_message_turn_by_idle_compensation(
             pending_count=pending_count,
