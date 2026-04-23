@@ -124,12 +124,14 @@ async def get_emoji_list(
                 count_statement = count_statement.where(col(Images.is_banned) == is_banned)
             total = session.exec(count_statement).one()
 
+            data = [emoji_to_response(emoji) for emoji in emojis]
+
         return EmojiListResponse(
             success=True,
             total=total,
             page=page,
             page_size=page_size,
-            data=[emoji_to_response(emoji) for emoji in emojis],
+            data=data,
         )
     except HTTPException:
         raise

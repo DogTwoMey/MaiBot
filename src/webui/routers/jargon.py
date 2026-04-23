@@ -307,12 +307,11 @@ async def get_jargon_list(
 async def get_chat_list():
     """获取所有有黑话记录的聊天列表"""
     try:
+        seen_stream_ids: Set[str] = set()
         with get_db_session() as session:
             jargons = session.exec(select(Jargon)).all()
-
-        seen_stream_ids: Set[str] = set()
-        for jargon in jargons:
-            seen_stream_ids.update(parse_session_id_dict(jargon.session_id_dict).keys())
+            for jargon in jargons:
+                seen_stream_ids.update(parse_session_id_dict(jargon.session_id_dict).keys())
 
         result = []
         with get_db_session() as session:

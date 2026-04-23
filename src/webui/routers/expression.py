@@ -234,7 +234,7 @@ async def get_expression_list(
                 count_statement = count_statement.where(col(Expression.session_id) == chat_id)
             total = len(session.exec(count_statement).all())
 
-        data = [expression_to_response(expr) for expr in expressions]
+            data = [expression_to_response(expr) for expr in expressions]
 
         return ExpressionListResponse(success=True, total=total, page=page, page_size=page_size, data=data)
 
@@ -261,10 +261,12 @@ async def get_expression_detail(expression_id: int):
             statement = select(Expression).where(col(Expression.id) == expression_id).limit(1)
             expression = session.exec(statement).first()
 
-        if not expression:
-            raise HTTPException(status_code=404, detail=f"未找到 ID 为 {expression_id} 的表达方式")
+            if not expression:
+                raise HTTPException(status_code=404, detail=f"未找到 ID 为 {expression_id} 的表达方式")
 
-        return ExpressionDetailResponse(success=True, data=expression_to_response(expression))
+            data = expression_to_response(expression)
+
+        return ExpressionDetailResponse(success=True, data=data)
 
     except HTTPException:
         raise
@@ -303,11 +305,14 @@ async def create_expression(
                 session_id=request.chat_id,
             )
             session.add(expression)
+            session.flush()
+            new_id = expression.id
+            data = expression_to_response(expression)
 
-        logger.info(f"表达方式已创建: ID={expression.id}, situation={request.situation}")
+        logger.info(f"表达方式已创建: ID={new_id}, situation={request.situation}")
 
         return ExpressionCreateResponse(
-            success=True, message="表达方式创建成功", data=expression_to_response(expression)
+            success=True, message="表达方式创建成功", data=data
         )
 
     except HTTPException:
@@ -362,12 +367,13 @@ async def update_expression(
                 if hasattr(db_expression, field):
                     setattr(db_expression, field, value)
             session.add(db_expression)
-            expression = db_expression
+            session.flush()
+            data = expression_to_response(db_expression)
 
         logger.info(f"表达方式已更新: ID={expression_id}, 字段: {list(update_data.keys())}")
 
         return ExpressionUpdateResponse(
-            success=True, message=f"成功更新 {len(update_data)} 个字段", data=expression_to_response(expression)
+            success=True, message=f"成功更新 {len(update_data)} 个字段", data=data
         )
 
     except HTTPException:
@@ -622,12 +628,14 @@ async def get_review_list(
                 count_statement = count_statement.where(col(Expression.session_id) == chat_id)
             total = len(session.exec(count_statement).all())
 
+            data = [expression_to_response(expr) for expr in expressions]
+
         return ReviewListResponse(
             success=True,
             total=total,
             page=page,
             page_size=page_size,
-            data=[expression_to_response(expr) for expr in expressions],
+            data=data,
         )
 
     except HTTPException:
