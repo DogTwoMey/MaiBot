@@ -367,3 +367,6 @@ packages/
 .omc/
 /.venv312
 /src/A_memorix/algorithm_redesign
+
+# backup
+backup/

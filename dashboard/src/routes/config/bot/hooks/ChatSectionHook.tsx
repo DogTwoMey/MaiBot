@@ -274,38 +274,17 @@ export const ChatSectionHook: FieldHookComponent = ({ value, onChange }) => {
       <div>
         <h3 className="text-lg font-semibold mb-4">聊天设置</h3>
         <div className="grid gap-4">
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="talk_value">聊天频率（基础值）</Label>
-              <Input
-                id="talk_value"
-                type="number"
-                step="0.01"
-                min="0"
-                max="1"
-                value={config.talk_value}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value)
-                  if (!isNaN(val)) {
-                    updateConfig({ talk_value: Math.max(0, Math.min(1, val)) })
-                  }
-                }}
-                className="w-24 h-8 text-xs"
-              />
-            </div>
-            <Slider
-              value={[config.talk_value]}
-              onValueChange={(values) => updateConfig({ talk_value: values[0] })}
-              min={0}
-              max={1}
-              step={0.01}
-              className="w-full"
+          <div className="grid gap-2">
+            <Label htmlFor="talk_value">聊天频率（基础值）</Label>
+            <Input
+              id="talk_value"
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              value={config.talk_value}
+              onChange={(e) => updateConfig({ talk_value: parseFloat(e.target.value) })}
             />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 (沉默)</span>
-              <span>0.5</span>
-              <span>1 (正常)</span>
-            </div>
             <p className="text-xs text-muted-foreground">越小越沉默，范围 0-1，精度 0.01</p>
           </div>
 

@@ -174,10 +174,10 @@ class ChatConfig(ConfigBase):
         json_schema_extra={
             "x-widget": "slider",
             "x-icon": "message-circle",
-            "step": 0.1,
+            "step": 0.01,
         },
     )
-    """聊天频率，越小越沉默，范围0-1"""
+    """聊天频率，越小越沉默，范围0-1，精度 0.01"""
 
     mentioned_bot_reply: bool = Field(
         default=False,

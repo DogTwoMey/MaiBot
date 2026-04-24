@@ -196,6 +196,8 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
 
   /**
    * 渲染 Slider 组件（用于 number 类型 + x-widget: slider）
+   *
+   * 同步提供一个数字输入框，方便键盘精确输入。两者绑定同一值，相互同步。
    */
   const renderSlider = () => {
     const numValue = typeof value === 'number' ? value : (schema.default as number ?? 0)
@@ -203,18 +205,35 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
     const max = schema.maxValue ?? 100
     const step = schema.step ?? 1
 
+    const commitNumber = (raw: number) => {
+      if (Number.isNaN(raw)) return
+      const clamped = Math.min(max, Math.max(min, raw))
+      onChange(clamped)
+    }
+
     return (
       <div className="space-y-2">
-        <Slider
-          value={[numValue]}
-          onValueChange={(values) => onChange(values[0])}
-          min={min}
-          max={max}
-          step={step}
-        />
+        <div className="flex items-center gap-3">
+          <Slider
+            value={[numValue]}
+            onValueChange={(values) => onChange(values[0])}
+            min={min}
+            max={max}
+            step={step}
+            className="flex-1"
+          />
+          <Input
+            type="number"
+            value={numValue}
+            onChange={(e) => commitNumber(parseFloat(e.target.value))}
+            min={min}
+            max={max}
+            step={step}
+            className="w-24 h-8 text-xs shrink-0"
+          />
+        </div>
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{min}</span>
-          <span className="font-medium text-foreground">{numValue}</span>
           <span>{max}</span>
         </div>
       </div>
