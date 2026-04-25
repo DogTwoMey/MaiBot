@@ -1,0 +1,54 @@
+# tiers/mid.toml
+# 档位: mid
+# 说明: 把每个任务槽的 model_list 映射到 [[models]] 里的 name。
+# 你可以手动编辑这份文件调整选择。
+
+[tier.replyer]
+model_list = [
+    "qwen-plus",
+    "qwen-plus-0112",
+    "qwen-plus-1220",
+    "qwen-plus-latest",
+    "qwen2.5-32b-instruct",
+    "qwen2.5-72b-instruct",
+]
+max_tokens = 4096
+temperature = 1.0
+slow_threshold = 120
+selection_strategy = "random"
+
+[tier.planner]
+model_list = [
+    "qwen2.5-32b-instruct",
+    "qwen2.5-72b-instruct",
+    "qwen3-30b-a3b",
+    "qwen3-30b-a3b-instruct-2507",
+    "qwen-plus",
+    "qwen-plus-0112",
+]
+max_tokens = 8000
+temperature = 0.7
+slow_threshold = 12
+selection_strategy = "random"
+
+[tier.utils]
+model_list = [
+    "qwen-flash",
+    "qwen-turbo",
+    "qwen-turbo-1101",
+    "qwen-turbo-latest",
+]
+max_tokens = 4096
+temperature = 0.5
+slow_threshold = 15
+selection_strategy = "random"
+
+[tier.vlm]
+model_list = [
+    "qwen-vl-max",
+    "qwen-vl-max-1119",
+]
+max_tokens = 512
+temperature = 0.3
+slow_threshold = 15
+selection_strategy = "random"

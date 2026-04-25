@@ -1,0 +1,2492 @@
+[inner]
+version = "1.14.1"
+
+# 档位: extreme
+# 生成时间: 2026-04-25T13:45:21
+
+# models_registry.toml
+# 由 generate_model_config.py 生成于 2026-04-25T13:45:21
+# 源: response.json (212 条) + price.md
+# 过滤: 全部
+# 单位: price_in / price_out 的单位为 元/M token（最低一档）
+
+# ============================================================
+# chat-extreme
+# ============================================================
+
+# qwen-max  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-max"
+name = "qwen-max"
+api_provider = "BaiLian"
+price_in = 2.4
+price_out = 9.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-max-0428  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-max-0428"
+name = "qwen-max-0428"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-max-0919  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-max-0919"
+name = "qwen-max-0919"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-max-2025-01-25  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-max-2025-01-25"
+name = "qwen-max-0125"
+api_provider = "BaiLian"
+price_in = 2.4
+price_out = 9.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-max-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-max-latest"
+name = "qwen-max-latest"
+api_provider = "BaiLian"
+price_in = 2.4
+price_out = 9.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-235b-a22b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-235b-a22b"
+name = "qwen3-235b-a22b"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-235b-a22b-instruct-2507  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-235b-a22b-instruct-2507"
+name = "qwen3-235b-a22b-instruct-2507"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-235b-a22b-thinking-2507  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-235b-a22b-thinking-2507"
+name = "qwen3-235b-a22b-thinking-2507"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 20.0
+force_stream_mode = true
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-max  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-max"
+name = "qwen3-max"
+api_provider = "BaiLian"
+price_in = 2.5
+price_out = 10.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-max-2025-09-23  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-max-2025-09-23"
+name = "qwen3-max-0923"
+api_provider = "BaiLian"
+price_in = 6.0
+price_out = 24.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-max-2026-01-23  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-max-2026-01-23"
+name = "qwen3-max-0123"
+api_provider = "BaiLian"
+price_in = 2.5
+price_out = 10.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-max-preview  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-max-preview"
+name = "qwen3-max-preview"
+api_provider = "BaiLian"
+price_in = 6.0
+price_out = 24.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-397b-a17b
+[[models]]
+model_identifier = "qwen3.5-397b-a17b"
+name = "qwen3.5-397b-a17b"
+api_provider = "BaiLian"
+price_in = 1.2
+price_out = 7.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-max-preview  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3.6-max-preview"
+name = "qwen3.6-max-preview"
+api_provider = "BaiLian"
+price_in = 9.0
+price_out = 54.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+
+# ============================================================
+# chat-high
+# ============================================================
+
+# Moonshot-Kimi-K2-Instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "Moonshot-Kimi-K2-Instruct"
+name = "Moonshot-Kimi-K2-Instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1"
+name = "deepseek-r1"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-0528  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1-0528"
+name = "deepseek-r1-0528"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-llama-70b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1-distill-llama-70b"
+name = "deepseek-r1-distill-llama-70b"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v3  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-v3"
+name = "deepseek-v3"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v3.1  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-v3.1"
+name = "deepseek-v3.1"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 12.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v3.2  # 免费剩余 991,248/1,000,000
+[[models]]
+model_identifier = "deepseek-v3.2"
+name = "deepseek-v3.2"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v3.2-exp  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-v3.2-exp"
+name = "deepseek-v3.2-exp"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v4-pro  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-v4-pro"
+name = "deepseek-v4-pro"
+api_provider = "BaiLian"
+price_in = 12.0
+price_out = 24.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# farui-plus
+[[models]]
+model_identifier = "farui-plus"
+name = "farui-plus"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-4.5  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-4.5"
+name = "glm-4.5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-4.5-air  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-4.5-air"
+name = "glm-4.5-air"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-4.6  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-4.6"
+name = "glm-4.6"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-4.7  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-4.7"
+name = "glm-4.7"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-5  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-5"
+name = "glm-5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# glm-5.1  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "glm-5.1"
+name = "glm-5.1"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# gui-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "gui-plus"
+name = "gui-plus"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# gui-plus-2026-02-26  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "gui-plus-2026-02-26"
+name = "gui-plus-0226"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# kimi-k2-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "kimi-k2-thinking"
+name = "kimi-k2-thinking"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = true
+temperature = 1.0
+[models.extra_params]
+
+# kimi-k2.5  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "kimi-k2.5"
+name = "kimi-k2.5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# kimi-k2.6  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "kimi-k2.6"
+name = "kimi-k2.6"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# kimi/kimi-k2.5
+[[models]]
+model_identifier = "kimi/kimi-k2.5"
+name = "kimi-kimi-k2.5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus"
+name = "qwen-plus"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-0112  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-0112"
+name = "qwen-plus-0112"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-1220  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-1220"
+name = "qwen-plus-1220"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-01-25  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-01-25"
+name = "qwen-plus-0125"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-04-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-04-28"
+name = "qwen-plus-0428"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-07-14  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-07-14"
+name = "qwen-plus-0714"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-07-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-07-28"
+name = "qwen-plus-0728"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-09-11  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-09-11"
+name = "qwen-plus-0911"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-2025-12-01  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-2025-12-01"
+name = "qwen-plus-1201"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-plus-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-latest"
+name = "qwen-plus-latest"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-plus
+[[models]]
+model_identifier = "qwen3.5-plus"
+name = "qwen3.5-plus"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 4.8
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-plus-2026-02-15
+[[models]]
+model_identifier = "qwen3.5-plus-2026-02-15"
+name = "qwen3.5-plus-0215"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 4.8
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-plus-2026-04-20
+[[models]]
+model_identifier = "qwen3.5-plus-2026-04-20"
+name = "qwen3.5-plus-0420"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 4.8
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-plus
+[[models]]
+model_identifier = "qwen3.6-plus"
+name = "qwen3.6-plus"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 12.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-plus-2026-04-02
+[[models]]
+model_identifier = "qwen3.6-plus-2026-04-02"
+name = "qwen3.6-plus-0402"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 12.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwq-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwq-plus"
+name = "qwq-plus"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwq-plus-2025-03-05  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwq-plus-2025-03-05"
+name = "qwq-plus-0305"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwq-plus-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwq-plus-latest"
+name = "qwq-plus-latest"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# siliconflow/deepseek-r1-0528
+[[models]]
+model_identifier = "siliconflow/deepseek-r1-0528"
+name = "siliconflow-deepseek-r1-0528"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# siliconflow/deepseek-v3-0324
+[[models]]
+model_identifier = "siliconflow/deepseek-v3-0324"
+name = "siliconflow-deepseek-v3-0324"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# siliconflow/deepseek-v3.1-terminus
+[[models]]
+model_identifier = "siliconflow/deepseek-v3.1-terminus"
+name = "siliconflow-deepseek-v3.1-terminus"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# siliconflow/deepseek-v3.2
+[[models]]
+model_identifier = "siliconflow/deepseek-v3.2"
+name = "siliconflow-deepseek-v3.2"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# vanchin/deepseek-r1
+[[models]]
+model_identifier = "vanchin/deepseek-r1"
+name = "vanchin-deepseek-r1"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# vanchin/deepseek-v3
+[[models]]
+model_identifier = "vanchin/deepseek-v3"
+name = "vanchin-deepseek-v3"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# vanchin/deepseek-v3.1-terminus
+[[models]]
+model_identifier = "vanchin/deepseek-v3.1-terminus"
+name = "vanchin-deepseek-v3.1-terminus"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# vanchin/deepseek-v3.2-speciale
+[[models]]
+model_identifier = "vanchin/deepseek-v3.2-speciale"
+name = "vanchin-deepseek-v3.2-speciale"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# vanchin/deepseek-v3.2-think
+[[models]]
+model_identifier = "vanchin/deepseek-v3.2-think"
+name = "vanchin-deepseek-v3.2-think"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+
+# ============================================================
+# chat-mid
+# ============================================================
+
+# MiniMax-M2.1  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "MiniMax-M2.1"
+name = "MiniMax-M2.1"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# MiniMax-M2.5  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "MiniMax-M2.5"
+name = "MiniMax-M2.5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# MiniMax/MiniMax-M2.1
+[[models]]
+model_identifier = "MiniMax/MiniMax-M2.1"
+name = "MiniMax-MiniMax-M2.1"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# MiniMax/MiniMax-M2.5
+[[models]]
+model_identifier = "MiniMax/MiniMax-M2.5"
+name = "MiniMax-MiniMax-M2.5"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# MiniMax/MiniMax-M2.7
+[[models]]
+model_identifier = "MiniMax/MiniMax-M2.7"
+name = "MiniMax-MiniMax-M2.7"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-qwen-32b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1-distill-qwen-32b"
+name = "deepseek-r1-distill-qwen-32b"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# llama-4-maverick-17b-128e-instruct  # 免费剩余 2,000,000/2,000,000
+[[models]]
+model_identifier = "llama-4-maverick-17b-128e-instruct"
+name = "llama-4-maverick-17b-128e-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# llama-4-scout-17b-16e-instruct  # 免费剩余 2,000,000/2,000,000
+[[models]]
+model_identifier = "llama-4-scout-17b-16e-instruct"
+name = "llama-4-scout-17b-16e-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-32b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-32b-instruct"
+name = "qwen2.5-32b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-72b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-72b-instruct"
+name = "qwen2.5-72b-instruct"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 12.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-30b-a3b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-30b-a3b"
+name = "qwen3-30b-a3b"
+api_provider = "BaiLian"
+price_in = 0.75
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-30b-a3b-instruct-2507  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-30b-a3b-instruct-2507"
+name = "qwen3-30b-a3b-instruct-2507"
+api_provider = "BaiLian"
+price_in = 0.75
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-30b-a3b-thinking-2507  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-30b-a3b-thinking-2507"
+name = "qwen3-30b-a3b-thinking-2507"
+api_provider = "BaiLian"
+price_in = 0.75
+price_out = 7.5
+force_stream_mode = true
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-32b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-32b"
+name = "qwen3-32b"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-122b-a10b
+[[models]]
+model_identifier = "qwen3.5-122b-a10b"
+name = "qwen3.5-122b-a10b"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 6.4
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-27b
+[[models]]
+model_identifier = "qwen3.5-27b"
+name = "qwen3.5-27b"
+api_provider = "BaiLian"
+price_in = 0.6
+price_out = 4.8
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-27b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3.6-27b"
+name = "qwen3.6-27b"
+api_provider = "BaiLian"
+price_in = 3.0
+price_out = 18.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwq-32b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwq-32b"
+name = "qwq-32b"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwq-32b-preview  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwq-32b-preview"
+name = "qwq-32b-preview"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+
+# ============================================================
+# chat-low
+# ============================================================
+
+# baichuan2-turbo
+[[models]]
+model_identifier = "baichuan2-turbo"
+name = "baichuan2-turbo"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-llama-8b
+[[models]]
+model_identifier = "deepseek-r1-distill-llama-8b"
+name = "deepseek-r1-distill-llama-8b"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-qwen-1.5b
+[[models]]
+model_identifier = "deepseek-r1-distill-qwen-1.5b"
+name = "deepseek-r1-distill-qwen-1.5b"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-qwen-14b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1-distill-qwen-14b"
+name = "deepseek-r1-distill-qwen-14b"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-r1-distill-qwen-7b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "deepseek-r1-distill-qwen-7b"
+name = "deepseek-r1-distill-qwen-7b"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 1.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# deepseek-v4-flash  # 免费剩余 995,227/1,000,000
+[[models]]
+model_identifier = "deepseek-v4-flash"
+name = "deepseek-v4-flash"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-flash"
+name = "qwen-flash"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-flash-2025-07-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-flash-2025-07-28"
+name = "qwen-flash-0728"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-turbo"
+name = "qwen-turbo"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo-1101  # 免费剩余 10,000,000/10,000,000
+[[models]]
+model_identifier = "qwen-turbo-1101"
+name = "qwen-turbo-1101"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo-2025-02-11  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-turbo-2025-02-11"
+name = "qwen-turbo-0211"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo-2025-04-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-turbo-2025-04-28"
+name = "qwen-turbo-0428"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo-2025-07-15  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-turbo-2025-07-15"
+name = "qwen-turbo-0715"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen-turbo-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-turbo-latest"
+name = "qwen-turbo-latest"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.6
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-0.5b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-0.5b-instruct"
+name = "qwen2.5-0.5b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-1.5b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-1.5b-instruct"
+name = "qwen2.5-1.5b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-14b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-14b-instruct"
+name = "qwen2.5-14b-instruct"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-14b-instruct-1m  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-14b-instruct-1m"
+name = "qwen2.5-14b-instruct-1m"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 3.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-3b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-3b-instruct"
+name = "qwen2.5-3b-instruct"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.9
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-7b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-7b-instruct"
+name = "qwen2.5-7b-instruct"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 1.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen2.5-7b-instruct-1m  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-7b-instruct-1m"
+name = "qwen2.5-7b-instruct-1m"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 1.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-0.6b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-0.6b"
+name = "qwen3-0.6b"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 1.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-1.7b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-1.7b"
+name = "qwen3-1.7b"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 1.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-14b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-14b"
+name = "qwen3-14b"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 4.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-4b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-4b"
+name = "qwen3-4b"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 1.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-4b-instruct-2507
+[[models]]
+model_identifier = "qwen3-4b-instruct-2507"
+name = "qwen3-4b-instruct-2507"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3-8b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-8b"
+name = "qwen3-8b"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-35b-a3b
+[[models]]
+model_identifier = "qwen3.5-35b-a3b"
+name = "qwen3.5-35b-a3b"
+api_provider = "BaiLian"
+price_in = 0.4
+price_out = 3.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-flash
+[[models]]
+model_identifier = "qwen3.5-flash"
+name = "qwen3.5-flash"
+api_provider = "BaiLian"
+price_in = 0.2
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.5-flash-2026-02-23
+[[models]]
+model_identifier = "qwen3.5-flash-2026-02-23"
+name = "qwen3.5-flash-0223"
+api_provider = "BaiLian"
+price_in = 0.2
+price_out = 2.0
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-35b-a3b  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3.6-35b-a3b"
+name = "qwen3.6-35b-a3b"
+api_provider = "BaiLian"
+price_in = 1.8
+price_out = 10.8
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3.6-flash"
+name = "qwen3.6-flash"
+api_provider = "BaiLian"
+price_in = 1.2
+price_out = 7.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+# qwen3.6-flash-2026-04-16  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3.6-flash-2026-04-16"
+name = "qwen3.6-flash-0416"
+api_provider = "BaiLian"
+price_in = 1.2
+price_out = 7.2
+force_stream_mode = false
+temperature = 1.0
+[models.extra_params]
+
+
+# ============================================================
+# coder
+# ============================================================
+
+# qwen-coder-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-plus"
+name = "qwen-coder-plus"
+api_provider = "BaiLian"
+price_in = 3.5
+price_out = 7.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-coder-plus-1106  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-plus-1106"
+name = "qwen-coder-plus-1106"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-coder-plus-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-plus-latest"
+name = "qwen-coder-plus-latest"
+api_provider = "BaiLian"
+price_in = 3.5
+price_out = 7.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-coder-turbo  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-turbo"
+name = "qwen-coder-turbo"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-coder-turbo-0919  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-turbo-0919"
+name = "qwen-coder-turbo-0919"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-coder-turbo-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-coder-turbo-latest"
+name = "qwen-coder-turbo-latest"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-coder-14b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-coder-14b-instruct"
+name = "qwen2.5-coder-14b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-coder-32b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-coder-32b-instruct"
+name = "qwen2.5-coder-32b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 6.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-coder-7b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-coder-7b-instruct"
+name = "qwen2.5-coder-7b-instruct"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-30b-a3b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-30b-a3b-instruct"
+name = "qwen3-coder-30b-a3b-instruct"
+api_provider = "BaiLian"
+price_in = 1.5
+price_out = 6.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-480b-a35b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-480b-a35b-instruct"
+name = "qwen3-coder-480b-a35b-instruct"
+api_provider = "BaiLian"
+price_in = 6.0
+price_out = 24.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-flash"
+name = "qwen3-coder-flash"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-flash-2025-07-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-flash-2025-07-28"
+name = "qwen3-coder-flash-0728"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-next  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-next"
+name = "qwen3-coder-next"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-plus"
+name = "qwen3-coder-plus"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-plus-2025-07-22  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-plus-2025-07-22"
+name = "qwen3-coder-plus-0722"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-coder-plus-2025-09-23  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-coder-plus-2025-09-23"
+name = "qwen3-coder-plus-0923"
+api_provider = "BaiLian"
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+
+# ============================================================
+# math
+# ============================================================
+
+# qwen-math-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-plus"
+name = "qwen-math-plus"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-plus-0816  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-plus-0816"
+name = "qwen-math-plus-0816"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-plus-0919  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-plus-0919"
+name = "qwen-math-plus-0919"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-plus-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-plus-latest"
+name = "qwen-math-plus-latest"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-turbo  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-turbo"
+name = "qwen-math-turbo"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-turbo-0919  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-turbo-0919"
+name = "qwen-math-turbo-0919"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-math-turbo-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-math-turbo-latest"
+name = "qwen-math-turbo-latest"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen2.5-math-72b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-math-72b-instruct"
+name = "qwen2.5-math-72b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen2.5-math-7b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-math-7b-instruct"
+name = "qwen2.5-math-7b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+
+# ============================================================
+# mt
+# ============================================================
+
+# qwen-mt-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-mt-flash"
+name = "qwen-mt-flash"
+api_provider = "BaiLian"
+price_in = 0.7
+price_out = 1.95
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-mt-lite  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-mt-lite"
+name = "qwen-mt-lite"
+api_provider = "BaiLian"
+price_in = 0.6
+price_out = 1.6
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-mt-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-mt-plus"
+name = "qwen-mt-plus"
+api_provider = "BaiLian"
+price_in = 1.8
+price_out = 5.4
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+# qwen-mt-turbo  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-mt-turbo"
+name = "qwen-mt-turbo"
+api_provider = "BaiLian"
+price_in = 0.7
+price_out = 1.95
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+
+# ============================================================
+# ocr
+# ============================================================
+
+# vanchin/deepseek-ocr
+[[models]]
+model_identifier = "vanchin/deepseek-ocr"
+name = "vanchin-deepseek-ocr"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.2
+[models.extra_params]
+
+
+# ============================================================
+# other
+# ============================================================
+
+# qwen-long  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-long"
+name = "qwen-long"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-long-2025-01-25  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-long-2025-01-25"
+name = "qwen-long-0125"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-long-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-long-latest"
+name = "qwen-long-latest"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen3-next-80b-a3b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-next-80b-a3b-instruct"
+name = "qwen3-next-80b-a3b-instruct"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen3-next-80b-a3b-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-next-80b-a3b-thinking"
+name = "qwen3-next-80b-a3b-thinking"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 10.0
+force_stream_mode = true
+temperature = 0.5
+[models.extra_params]
+
+
+# ============================================================
+# special
+# ============================================================
+
+# qwen-deep-research
+[[models]]
+model_identifier = "qwen-deep-research"
+name = "qwen-deep-research"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-deep-research-2025-12-15
+[[models]]
+model_identifier = "qwen-deep-research-2025-12-15"
+name = "qwen-deep-research-1215"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-doc-turbo
+[[models]]
+model_identifier = "qwen-doc-turbo"
+name = "qwen-doc-turbo"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-flash-character  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-flash-character"
+name = "qwen-flash-character"
+api_provider = "BaiLian"
+price_in = 0.25
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-flash-character-2026-02-26  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-flash-character-2026-02-26"
+name = "qwen-flash-character-0226"
+api_provider = "BaiLian"
+price_in = 0.18
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-plus-character  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-plus-character"
+name = "qwen-plus-character"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# qwen-plus-character-2025-11-06
+[[models]]
+model_identifier = "qwen-plus-character-2025-11-06"
+name = "qwen-plus-character-1106"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# tongyi-intent-detect-v3  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "tongyi-intent-detect-v3"
+name = "tongyi-intent-detect-v3"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# tongyi-xiaomi-analysis-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "tongyi-xiaomi-analysis-flash"
+name = "tongyi-xiaomi-analysis-flash"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+# tongyi-xiaomi-analysis-pro  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "tongyi-xiaomi-analysis-pro"
+name = "tongyi-xiaomi-analysis-pro"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.5
+[models.extra_params]
+
+
+# ============================================================
+# vlm
+# ============================================================
+
+# qvq-72b-preview  # 免费剩余 100,000/100,000；仅支持流式
+[[models]]
+model_identifier = "qvq-72b-preview"
+name = "qvq-72b-preview"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-max  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-max"
+name = "qvq-max"
+api_provider = "BaiLian"
+price_in = 8.0
+price_out = 32.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-max-2025-03-25  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-max-2025-03-25"
+name = "qvq-max-0325"
+api_provider = "BaiLian"
+price_in = 8.0
+price_out = 32.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-max-2025-05-15  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-max-2025-05-15"
+name = "qvq-max-0515"
+api_provider = "BaiLian"
+price_in = 8.0
+price_out = 32.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-max-latest  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-max-latest"
+name = "qvq-max-latest"
+api_provider = "BaiLian"
+price_in = 8.0
+price_out = 32.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-plus  # 免费剩余 982,977/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-plus"
+name = "qvq-plus"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 5.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-plus-2025-05-15  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-plus-2025-05-15"
+name = "qvq-plus-0515"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 5.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qvq-plus-latest  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qvq-plus-latest"
+name = "qvq-plus-latest"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 5.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max"
+name = "qwen-vl-max"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-1119  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-1119"
+name = "qwen-vl-max-1119"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-1230  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-1230"
+name = "qwen-vl-max-1230"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-2025-01-25  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-2025-01-25"
+name = "qwen-vl-max-0125"
+api_provider = "BaiLian"
+price_in = 3.0
+price_out = 9.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-2025-04-02  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-2025-04-02"
+name = "qwen-vl-max-0402"
+api_provider = "BaiLian"
+price_in = 3.0
+price_out = 9.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-2025-04-08  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-2025-04-08"
+name = "qwen-vl-max-0408"
+api_provider = "BaiLian"
+price_in = 3.0
+price_out = 9.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-2025-08-13  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-2025-08-13"
+name = "qwen-vl-max-0813"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-max-latest  # 免费剩余 971,999/1,000,000
+[[models]]
+model_identifier = "qwen-vl-max-latest"
+name = "qwen-vl-max-latest"
+api_provider = "BaiLian"
+price_in = 1.6
+price_out = 4.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr"
+name = "qwen-vl-ocr"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr-1028  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr-1028"
+name = "qwen-vl-ocr-1028"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr-2025-04-13  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr-2025-04-13"
+name = "qwen-vl-ocr-0413"
+api_provider = "BaiLian"
+price_in = 5.0
+price_out = 5.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr-2025-08-28  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr-2025-08-28"
+name = "qwen-vl-ocr-0828"
+api_provider = "BaiLian"
+price_in = 5.0
+price_out = 5.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr-2025-11-20  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr-2025-11-20"
+name = "qwen-vl-ocr-1120"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-ocr-latest  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-ocr-latest"
+name = "qwen-vl-ocr-latest"
+api_provider = "BaiLian"
+price_in = 0.3
+price_out = 0.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus"
+name = "qwen-vl-plus"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-0102  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus-0102"
+name = "qwen-vl-plus-0102"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-2025-01-25  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus-2025-01-25"
+name = "qwen-vl-plus-0125"
+api_provider = "BaiLian"
+price_in = 1.5
+price_out = 4.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-2025-05-07  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus-2025-05-07"
+name = "qwen-vl-plus-0507"
+api_provider = "BaiLian"
+price_in = 1.5
+price_out = 4.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-2025-07-10
+[[models]]
+model_identifier = "qwen-vl-plus-2025-07-10"
+name = "qwen-vl-plus-0710"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-2025-08-15  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus-2025-08-15"
+name = "qwen-vl-plus-0815"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen-vl-plus-latest  # 免费剩余 917,648/1,000,000
+[[models]]
+model_identifier = "qwen-vl-plus-latest"
+name = "qwen-vl-plus-latest"
+api_provider = "BaiLian"
+price_in = 0.8
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-vl-32b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-vl-32b-instruct"
+name = "qwen2.5-vl-32b-instruct"
+api_provider = "BaiLian"
+price_in = 8.0
+price_out = 24.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-vl-3b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-vl-3b-instruct"
+name = "qwen2.5-vl-3b-instruct"
+api_provider = "BaiLian"
+price_in = 1.2
+price_out = 3.6
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-vl-72b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-vl-72b-instruct"
+name = "qwen2.5-vl-72b-instruct"
+api_provider = "BaiLian"
+price_in = 16.0
+price_out = 48.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen2.5-vl-7b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen2.5-vl-7b-instruct"
+name = "qwen2.5-vl-7b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 5.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-1b-base
+[[models]]
+model_identifier = "qwen3-vl-1b-base"
+name = "qwen3-vl-1b-base"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-235b-a22b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-235b-a22b-instruct"
+name = "qwen3-vl-235b-a22b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-235b-a22b-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-vl-235b-a22b-thinking"
+name = "qwen3-vl-235b-a22b-thinking"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 20.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-2b-instruct
+[[models]]
+model_identifier = "qwen3-vl-2b-instruct"
+name = "qwen3-vl-2b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-30b-a3b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-30b-a3b-instruct"
+name = "qwen3-vl-30b-a3b-instruct"
+api_provider = "BaiLian"
+price_in = 0.75
+price_out = 3.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-30b-a3b-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-vl-30b-a3b-thinking"
+name = "qwen3-vl-30b-a3b-thinking"
+api_provider = "BaiLian"
+price_in = 0.75
+price_out = 7.5
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-32b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-32b-instruct"
+name = "qwen3-vl-32b-instruct"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-32b-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-vl-32b-thinking"
+name = "qwen3-vl-32b-thinking"
+api_provider = "BaiLian"
+price_in = 2.0
+price_out = 20.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-4b-instruct
+[[models]]
+model_identifier = "qwen3-vl-4b-instruct"
+name = "qwen3-vl-4b-instruct"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-8b-base
+[[models]]
+model_identifier = "qwen3-vl-8b-base"
+name = "qwen3-vl-8b-base"
+api_provider = "BaiLian"
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-8b-instruct  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-8b-instruct"
+name = "qwen3-vl-8b-instruct"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-8b-thinking  # 免费剩余 1,000,000/1,000,000；仅支持流式
+[[models]]
+model_identifier = "qwen3-vl-8b-thinking"
+name = "qwen3-vl-8b-thinking"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 5.0
+force_stream_mode = true
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-flash  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-flash"
+name = "qwen3-vl-flash"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-flash-2025-10-15  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-flash-2025-10-15"
+name = "qwen3-vl-flash-1015"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-flash-2026-01-22  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-flash-2026-01-22"
+name = "qwen3-vl-flash-0122"
+api_provider = "BaiLian"
+price_in = 0.15
+price_out = 1.5
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-plus  # 免费剩余 972,883/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-plus"
+name = "qwen3-vl-plus"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 10.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-plus-2025-09-23  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-plus-2025-09-23"
+name = "qwen3-vl-plus-0923"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 10.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+# qwen3-vl-plus-2025-12-19  # 免费剩余 1,000,000/1,000,000
+[[models]]
+model_identifier = "qwen3-vl-plus-2025-12-19"
+name = "qwen3-vl-plus-1219"
+api_provider = "BaiLian"
+price_in = 1.0
+price_out = 10.0
+force_stream_mode = false
+temperature = 0.3
+[models.extra_params]
+
+
+# =============================================================
+# 任务 → 模型映射
+# =============================================================
+
+[model_task_config.replyer]
+model_list = [
+    "qwen-max",
+    "qwen-max-0428",
+    "qwen-max-0919",
+    "qwen-max-latest",
+    "qwen3-max",
+    "qwen-plus",
+    "qwen-plus-0112",
+    "qwen-plus-1220",
+]
+max_tokens = 4096
+temperature = 1.0
+slow_threshold = 120
+selection_strategy = "random"
+
+[model_task_config.planner]
+model_list = [
+    "qwen-max",
+    "qwen-max-0428",
+    "qwen-max-0919",
+    "qwen-plus",
+    "qwen-plus-0112",
+]
+max_tokens = 8000
+temperature = 0.7
+slow_threshold = 12
+selection_strategy = "random"
+
+[model_task_config.utils]
+model_list = [
+    "qwen-plus",
+    "qwen-plus-0112",
+    "qwen-plus-1220",
+    "qwen-plus-latest",
+]
+max_tokens = 4096
+temperature = 0.5
+slow_threshold = 15
+selection_strategy = "random"
+
+[model_task_config.vlm]
+model_list = [
+    "qwen-vl-max",
+    "qwen-vl-max-1119",
+    "qwen-vl-max-1230",
+]
+max_tokens = 512
+temperature = 0.3
+slow_threshold = 15
+selection_strategy = "random"
+
+[model_task_config.voice]
+model_list = []
+max_tokens = 1024
+temperature = 0.3
+slow_threshold = 12
+selection_strategy = "random"
+
+[model_task_config.embedding]
+model_list = []
+max_tokens = 1024
+temperature = 0.3
+slow_threshold = 5
+selection_strategy = "random"
+
+# =============================================================
+# API Provider
+# =============================================================
+
+[[api_providers]]
+name = "BaiLian"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+api_key = "<API_KEY_PLACEHOLDER>"   # 请替换为你的真实 key
+client_type = "openai"
+auth_type = "bearer"
+auth_header_name = "Authorization"
+auth_header_prefix = "Bearer"
+auth_query_name = "api_key"
+model_list_endpoint = "/models"
+reasoning_parse_mode = "auto"
+tool_argument_parse_mode = "auto"
+max_retry = 2
+timeout = 60
+retry_interval = 10
+
+[api_providers.default_headers]
+
+[api_providers.default_query]
