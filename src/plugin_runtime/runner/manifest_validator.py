@@ -649,8 +649,26 @@ class ManifestValidator:
         self.errors.clear()
         self.warnings.clear()
 
+        # 兼容层：把历史版本的 manifest 透明升级到当前协议。插件作者无需立即更新
+        # _manifest.json 文件本身，runtime 在内存中完成字段修正。
+        from src.plugin_runtime.manifest_compat import (
+            MigrationContext,
+            MigrationError,
+            normalize_manifest,
+        )
+
+        compat_ctx = MigrationContext()
         try:
-            parsed_manifest = PluginManifest.model_validate(manifest)
+            normalized_manifest = normalize_manifest(manifest, context=compat_ctx)
+        except MigrationError as exc:
+            self.errors.append(f"manifest 版本迁移失败: {exc}")
+            self._log_errors()
+            return None
+        for compat_warning in compat_ctx.warnings:
+            self.warnings.append(compat_warning)
+
+        try:
+            parsed_manifest = PluginManifest.model_validate(normalized_manifest)
         except ValidationError as exc:
             self.errors.extend(self._format_validation_errors(exc))
             self._log_errors()
