@@ -35,7 +35,7 @@ from .context_messages import (
     ToolResultMessage,
     build_llm_message_from_context,
 )
-from .history_utils import drop_orphan_tool_results, normalize_tool_result_order
+from .history_utils import drop_orphan_tool_results
 from .display.prompt_cli_renderer import PromptCLIVisualizer
 from .visual_mode_utils import resolve_enable_visual_planner
 
