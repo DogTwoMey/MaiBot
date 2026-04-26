@@ -20,6 +20,7 @@ export {
   MCPServersHook,
   RegexRulesHook,
 } from './complexFieldHooks'
+export { ChatTalkValueRulesVisualHook } from './TalkValueRulesVisualHook'
 export { ChatSectionHook } from './ChatSectionHook'
 export { PersonalitySectionHook } from './PersonalitySectionHook'
 export { DebugSectionHook } from './DebugSectionHook'

@@ -28,7 +28,7 @@ import { Code2, Info, Layout, Power, Save } from 'lucide-react'
 
 import type { ConfigSchema } from '@/types/config-schema'
 import {
-  ChatTalkValueRulesHook,
+  ChatTalkValueRulesVisualHook,
   ExperimentalChatPromptsHook,
   ExpressionGroupsHook,
   ExpressionLearningListHook,
@@ -405,7 +405,7 @@ function BotConfigPageContent() {
 
   useEffect(() => {
     const hookEntries = [
-      ['chat.talk_value_rules', ChatTalkValueRulesHook],
+      ['chat.talk_value_rules', ChatTalkValueRulesVisualHook],
       ['experimental.chat_prompts', ExperimentalChatPromptsHook],
       ['expression.expression_groups', ExpressionGroupsHook],
       ['expression.learning_list', ExpressionLearningListHook],
