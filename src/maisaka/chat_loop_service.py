@@ -35,7 +35,7 @@ from .context_messages import (
     ToolResultMessage,
     build_llm_message_from_context,
 )
-from .history_utils import drop_orphan_tool_results
+from .history_utils import drop_orphan_tool_results, normalize_tool_result_order
 from .display.prompt_cli_renderer import PromptCLIVisualizer
 from .visual_mode_utils import resolve_enable_visual_planner
 
@@ -248,6 +248,33 @@ class MaisakaChatLoopService:
         except (TypeError, ValueError):
             return default
 
+    @staticmethod
+    def _log_prompt_cache_usage(
+        *,
+        request_kind: str,
+        prompt_tokens: int,
+        prompt_cache_hit_tokens: int,
+        prompt_cache_miss_tokens: int,
+    ) -> None:
+        """记录模型 KV cache 命中情况。"""
+
+        if prompt_cache_miss_tokens == 0 and prompt_cache_hit_tokens > 0:
+            prompt_cache_miss_tokens = max(prompt_tokens - prompt_cache_hit_tokens, 0)
+        prompt_cache_total_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens
+        prompt_cache_hit_rate = (
+            prompt_cache_hit_tokens / prompt_cache_total_tokens * 100
+            if prompt_cache_total_tokens > 0
+            else 0
+        )
+        logger.info(
+            "Maisaka KV cache usage - "
+            f"request_kind={request_kind}, "
+            f"hit_tokens={prompt_cache_hit_tokens}, "
+            f"miss_tokens={prompt_cache_miss_tokens}, "
+            f"hit_rate={prompt_cache_hit_rate:.2f}%, "
+            f"prompt_tokens={prompt_tokens}"
+        )
+
     def _build_personality_prompt(self) -> str:
         """构造人格提示词。"""
 
@@ -431,7 +458,53 @@ class MaisakaChatLoopService:
             insertion_index = self._resolve_injected_user_messages_insertion_index(messages)
             messages[insertion_index:insertion_index] = normalized_injected_messages
 
+        # 发送前做一次完整性清洗：
+        # OpenAI/百炼严格要求每个 assistant.tool_calls 都必须有后续 role=tool 响应，
+        # 否则直接 400（例如 `tool_call_ids did not have response messages`）。
+        # 上下文剪裁 / 打断 / 超时 等路径都可能留下孤儿 tool_call，这里兜底清理。
+        messages = self._prune_orphan_tool_calls(messages)
+
         return messages
+
+    @staticmethod
+    def _prune_orphan_tool_calls(messages: List[Message]) -> List[Message]:
+        """清除历史中没有对应 tool 响应的 assistant.tool_calls，防止上游 400。
+
+        算法：
+            1. 扫一遍收集所有 role=Tool 消息的 tool_call_id；
+            2. 对每个 assistant 消息，只保留其 tool_calls 中 id 命中上述集合的条目；
+            3. 若一条 assistant 在清理后既无文本也无工具调用，整体丢弃。
+        """
+
+        known_tool_ids: set[str] = set()
+        for msg in messages:
+            if msg.role == RoleType.Tool and msg.tool_call_id:
+                known_tool_ids.add(str(msg.tool_call_id))
+
+        cleaned: List[Message] = []
+        for msg in messages:
+            if msg.role != RoleType.Assistant or not msg.tool_calls:
+                cleaned.append(msg)
+                continue
+
+            kept = [
+                tc for tc in msg.tool_calls
+                if str(getattr(tc, "call_id", getattr(tc, "id", ""))) in known_tool_ids
+            ]
+            if len(kept) == len(msg.tool_calls):
+                cleaned.append(msg)
+                continue
+
+            # 有孤儿 tool_call：用保留的重建；若完全没内容就丢弃整条
+            has_text_content = bool(msg.content)
+            if not kept and not has_text_content:
+                continue
+            cleaned.append(Message(
+                role=RoleType.Assistant,
+                content=msg.content if has_text_content else "",
+                tool_calls=kept or None,
+            ))
+        return cleaned
 
     @staticmethod
     def _resolve_injected_user_messages_insertion_index(messages: Sequence[Message]) -> int:
@@ -554,6 +627,12 @@ class MaisakaChatLoopService:
                 interrupt_flag=self._interrupt_flag,
             ),
         )
+        self._log_prompt_cache_usage(
+            request_kind=request_kind,
+            prompt_tokens=generation_result.prompt_tokens,
+            prompt_cache_hit_tokens=getattr(generation_result, "prompt_cache_hit_tokens", 0) or 0,
+            prompt_cache_miss_tokens=getattr(generation_result, "prompt_cache_miss_tokens", 0) or 0,
+        )
 
         final_response = generation_result.response or ""
         final_tool_calls = list(generation_result.tool_calls or [])
@@ -650,8 +729,8 @@ class MaisakaChatLoopService:
 
         selected_indices.reverse()
         selected_history = [filtered_history[index] for index in selected_indices]
-        selected_history, _ = MaisakaChatLoopService._hide_early_assistant_messages(selected_history)
         selected_history, _ = drop_orphan_tool_results(selected_history)
+        selected_history, _ = normalize_tool_result_order(selected_history)
         tool_message_count = sum(1 for message in selected_history if isinstance(message, ToolResultMessage))
         normal_message_count = len(selected_history) - tool_message_count
         selection_reason = (
@@ -707,39 +786,4 @@ class MaisakaChatLoopService:
         if request_kind in {"planner", "timing_gate"}:
             return resolve_enable_visual_planner()
         return True
-
-    @staticmethod
-    def _hide_early_assistant_messages(
-        selected_history: List[LLMContextMessage],
-    ) -> tuple[List[LLMContextMessage], int]:
-        """隐藏上下文中最早 50% 的 assistant 文本消息，但保留工具调用链路。"""
-
-        assistant_indices = [
-            index
-            for index, message in enumerate(selected_history)
-            if isinstance(message, AssistantMessage)
-        ]
-        hidden_assistant_count = len(assistant_indices) // 2
-        if hidden_assistant_count <= 0:
-            return selected_history, 0
-
-        removed_assistant_indices = set(assistant_indices[:hidden_assistant_count])
-
-        filtered_history: List[LLMContextMessage] = []
-        for index, message in enumerate(selected_history):
-            if index in removed_assistant_indices:
-                if not message.tool_calls:
-                    continue
-                filtered_history.append(
-                    AssistantMessage(
-                        content="",
-                        timestamp=message.timestamp,
-                        tool_calls=list(message.tool_calls),
-                        source_kind=message.source_kind,
-                    )
-                )
-                continue
-            filtered_history.append(message)
-
-        return filtered_history, hidden_assistant_count
 
