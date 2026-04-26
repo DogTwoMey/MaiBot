@@ -1,0 +1,19 @@
+{
+  "_hint": "把百炼控制台该 tab 的 freeTierQuotas XHR 响应粘贴到这里，替换整个文件内容",
+  "_category": "向量模型 (Embedding)   — 百炼控制台 tab: 向量模型",
+  "code": "200",
+  "data": {
+    "DataV2": {
+      "ret": [
+        "SUCCESS::接口调用成功"
+      ],
+      "data": {
+        "codeEnum": "SUCCESS",
+        "code": "200",
+        "data": {
+          "freeTierQuotas": []
+        }
+      }
+    }
+  }
+}
