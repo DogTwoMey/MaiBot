@@ -24,6 +24,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 
@@ -85,38 +86,117 @@ def _normalize_id(raw_id: str, fallback_name: str) -> tuple[str, bool]:
     return (normalized, normalized != original)
 
 
+_VERSION_SPEC_RE = re.compile(r"([<>=!~]=?|===?)\s*([\w.*+-]+)")
+
+
+def _split_package_spec(raw: str) -> tuple[str, str]:
+    """拆分 "package>=1.0" 这种字符串为 (name, version_spec)。"""
+
+    raw = raw.strip()
+    m = _VERSION_SPEC_RE.search(raw)
+    if not m:
+        return (raw, "")
+    name = raw[: m.start()].strip()
+    spec = raw[m.start():].strip()
+    return (name, spec)
+
+
+def _normalize_dep_item(item: dict) -> dict:
+    """把单条依赖规范化为 v2 schema。
+
+    V2 的 ManifestDependencyDefinition 有两种：
+        {"type": "plugin", "id": "x.y", "version_spec": ">=1.0"}
+        {"type": "python_package", "name": "httpx", "version_spec": ">=0.20"}
+    """
+
+    if not isinstance(item, dict):
+        return {}
+    out = dict(item)
+    raw_type = str(out.get("type") or "").strip().lower()
+    # v1 常见旧命名 → v2
+    if raw_type in ("python", "py", "pip"):
+        raw_type = "python_package"
+    if raw_type not in ("plugin", "python_package"):
+        # 默认按 python_package 处理（比把它丢弃损失更小）
+        raw_type = "python_package"
+    out["type"] = raw_type
+
+    if raw_type == "python_package":
+        # 允许把 name+version 合并在 name 字段里（旧写法），拆成标准字段
+        name = str(out.get("name") or out.get("package") or "").strip()
+        version_spec = str(out.get("version_spec") or out.get("version") or "").strip()
+        if name and not version_spec:
+            n2, v2 = _split_package_spec(name)
+            if v2:
+                name, version_spec = n2, v2
+        out["name"] = name
+        out["version_spec"] = version_spec
+        # 清理非 schema 字段
+        for k in list(out.keys()):
+            if k not in ("type", "name", "version_spec"):
+                out.pop(k, None)
+    else:  # plugin
+        pid = str(out.get("id") or out.get("plugin") or out.get("name") or "").strip()
+        version_spec = str(out.get("version_spec") or out.get("version") or "").strip()
+        out["id"] = pid
+        out["version_spec"] = version_spec
+        for k in list(out.keys()):
+            if k not in ("type", "id", "version_spec"):
+                out.pop(k, None)
+    return out
+
+
 def _coerce_dependencies(raw_deps) -> tuple[list, bool]:
     """
     v1 中 dependencies 可能是 dict / list-of-dict / list-of-str；
     v2 要求 list[ManifestDependencyDefinition]。
-    不认识的结构整体清空，后续让插件作者在更新时自己补。
     """
     changed = False
     if raw_deps is None:
         return ([], False)
+
+    result: list[dict] = []
+
     if isinstance(raw_deps, list):
-        # 已经是 list，逐项看是否规范
-        result = []
         for item in raw_deps:
             if isinstance(item, dict):
-                result.append(item)
+                result.append(_normalize_dep_item(item))
+                if result[-1] != item:
+                    changed = True
+            elif isinstance(item, str):
+                # 裸字符串 "httpx>=0.20"
+                name, spec = _split_package_spec(item)
+                result.append({"type": "python_package", "name": name, "version_spec": spec})
+                changed = True
             else:
-                changed = True   # 丢弃非 dict 项
+                changed = True
         return (result, changed)
+
     if isinstance(raw_deps, dict):
-        # 把 {"packages": [...], "plugins": [...]} 或 {"name": "ver"} 类结构铺平为 list
-        flat: list[dict] = []
-        # 常见：{"python": ["httpx>=0.20"]}
+        # 把 {"python": ["httpx>=0.20"]} / {"packages": [...]} 铺平
         for key, val in raw_deps.items():
+            dep_type = "plugin" if str(key).lower() in ("plugin", "plugins") else "python_package"
             if isinstance(val, list):
                 for v in val:
                     if isinstance(v, str):
-                        flat.append({"type": key if key in ("python", "plugin") else "python", "name": v})
+                        if dep_type == "python_package":
+                            name, spec = _split_package_spec(v)
+                            result.append({"type": dep_type, "name": name, "version_spec": spec})
+                        else:
+                            name, spec = _split_package_spec(v)
+                            result.append({"type": dep_type, "id": name, "version_spec": spec})
                     elif isinstance(v, dict):
-                        flat.append(v)
+                        item = dict(v)
+                        item.setdefault("type", dep_type)
+                        result.append(_normalize_dep_item(item))
             elif isinstance(val, str):
-                flat.append({"type": "python", "name": f"{key}{val}" if val.startswith(('>=', '==', '<', '>', '~=', '!=')) else key})
-        return (flat, True)
+                name, spec = _split_package_spec(f"{key}{val}") if val and val[0] in "<>=!~" else (str(key), val)
+                if dep_type == "python_package":
+                    result.append({"type": dep_type, "name": name, "version_spec": spec})
+                else:
+                    result.append({"type": dep_type, "id": name, "version_spec": spec})
+        return (result, True)
+
     return ([], True)
 
 
@@ -170,15 +250,31 @@ def _build_sdk(src: dict) -> dict:
 
 
 def _build_author(src: dict) -> dict:
+    """构建 author 块。``url`` 必须是非空 http(s) URL，否则 v2 校验失败。"""
+
     author = src.get("author")
     if isinstance(author, str):
-        return {"name": author, "url": ""}
+        author = {"name": author}
     if isinstance(author, dict):
         author = dict(author)
     else:
         author = {}
     author.setdefault("name", "unknown")
-    author.setdefault("url", "")
+
+    url = str(author.get("url") or "").strip()
+    if not url or not re.match(r"^https?://", url):
+        # 尝试从其它字段派生
+        urls = src.get("urls") or {}
+        repo = (urls.get("repository") if isinstance(urls, dict) else None) or src.get("repository_url") or ""
+        home = (urls.get("homepage") if isinstance(urls, dict) else None) or src.get("homepage_url") or ""
+        for candidate in (home, repo):
+            if candidate and re.match(r"^https?://", str(candidate)):
+                url = str(candidate)
+                break
+        if not url:
+            # 无任何 URL 可用，使用占位。格式必须满足 ^https?://.+$
+            url = "https://example.invalid/unknown-plugin"
+    author["url"] = url
     return author
 
 
@@ -186,7 +282,9 @@ def _build_author(src: dict) -> dict:
 # 单个 manifest 处理
 # ---------------------------------------------------------------------------
 
-def migrate_manifest(manifest_path: Path, apply: bool) -> MigrationReport:
+def migrate_manifest(manifest_path: Path, apply: bool, *, repair: bool = False) -> MigrationReport:
+    """把 v1 manifest 升级为 v2；若 ``repair=True``，也会对已是 v2 但字段不合法的 manifest 做清洗。"""
+
     rpt = MigrationReport(path=manifest_path)
     try:
         raw = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -199,8 +297,8 @@ def migrate_manifest(manifest_path: Path, apply: bool) -> MigrationReport:
         return rpt
 
     current_version = raw.get("manifest_version")
-    if current_version == 2:
-        rpt.actions.append("已经是 v2，跳过")
+    if current_version == 2 and not repair:
+        rpt.actions.append("已经是 v2，跳过（加 --repair 可强制修复字段）")
         return rpt
 
     rpt.plugin_id = str(raw.get("id", "") or manifest_path.parent.name)
@@ -247,7 +345,10 @@ def migrate_manifest(manifest_path: Path, apply: bool) -> MigrationReport:
     if apply:
         backup = manifest_path.with_suffix(".json.v1.bak")
         if backup.exists():
-            rpt.actions.append(f"跳过备份（已存在 {backup.name}）")
+            # 已经有 v1 备份；本次应用视为 repair，再多留一份 repair 备份
+            repair_backup = manifest_path.with_suffix(f".json.repair.{datetime.now().strftime('%Y%m%d-%H%M%S')}.bak")
+            repair_backup.write_bytes(manifest_path.read_bytes())
+            rpt.actions.append(f"已保存 repair 备份 -> {repair_backup.name}")
         else:
             backup.write_bytes(manifest_path.read_bytes())
             rpt.actions.append(f"已备份 -> {backup.name}")
@@ -276,6 +377,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Migrate plugin _manifest.json from v1 to v2.")
     parser.add_argument("--plugins-dir", default="plugins", help="插件根目录 (默认: plugins/)")
     parser.add_argument("--apply", action="store_true", help="实际写入（不加此参数为预览模式）")
+    parser.add_argument(
+        "--repair", action="store_true",
+        help="对已经是 v2 的 manifest 也重新执行一次规范化，修复 author.url / dependencies.type 等字段问题",
+    )
     args = parser.parse_args()
 
     plugins_dir = Path(args.plugins_dir).resolve()
@@ -285,7 +390,7 @@ def main() -> int:
 
     reports: list[MigrationReport] = []
     for manifest_path in iter_plugin_manifests(plugins_dir):
-        rpt = migrate_manifest(manifest_path, apply=args.apply)
+        rpt = migrate_manifest(manifest_path, apply=args.apply, repair=args.repair)
         reports.append(rpt)
 
     # 输出报告
