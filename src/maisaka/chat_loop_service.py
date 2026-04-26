@@ -248,33 +248,6 @@ class MaisakaChatLoopService:
         except (TypeError, ValueError):
             return default
 
-    @staticmethod
-    def _log_prompt_cache_usage(
-        *,
-        request_kind: str,
-        prompt_tokens: int,
-        prompt_cache_hit_tokens: int,
-        prompt_cache_miss_tokens: int,
-    ) -> None:
-        """记录模型 KV cache 命中情况。"""
-
-        if prompt_cache_miss_tokens == 0 and prompt_cache_hit_tokens > 0:
-            prompt_cache_miss_tokens = max(prompt_tokens - prompt_cache_hit_tokens, 0)
-        prompt_cache_total_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens
-        prompt_cache_hit_rate = (
-            prompt_cache_hit_tokens / prompt_cache_total_tokens * 100
-            if prompt_cache_total_tokens > 0
-            else 0
-        )
-        logger.info(
-            "Maisaka KV cache usage - "
-            f"request_kind={request_kind}, "
-            f"hit_tokens={prompt_cache_hit_tokens}, "
-            f"miss_tokens={prompt_cache_miss_tokens}, "
-            f"hit_rate={prompt_cache_hit_rate:.2f}%, "
-            f"prompt_tokens={prompt_tokens}"
-        )
-
     def _build_personality_prompt(self) -> str:
         """构造人格提示词。"""
 
@@ -627,12 +600,6 @@ class MaisakaChatLoopService:
                 interrupt_flag=self._interrupt_flag,
             ),
         )
-        self._log_prompt_cache_usage(
-            request_kind=request_kind,
-            prompt_tokens=generation_result.prompt_tokens,
-            prompt_cache_hit_tokens=getattr(generation_result, "prompt_cache_hit_tokens", 0) or 0,
-            prompt_cache_miss_tokens=getattr(generation_result, "prompt_cache_miss_tokens", 0) or 0,
-        )
 
         final_response = generation_result.response or ""
         final_tool_calls = list(generation_result.tool_calls or [])
@@ -729,8 +696,8 @@ class MaisakaChatLoopService:
 
         selected_indices.reverse()
         selected_history = [filtered_history[index] for index in selected_indices]
+        selected_history, _ = MaisakaChatLoopService._hide_early_assistant_messages(selected_history)
         selected_history, _ = drop_orphan_tool_results(selected_history)
-        selected_history, _ = normalize_tool_result_order(selected_history)
         tool_message_count = sum(1 for message in selected_history if isinstance(message, ToolResultMessage))
         normal_message_count = len(selected_history) - tool_message_count
         selection_reason = (
@@ -786,4 +753,39 @@ class MaisakaChatLoopService:
         if request_kind in {"planner", "timing_gate"}:
             return resolve_enable_visual_planner()
         return True
+
+    @staticmethod
+    def _hide_early_assistant_messages(
+        selected_history: List[LLMContextMessage],
+    ) -> tuple[List[LLMContextMessage], int]:
+        """隐藏上下文中最早 50% 的 assistant 文本消息，但保留工具调用链路。"""
+
+        assistant_indices = [
+            index
+            for index, message in enumerate(selected_history)
+            if isinstance(message, AssistantMessage)
+        ]
+        hidden_assistant_count = len(assistant_indices) // 2
+        if hidden_assistant_count <= 0:
+            return selected_history, 0
+
+        removed_assistant_indices = set(assistant_indices[:hidden_assistant_count])
+
+        filtered_history: List[LLMContextMessage] = []
+        for index, message in enumerate(selected_history):
+            if index in removed_assistant_indices:
+                if not message.tool_calls:
+                    continue
+                filtered_history.append(
+                    AssistantMessage(
+                        content="",
+                        timestamp=message.timestamp,
+                        tool_calls=list(message.tool_calls),
+                        source_kind=message.source_kind,
+                    )
+                )
+                continue
+            filtered_history.append(message)
+
+        return filtered_history, hidden_assistant_count
 
