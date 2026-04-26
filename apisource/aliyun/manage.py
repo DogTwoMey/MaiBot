@@ -328,6 +328,24 @@ def classify(code: str) -> Tuple[str, str, bool]:
     c = code.lower()
     streaming = any(k in c for k in STREAMING_ONLY_KEYWORDS)
 
+    # 先把"非 chat 输入输出"的模型全部隔离——这些走的不是 /chat/completions 的 content
+    # schema，强行塞进 replyer/planner/utils 只会得到 400 参数错误。
+    #
+    # 图像生成 / 图像编辑：qwen-image / qwen-image-edit / wanx-* / z-image* / tongyi-wanxiang
+    if any(k in c for k in (
+        "qwen-image", "-image-", "wanx", "wan-", "z-image", "tongyi-wanxiang",
+    )):
+        return ("image-gen", "none", streaming)
+    # 视频生成
+    if any(k in c for k in ("video", "wan-v", "wanv", "svd")):
+        return ("video-gen", "none", streaming)
+    # 语音转写 / 合成独立端点
+    if any(k in c for k in ("cosyvoice", "paraformer", "sensevoice", "-asr", "-tts", "speech-")):
+        return ("audio-gen", "none", streaming)
+    # 图像理解类特化（rerank / 检索重排）
+    if any(k in c for k in ("-rerank", "rerank-")):
+        return ("rerank", "none", streaming)
+
     if "embedding" in c:
         return ("embedding", "none", streaming)
     if "-vl-" in c or c.startswith("vl-") or c.endswith("-vl") or "qwen3-vl" in c or "qwen2.5-vl" in c or "qwen-vl" in c:
@@ -342,7 +360,7 @@ def classify(code: str) -> Tuple[str, str, bool]:
         return ("math", "none", streaming)
     if "-mt-" in c or c.startswith("qwen-mt"):
         return ("mt", "none", streaming)
-    if any(k in c for k in ("omni", "paraformer", "sensevoice", "-audio", "-tts", "-asr", "realtime")):
+    if any(k in c for k in ("omni", "-audio", "realtime")):
         return ("audio", "none", streaming)
     if any(k in c for k in ("deep-research", "doc-turbo", "tongyi-", "intent-detect", "xiaomi-analysis")):
         return ("special", "none", streaming)
@@ -368,6 +386,31 @@ def classify(code: str) -> Tuple[str, str, bool]:
         return ("chat", "mid", streaming)
 
     return ("other", "none", streaming)
+
+
+def build_extra_params(code: str) -> Dict[str, Any]:
+    """为某个模型推断合适的 extra_params，避免调用时触发 400。
+
+    主要处理：
+    - qwen3-*-a3b / a10b / a17b / a22b 等 MoE 默认开启 thinking，
+      非流式调用必须 enable_thinking=false。
+    - qwen3.x-* 部分模型同样强制要求显式关闭 thinking。
+    """
+
+    c = code.lower()
+    extra: Dict[str, Any] = {}
+
+    # MoE thinking-默认开启 的模型：强制关闭 thinking 以走非流式 chat
+    moe_thinking_markers = ("-a3b", "-a10b", "-a17b", "-a22b", "-a35b-")
+    if any(k in c for k in moe_thinking_markers):
+        extra["enable_thinking"] = False
+    # qwen3.x 系列 plus/flash 也遵循该约定
+    if any(c.startswith(p) for p in ("qwen3.5-", "qwen3.6-", "qwen3-")):
+        # 显式 thinking 变体单独处理（它们应该走流式，外层 streaming_only 会拦）
+        if "-thinking" not in c and "-instruct" not in c:
+            extra.setdefault("enable_thinking", False)
+
+    return extra
 
 
 def enrich_models(models: List[Model], prices: Dict[str, Tuple[float, float]]) -> None:
@@ -567,7 +610,10 @@ def build_models_aot(models: List[Model], id_to_name: Dict[int, str]):
         t["price_out"] = m.price_out
         t["force_stream_mode"] = m.streaming_only
         t["temperature"] = _default_temperature(m.category)
-        t["extra_params"] = table()
+        extra_tbl = table()
+        for k, v in build_extra_params(m.code).items():
+            extra_tbl[k] = v
+        t["extra_params"] = extra_tbl
         # 头部注释（tomlkit 写入 aot 元素的注释较繁琐，暂略）
         arr.append(t)
     return arr
