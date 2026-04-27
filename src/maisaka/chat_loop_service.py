@@ -435,9 +435,62 @@ class MaisakaChatLoopService:
         # OpenAI/百炼严格要求每个 assistant.tool_calls 都必须有后续 role=tool 响应，
         # 否则直接 400（例如 `tool_call_ids did not have response messages`）。
         # 上下文剪裁 / 打断 / 超时 等路径都可能留下孤儿 tool_call，这里兜底清理。
+        # 两步兜底：先把 tool 响应重排紧贴到各自 assistant 后，再清除孤儿。
+        messages = self._enforce_tool_result_adjacency(messages)
         messages = self._prune_orphan_tool_calls(messages)
 
         return messages
+
+    @staticmethod
+    def _enforce_tool_result_adjacency(messages: List[Message]) -> List[Message]:
+        """把散落在消息序列中的 ``role=tool`` 响应重排到它们对应的
+        ``assistant.tool_calls`` 正后方。
+
+        OpenAI / 阿里云要求每个 tool_call 的响应必须紧跟在声明该 tool_call
+        的 assistant 消息后，否则 400 ``tool_call_ids did not have response
+        messages``。MaiBot 在 reply 工具调用后会插入一条"用户视角的 bot 发言
+        回显"的 user 消息，这条 user 把 assistant 和它的 tool 响应隔开了。
+        本函数做顺序重排，不删除信息——被"借走位置"的 tool 响应会从原位置
+        被移除、在 assistant 正后方重新出现；未配对的 tool 响应保持原位置。
+        """
+
+        def _tc_id(tc: Any) -> str:
+            return str(getattr(tc, "call_id", None) or getattr(tc, "id", "") or "")
+
+        # 一趟扫：所有 tool 响应按 tool_call_id 建索引
+        tool_by_id: dict[str, Message] = {}
+        for msg in messages:
+            if msg.role == RoleType.Tool:
+                cid = str(msg.tool_call_id or "")
+                if cid:
+                    tool_by_id[cid] = msg
+
+        consumed: set[str] = set()
+        output: List[Message] = []
+        for msg in messages:
+            if msg.role == RoleType.Tool:
+                cid = str(msg.tool_call_id or "")
+                if cid and cid in consumed:
+                    # 已经被放到 assistant 后面了，原位置跳过
+                    continue
+                # tool_call_id 对应的 assistant 不存在；视作 orphan，保持原位
+                # （下一步 _prune_orphan_tool_calls 会处理这些异常，必要时丢弃）
+                output.append(msg)
+                continue
+
+            output.append(msg)
+
+            if msg.role == RoleType.Assistant and msg.tool_calls:
+                # 按 assistant 声明的 call_id 顺序依次追加对应 tool 响应
+                for tc in msg.tool_calls:
+                    cid = _tc_id(tc)
+                    if not cid or cid in consumed:
+                        continue
+                    tool_msg = tool_by_id.get(cid)
+                    if tool_msg is not None:
+                        output.append(tool_msg)
+                        consumed.add(cid)
+        return output
 
     @staticmethod
     def _prune_orphan_tool_calls(messages: List[Message]) -> List[Message]:
@@ -447,6 +500,9 @@ class MaisakaChatLoopService:
             1. 扫一遍收集所有 role=Tool 消息的 tool_call_id；
             2. 对每个 assistant 消息，只保留其 tool_calls 中 id 命中上述集合的条目；
             3. 若一条 assistant 在清理后既无文本也无工具调用，整体丢弃。
+
+        与 :meth:`_enforce_tool_result_adjacency` 搭配使用：前者确保顺序正确，
+        本函数处理"连响应都没有"的硬性孤儿。
         """
 
         known_tool_ids: set[str] = set()

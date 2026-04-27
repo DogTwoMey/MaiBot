@@ -329,22 +329,43 @@ def classify(code: str) -> Tuple[str, str, bool]:
     streaming = any(k in c for k in STREAMING_ONLY_KEYWORDS)
 
     # 先把"非 chat 输入输出"的模型全部隔离——这些走的不是 /chat/completions 的 content
-    # schema，强行塞进 replyer/planner/utils 只会得到 400 参数错误。
-    #
-    # 图像生成 / 图像编辑：qwen-image / qwen-image-edit / wanx-* / z-image* / tongyi-wanxiang
+    # schema，强行塞进 replyer/planner/utils 只会得到 400/404 参数错误。
+
+    # 万相 wan 系列：wan2.1 / wan2.2 / wan2.5 … —— 图像或视频生成，走专用端点
+    # 同时捕获 aitryon (虚拟试穿，本质也是图像生成)
+    if re.match(r"^wan[0-9]", c) or c.startswith("wan-") or c.startswith("wanx") or "aitryon" in c:
+        # 模态细分：i2v / t2v / v2v 是视频，其它（含 t2i / i2i / 无显式标识）归图像
+        if any(k in c for k in ("-i2v-", "-t2v-", "-v2v-", "-video", "video-", "-i2v", "-t2v")):
+            return ("video-gen", "none", streaming)
+        return ("image-gen", "none", streaming)
+
+    # 通用图像生成 / 编辑
     if any(k in c for k in (
-        "qwen-image", "-image-", "wanx", "wan-", "z-image", "tongyi-wanxiang",
+        "qwen-image", "-image-", "z-image", "tongyi-wanxiang",
+        "-t2i-", "-i2i-", "image-gen", "imagegen",
     )):
         return ("image-gen", "none", streaming)
-    # 视频生成
-    if any(k in c for k in ("video", "wan-v", "wanv", "svd")):
+
+    # 通用视频生成
+    if any(k in c for k in ("-video", "video-", "svd", "-i2v-", "-t2v-", "-v2v-")):
         return ("video-gen", "none", streaming)
-    # 语音转写 / 合成独立端点
+
+    # 语音合成 / 识别独立端点
     if any(k in c for k in ("cosyvoice", "paraformer", "sensevoice", "-asr", "-tts", "speech-")):
         return ("audio-gen", "none", streaming)
-    # 图像理解类特化（rerank / 检索重排）
+
+    # 检索重排
     if any(k in c for k in ("-rerank", "rerank-")):
         return ("rerank", "none", streaming)
+
+    # 翻译特化（livetranslate / 翻译专用模型）—— 走 chat 但不适合回复主链
+    if "livetranslate" in c or "live-translate" in c:
+        return ("translate", "none", streaming)
+
+    # 超长上下文变体（-1m 后缀表示 1M token 上下文）：响应慢，不适合 utils
+    # 归类为 "long-context" 排除出常规任务列表
+    if c.endswith("-1m") or "-instruct-1m" in c:
+        return ("long-context", "none", streaming)
 
     if "embedding" in c:
         return ("embedding", "none", streaming)
