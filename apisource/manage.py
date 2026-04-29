@@ -21,10 +21,14 @@
     python apisource/manage.py --provider aliyun --tier free
 
 合并语义（重要）：
-    脚本**不会覆盖**其它 provider 的条目。具体来说，执行
-    ``--provider aliyun --apply`` 只会改写 [[api_providers]]、[[models]] 和
-    model_task_config 中归属于 aliyun 的部分；已存在的 DeepSeek / OpenAI /
-    Azure 等其它 provider 的条目（含 api_key）会被原样保留。
+    - ``[[api_providers]]`` / ``[[models]]``：按 provider 归属合并，**不覆盖**其它
+      provider 的条目。执行 ``--provider deepseek`` 不会删掉 Aliyun/OpenAI 等条目
+      （含 api_key）。
+    - ``model_task_config``（各功能位 replyer/planner/utils/...）：**独占替换**。
+      本 provider 覆盖的 slot 的 model_list 会被完全替换为本 provider 的模型，
+      绝不与其它 provider 混用 —— 确保切 provider 后该功能位只调本次指定的模型。
+    - Provider 不覆盖的 slot（如 DeepSeek 不涉及 voice/embedding/vlm）：保留原配置
+      不动，换 chat provider 不会误伤已配好的其它功能。
 """
 
 from __future__ import annotations

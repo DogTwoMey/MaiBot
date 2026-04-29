@@ -290,28 +290,35 @@ def apply_bundle_to_config(bundle: ProviderBundle, *, dry_run: bool = False) -> 
             raw = mtc[slot].get("model_list", [])
             existing_list = [str(x) for x in raw]
 
-        # 保留"非本 provider"的 model 引用
-        preserved = [n for n in existing_list if n not in managed_model_names]
-
         if slot in ("voice", "embedding"):
-            # 语音 / embedding：本 provider 不主动提供，除非 bundle 明确写了
+            # 语音 / embedding：本 provider 通常不覆盖；仅当 bundle 明确写了才替换，
+            # 否则保留原配置（换 chat provider 不应误伤已配好的 voice/embedding）。
             bundle_slot = bundle.tier_mapping.get(slot, [])
             if bundle_slot:
                 desired = bundle_slot
-            elif slot == "embedding" and not preserved and bundle.embedding_name:
+            elif slot == "embedding" and not existing_list and bundle.embedding_name:
                 desired = [bundle.embedding_name]
             else:
-                desired = []
+                desired = list(existing_list)  # 原样保留
         else:
             desired = bundle.tier_mapping.get(slot, [])
+            if not desired:
+                # provider 不涉及该 slot → 原样保留
+                desired = list(existing_list)
 
-        # 合并：现有非归属 + 新归属（去重 & 保序）
-        seen: Set[str] = set()
+        # 独占策略：provider 覆盖的 slot 直接替换，绝不与其它 provider 的条目混用。
+        # 这样切 provider 后每个功能位只会调用本次指定的模型，避免路由到旧 provider。
         combined: List[str] = []
-        for n in preserved + desired:
+        seen: Set[str] = set()
+        for n in desired:
             if n and n not in seen:
                 seen.add(n)
                 combined.append(n)
+
+        # 日志：被挤掉的旧条目
+        dropped_by_replace = [n for n in existing_list if n not in seen]
+        if dropped_by_replace:
+            print(f"[apply] {slot:10} 替换剔除: {dropped_by_replace}")
 
         kept, dropped = _sanitize_task_names(combined, valid_names)
         if dropped:
