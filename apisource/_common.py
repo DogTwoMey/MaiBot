@@ -244,7 +244,7 @@ def _merge_models(doc, new_models_aot, is_managed_provider: Callable[[str], bool
 # 主 apply 入口
 # ---------------------------------------------------------------------------
 
-def apply_bundle_to_config(bundle: ProviderBundle, *, dry_run: bool) -> None:
+def apply_bundle_to_config(bundle: ProviderBundle, *, dry_run: bool = False) -> None:
     """把 ``bundle`` 合并进 ``config/model_config.toml``。
 
     合并规则简介（详见上方 helper）：

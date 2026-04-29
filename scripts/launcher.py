@@ -11,7 +11,6 @@ Commands:
     python scripts/launcher.py start bot          # start only bot
     python scripts/launcher.py stop               # stop all
     python scripts/launcher.py stop adapter
-    python scripts/launcher.py status
     python scripts/launcher.py restart [target]
     python scripts/launcher.py logs <name> [--tail N]
 
@@ -400,24 +399,6 @@ def cmd_stop(cfg: dict[str, Any], targets: list[str]) -> int:
     return 0
 
 
-def cmd_status(cfg: dict[str, Any]) -> int:
-    order = cfg.get("startup", {}).get("order", ["napcat", "adapter", "bot"])
-    print(f"{'component':<10} {'status':<10} {'pid':<8}  detail")
-    for name in order:
-        pid = read_pid(cfg, name)
-        alive = is_alive(pid)
-        state = "running" if alive else ("stale" if pid else "stopped")
-        detail = ""
-        if alive:
-            try:
-                p = psutil.Process(pid)  # type: ignore[arg-type]
-                detail = f"cmd={p.name()}  started={time.strftime('%H:%M:%S', time.localtime(p.create_time()))}"
-            except psutil.NoSuchProcess:
-                pass
-        print(f"{name:<10} {state:<10} {str(pid or '-'):<8}  {detail}")
-    return 0
-
-
 def cmd_logs(cfg: dict[str, Any], name: str, tail: int) -> int:
     log = log_file(cfg, name)
     if not log.exists():
@@ -459,8 +440,6 @@ def main() -> int:
     st = sub.add_parser("stop", help="Stop components")
     st.add_argument("targets", nargs="*", default=["all"])
 
-    sub.add_parser("status", help="Show component status")
-
     rs = sub.add_parser("restart", help="Stop then start")
     rs.add_argument("targets", nargs="*", default=["all"])
     rs.add_argument("--hide", action="append", default=[], choices=list(STARTERS))
@@ -476,8 +455,6 @@ def main() -> int:
         return cmd_start(cfg, parse_targets(args.targets), set(args.hide))
     if args.command == "stop":
         return cmd_stop(cfg, parse_targets(args.targets))
-    if args.command == "status":
-        return cmd_status(cfg)
     if args.command == "restart":
         targets = parse_targets(args.targets)
         cmd_stop(cfg, targets)

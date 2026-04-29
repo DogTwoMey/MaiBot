@@ -20,8 +20,11 @@ extra_args    = []
 # real elevated process is tracked. Set false if you always launch from an
 # already-elevated terminal/PyCharm.
 elevate       = true
-ready_port    = 8095                   # WS/HTTP port for readiness probe (0 to skip)
-ready_timeout = 30                     # seconds
+# Fire-and-forget: spawn napcat and immediately continue to the next component.
+# NapCat takes 5-15s to actually listen on 8095; adapter/bot retry internally so
+# there's no need to gate startup on the port. Set port>0 to re-enable probing.
+ready_port    = 0
+ready_timeout = 0
 # Extra window title shown in the spawned cmd window.
 title         = "NapCatQQ"
 
