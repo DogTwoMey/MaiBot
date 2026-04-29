@@ -6,3 +6,8 @@
 	path = external/napcat-src
 	url = git@github.com:DogTwoMey/NapCatQQ.git
 	branch = main
+[submodule "docs/private"]
+	path = docs/private
+	url = git@github.com:DogTwoMey/PrivateDocuments.git
+	branch = master
+	update = none
