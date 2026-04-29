@@ -132,6 +132,31 @@ def assemble(source: Path, output: Path) -> None:
     copy_tree(loader, output)
 
 
+def install_runtime_deps(output: Path) -> None:
+    """Install node runtime dependencies into output/node_modules.
+
+    napcat.mjs imports `express`, `ws`, etc. at runtime — those are declared in
+    the dist's package.json but not bundled by vite. Without this step, running
+    the launcher bat fails with `ERR_MODULE_NOT_FOUND: Cannot find package 'express'`.
+    """
+    pkg_json = output / "package.json"
+    if not pkg_json.exists():
+        raise SystemExit(f"[build_napcat] {pkg_json} missing — assemble step broken?")
+    # Prefer npm (produces a flat, standalone node_modules); fall back to pnpm.
+    npm = which("npm")
+    if npm:
+        print(f"[build_napcat] installing runtime deps via npm in {output}...")
+        run([npm, "install", "--omit=dev", "--no-audit", "--no-fund"], cwd=output)
+        return
+    pnpm = which("pnpm")
+    if pnpm:
+        print(f"[build_napcat] installing runtime deps via pnpm (shamefully-hoist) in {output}...")
+        run([pnpm, "install", "--prod", "--shamefully-hoist",
+             "--ignore-workspace", "--config.node-linker=hoisted"], cwd=output)
+        return
+    raise SystemExit("[build_napcat] neither npm nor pnpm found to install runtime node_modules")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build NapCatQQ shell from source.")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE,
@@ -140,7 +165,9 @@ def main() -> int:
                         help=f"Runtime output dir (default: {DEFAULT_OUTPUT.relative_to(REPO_ROOT)})")
     parser.add_argument("--clean", action="store_true",
                         help="Wipe output (except config/cache/logs/plugins) before copy.")
-    parser.add_argument("--no-install", action="store_true", help="Skip `pnpm install`.")
+    parser.add_argument("--no-install", action="store_true", help="Skip `pnpm install` in the source tree.")
+    parser.add_argument("--no-runtime-deps", action="store_true",
+                        help="Skip npm install of runtime deps in the output dir.")
     parser.add_argument("--dev", action="store_true", help="Use build:shell:dev instead of build:shell.")
     parser.add_argument("--build-cmd", type=str, default=None,
                         help="Override build command, e.g. 'pnpm run build:shell:config'.")
@@ -171,6 +198,9 @@ def main() -> int:
         assemble(source, output)
     finally:
         restore_preserved(backup, output, moved)
+
+    if not args.no_runtime_deps:
+        install_runtime_deps(output)
 
     print(f"[build_napcat] done. Runtime assembled at {output}")
     if moved:

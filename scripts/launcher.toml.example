@@ -9,22 +9,37 @@ bot_root = "."
 
 [napcat]
 launcher      = "launcher-win10.bat"   # or "launcher.bat" / "launcher-user.bat"
+# QQ number for quick login. Leave "" to use QR code login.
+# Equivalent to the bare number previously hard-coded in run.bat (e.g. `./launcher-win10.bat 2460714978`).
+qq_number     = ""
+# Extra positional args forwarded to the launcher bat after qq_number.
+# Example: ["-q", "2460714978"] if you prefer the explicit -q form.
+extra_args    = []
+# NapCat requires Administrator. When true (default) and the launcher is not
+# already running as admin, we trigger UAC via ShellExecuteEx('runas') so the
+# real elevated process is tracked. Set false if you always launch from an
+# already-elevated terminal/PyCharm.
+elevate       = true
 ready_port    = 8095                   # WS/HTTP port for readiness probe (0 to skip)
 ready_timeout = 30                     # seconds
 # Extra window title shown in the spawned cmd window.
 title         = "NapCatQQ"
 
 [adapter]
-# argv is spawned with cwd = paths.adapter. `uv run` picks up that cwd's .venv.
+# argv is spawned with cwd = paths.adapter. `uv run --no-sync` uses that cwd's .venv
+# without attempting to re-sync (bootstrap.py already did that). Skipping sync avoids
+# Access-Denied errors when a stale Python is still holding a .pyd from the old run.
 # Override to an absolute venv python if you don't want uv in the loop, e.g.
 #   argv = [".venv/Scripts/python.exe", "main.py"]
-argv          = ["uv", "run", "python", "main.py"]
-ready_port    = 18002                  # adapter listen port (0 to skip)
-ready_timeout = 30
+argv          = ["uv", "run", "--no-sync", "python", "main.py"]
+# Adapter is outbound-only: connects to NapCat :8095 and MaiBot :8000.
+# It does NOT listen on any port, so port-probe would always time out — keep 0.
+ready_port    = 0
+ready_timeout = 0
 title         = "MaiBot-Napcat-Adapter"
 
 [bot]
-argv          = ["uv", "run", "python", "bot.py"]
+argv          = ["uv", "run", "--no-sync", "python", "bot.py"]
 title         = "MaiBot"
 
 [logs]

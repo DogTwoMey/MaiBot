@@ -55,6 +55,11 @@ CREATE_NEW_CONSOLE = 0x00000010
 CREATE_NO_WINDOW = 0x08000000
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 
+# ShellExecuteEx constants
+SEE_MASK_NOCLOSEPROCESS = 0x00000040
+SW_HIDE = 0
+SW_SHOWNORMAL = 1
+
 
 # ---------------------------------------------------------------------------
 # Config
@@ -148,19 +153,88 @@ def kill_tree(pid: int, timeout: float = 5.0) -> None:
             pass
 
 
-def probe_port(port: int, timeout: float) -> bool:
+def probe_port(port: int, timeout: float, pid: int | None = None) -> bool:
+    """Wait for port to accept TCP connections, OR bail early if pid is dead."""
     if port <= 0:
         return True
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if pid is not None and not is_alive(pid):
+            # Process died — no point waiting further.
+            return False
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
+            s.settimeout(0.25)
             try:
                 s.connect(("127.0.0.1", port))
                 return True
             except (ConnectionRefusedError, socket.timeout, OSError):
-                time.sleep(0.5)
+                time.sleep(0.25)
     return False
+
+
+# ---------------------------------------------------------------------------
+# Elevation (Windows-only, used by NapCat)
+
+def is_admin() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def spawn_elevated_windows(file: str, params: str, cwd: str, hidden: bool) -> int:
+    """Run `file params` elevated via ShellExecuteEx('runas'). Returns the real PID.
+
+    Used to avoid NapCat's launcher-win10.bat self-elevating into a detached process
+    we can't track.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    class SHELLEXECUTEINFOW(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("fMask", ctypes.c_ulong),
+            ("hwnd", wintypes.HWND),
+            ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR),
+            ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR),
+            ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE),
+            ("lpIDList", ctypes.c_void_p),
+            ("lpClass", wintypes.LPCWSTR),
+            ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD),
+            ("hIcon", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    info = SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = SEE_MASK_NOCLOSEPROCESS
+    info.lpVerb = "runas"
+    info.lpFile = file
+    info.lpParameters = params
+    info.lpDirectory = cwd
+    info.nShow = SW_HIDE if hidden else SW_SHOWNORMAL
+
+    shell32 = ctypes.windll.shell32
+    shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFOW)]
+    shell32.ShellExecuteExW.restype = wintypes.BOOL
+
+    if not shell32.ShellExecuteExW(ctypes.byref(info)):
+        err = ctypes.GetLastError()
+        raise OSError(f"ShellExecuteExW failed (err={err}); user may have declined UAC")
+    if not info.hProcess:
+        raise OSError("ShellExecuteExW returned no process handle")
+    kernel32 = ctypes.windll.kernel32
+    pid = kernel32.GetProcessId(info.hProcess)
+    kernel32.CloseHandle(info.hProcess)
+    return int(pid)
 
 
 # ---------------------------------------------------------------------------
@@ -209,12 +283,40 @@ def _quote_win(arg: str) -> str:
 
 def start_napcat(cfg: dict[str, Any], hidden: bool) -> int:
     cwd = resolve(cfg, "napcat")
-    launcher_bat = cfg["napcat"].get("launcher", "launcher-win10.bat")
+    napcat_cfg = cfg.get("napcat", {})
+    launcher_bat = napcat_cfg.get("launcher", "launcher-win10.bat")
     bat_path = cwd / launcher_bat
     if not bat_path.exists():
         raise SystemExit(f"[launcher] NapCat launcher not found: {bat_path}")
-    # Use cmd /c for bat so path resolution works reliably.
-    argv = ["cmd", "/c", launcher_bat]
+
+    # Assemble args appended to the bat (qq_number + extra_args → forwarded as %*).
+    tail_args: list[str] = []
+    qq = str(napcat_cfg.get("qq_number", "") or "").strip()
+    if qq:
+        tail_args.append(qq)
+    extra = napcat_cfg.get("extra_args", []) or []
+    if not isinstance(extra, list):
+        raise SystemExit("[launcher] napcat.extra_args must be a list")
+    tail_args.extend(str(a) for a in extra)
+
+    # NapCat requires admin privileges. If not already elevated, we use
+    # ShellExecuteEx('runas') so we can (a) track the real admin PID and
+    # (b) avoid the bat spawning a detached elevated cmd we can't reach.
+    elevate = bool(napcat_cfg.get("elevate", True))
+    if elevate and sys.platform == "win32" and not is_admin():
+        title = napcat_cfg.get("title", "NapCatQQ")
+        # IMPORTANT: lpDirectory is ignored by ShellExecuteEx across the UAC boundary —
+        # the elevated cmd lands in C:\Windows\system32. Embed `cd /d` explicitly.
+        inner = f'cd /d "{cwd}" && title {title} && {launcher_bat}'
+        if tail_args:
+            inner += " " + " ".join(tail_args)
+        # /k keeps the window open for logs (visible mode); SW_HIDE handles hidden.
+        params = f'/k "{inner}"'
+        print(f"[launcher] napcat: requesting admin elevation via UAC...")
+        return spawn_elevated_windows("cmd.exe", params, str(cwd), hidden)
+
+    # Already-admin shell (or non-Windows): normal spawn.
+    argv: list[str] = ["cmd", "/c", launcher_bat, *tail_args]
     return spawn(cfg, "napcat", argv, cwd, hidden)
 
 
@@ -266,11 +368,18 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
         timeout = float(section.get("ready_timeout", 0) or 0)
         if port > 0 and timeout > 0:
             print(f"[launcher]   waiting for {name} on :{port} (up to {timeout:.0f}s)...")
-            if not probe_port(port, timeout):
-                print(f"[launcher]   WARN: {name} port {port} not ready within {timeout:.0f}s — continuing")
+            t0 = time.monotonic()
+            # Note: for elevated NapCat, `pid` is the admin cmd — checking its liveness
+            # is fine but child QQ.exe may keep running after cmd exits. Acceptable tradeoff.
+            if not probe_port(port, timeout, pid=pid):
+                elapsed = time.monotonic() - t0
+                if not is_alive(pid):
+                    print(f"[launcher]   ERR: {name} process exited during startup — continuing")
+                else:
+                    print(f"[launcher]   WARN: {name} port {port} not ready within {timeout:.0f}s — continuing")
                 rc = max(rc, 1)
             else:
-                print(f"[launcher]   {name} ready")
+                print(f"[launcher]   {name} ready ({time.monotonic()-t0:.1f}s)")
     return rc
 
 
