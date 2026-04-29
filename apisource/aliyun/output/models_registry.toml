@@ -1,0 +1,21 @@
+[[models]]
+model_identifier = "text-embedding-v3"
+name = "text-embedding-v3"
+api_provider = "BaiLian"
+price_in = 0.7
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.0
+
+[models.extra_params]
+
+[[models]]
+model_identifier = "text-embedding-v4"
+name = "text-embedding-v4"
+api_provider = "BaiLian"
+price_in = 0.5
+price_out = 0.0
+force_stream_mode = false
+temperature = 0.0
+
+[models.extra_params]

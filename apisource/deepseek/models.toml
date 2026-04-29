@@ -1,0 +1,75 @@
+# DeepSeek 官方模型模板
+# 由 apisource/manage.py --provider deepseek 读取，合并进 config/model_config.toml
+# api_key 通过 --api-key 传入；也可以直接在 config/model_config.toml 里填好，
+# 脚本会在 apply 时自动回填。
+
+[provider]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com/v1"
+client_type = "openai"
+auth_type = "bearer"
+auth_header_name = "Authorization"
+auth_header_prefix = "Bearer"
+auth_query_name = "api_key"
+model_list_endpoint = "/models"
+reasoning_parse_mode = "auto"
+tool_argument_parse_mode = "auto"
+max_retry = 2
+timeout = 60
+retry_interval = 10
+
+
+# -----------------------------------------------------------------------------
+# 模型清单
+#
+# tier 字段：
+#   low / mid / high / extreme  —— manage.py 按 tier 向任务槽派发
+#   free                         —— 显式标记免费模型（DeepSeek 默认无免费档）
+#
+# 注意：DeepSeek 官方目前不提供 VLM / Voice / Embedding，这三个槽位不会被
+# 本 provider 写入（原配置里其它 provider 的条目会被 merge 保留）。
+# -----------------------------------------------------------------------------
+
+# 旗舰：DeepSeek V4 Pro —— 顶配通用推理 / 复杂任务首选
+[[models]]
+model_identifier = "deepseek-v4-pro"
+name = "deepseek-v4-pro"
+tier = "extreme"
+category = "chat"
+temperature = 1.0
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+
+# 快线：DeepSeek V4 Flash —— 响应快、便宜，适合 utils / planner 轻任务
+[[models]]
+model_identifier = "deepseek-v4-flash"
+name = "deepseek-v4-flash"
+tier = "low"
+category = "chat"
+temperature = 1.0
+price_in = 0.5
+price_out = 2.0
+force_stream_mode = false
+
+# V3 通用 chat（广泛验证过，作为主力候补）
+[[models]]
+model_identifier = "deepseek-chat"
+name = "deepseek-chat"
+tier = "mid"
+category = "chat"
+temperature = 1.0
+price_in = 2.0
+price_out = 8.0
+force_stream_mode = false
+
+# Reasoner（推理链式输出）—— 适合需要深度推理的 replyer 备选
+[[models]]
+model_identifier = "deepseek-reasoner"
+name = "deepseek-reasoner"
+tier = "high"
+category = "chat"
+temperature = 0.7
+price_in = 4.0
+price_out = 16.0
+force_stream_mode = true  # reasoner 建议走流式以获得增量思考链
