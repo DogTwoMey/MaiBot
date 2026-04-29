@@ -1,3 +1,7 @@
+# Unified workspace (NapCat runtime + launcher state)
+/runtime/
+scripts/launcher.toml
+
 data/
 !pytests/A_memorix_test/data/
 !pytests/A_memorix_test/data/benchmarks/

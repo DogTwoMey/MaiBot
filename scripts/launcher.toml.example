@@ -1,0 +1,35 @@
+# MaiBot unified launcher config
+# Copy to scripts/launcher.toml and edit as needed.
+
+[paths]
+# All paths are relative to the repo root (parent of this scripts/ dir).
+napcat   = "runtime/napcat"
+adapter  = "external/adapter"
+bot_root = "."
+
+[napcat]
+launcher      = "launcher-win10.bat"   # or "launcher.bat" / "launcher-user.bat"
+ready_port    = 8095                   # WS/HTTP port for readiness probe (0 to skip)
+ready_timeout = 30                     # seconds
+# Extra window title shown in the spawned cmd window.
+title         = "NapCatQQ"
+
+[adapter]
+# argv is spawned with cwd = paths.adapter. `uv run` picks up that cwd's .venv.
+# Override to an absolute venv python if you don't want uv in the loop, e.g.
+#   argv = [".venv/Scripts/python.exe", "main.py"]
+argv          = ["uv", "run", "python", "main.py"]
+ready_port    = 18002                  # adapter listen port (0 to skip)
+ready_timeout = 30
+title         = "MaiBot-Napcat-Adapter"
+
+[bot]
+argv          = ["uv", "run", "python", "bot.py"]
+title         = "MaiBot"
+
+[logs]
+dir = "runtime/launcher-logs"          # stdout/stderr when running hidden; always used for .pid files
+
+[startup]
+# Order matters: earlier ones start first. Readiness probe gates the next one.
+order = ["napcat", "adapter", "bot"]
