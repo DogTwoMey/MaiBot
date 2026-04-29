@@ -1,0 +1,6 @@
+[submodule "external/adapter"]
+	path = external/adapter
+	url = git@github.com:DogTwoMey/MaiBot-Napcat-Adapter.git
+[submodule "external/napcat-src"]
+	path = external/napcat-src
+	url = git@github.com:DogTwoMey/NapCatQQ.git
