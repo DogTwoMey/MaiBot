@@ -1,3 +1,30 @@
+<!-- ============================================================ -->
+<!-- FORK NOTICE — 本块仅存在于 DogTwoMey/MaiBot，不合并进 upstream -->
+<!-- ============================================================ -->
+
+> **这是一个 fork + unified 工作区**
+> 本仓库 `DogTwoMey/MaiBot` 是 [`Mai-with-u/MaiBot`](https://github.com/Mai-with-u/MaiBot) 的 fork，并通过 git submodule 合并了另外两个组件仓库到统一工作区，方便一套流程部署/运行/升级三件套。
+>
+> <sub><sup>**This is a fork + unified workspace.** `DogTwoMey/MaiBot` forks [`Mai-with-u/MaiBot`](https://github.com/Mai-with-u/MaiBot) and bundles two sibling repos as git submodules so the three components can be deployed, launched, and upgraded from a single tree.</sup></sub>
+>
+> | 组件 / Component | 上游 / Upstream | 路径 / Path |
+> |---|---|---|
+> | MaiBot 主程序 | [Mai-with-u/MaiBot](https://github.com/Mai-with-u/MaiBot) | `./` |
+> | Napcat Adapter | [Mai-with-u/MaiBot-Napcat-Adapter](https://github.com/Mai-with-u/MaiBot-Napcat-Adapter) | `external/adapter/` |
+> | NapCatQQ 源码 | [NapNeko/NapCatQQ](https://github.com/NapNeko/NapCatQQ) | `external/napcat-src/` |
+>
+> **本 fork 只在工程/部署层做改动**（submodule 布局、统一 launcher、构建脚本、PyCharm run configs、apisource 切换）—— 业务代码保持与 upstream 一致以便合入。
+>
+> 📘 **部署/启停/运维文档 → [docs/fork/deployment.md](docs/fork/deployment.md)**
+> 📂 **完整文档索引 → [docs/README.md](docs/README.md)**（区分 fork 专属与 upstream 原生）
+> 🔁 **从上游同步 → `uv run python scripts/sync_upstream.py --apply`**
+>
+> 如果你在找 MaiBot 本体使用说明，以下内容从 upstream 原样保留。
+>
+> <sub><sup>For MaiBot itself, the original upstream README is preserved below.</sup></sub>
+
+---
+
 <a id="-双语--bilingual"></a>
 
 <div align="center">

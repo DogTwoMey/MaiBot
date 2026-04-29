@@ -76,7 +76,6 @@ dist-ssr/
 .vscode/*
 !.vscode/extensions.json
 .idea
-.run
 .DS_Store
 *.suo
 *.ntvs*
