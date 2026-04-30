@@ -554,9 +554,12 @@ def build_models_aot(models: List[Model], id_to_name: Dict[int, str]):
         t["name"] = name
         t["api_provider"] = m.region.provider_name
         t["price_in"] = m.price_in
+        t["cache"] = False
+        t["cache_price_in"] = 0.0
         t["price_out"] = m.price_out
-        t["force_stream_mode"] = m.streaming_only
         t["temperature"] = _default_temperature(m.category)
+        t["force_stream_mode"] = m.streaming_only
+        t["visual"] = m.category == "vlm"
         extra_tbl = table()
         for k, v in build_extra_params(m.code).items():
             extra_tbl[k] = v

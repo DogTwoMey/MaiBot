@@ -56,9 +56,12 @@ def _build_models_aot(template: Dict[str, Any], provider_name: str):
         t["name"] = name
         t["api_provider"] = provider_name
         t["price_in"] = float(m.get("price_in", 0.0))
+        t["cache"] = bool(m.get("cache", False))
+        t["cache_price_in"] = float(m.get("cache_price_in", 0.0))
         t["price_out"] = float(m.get("price_out", 0.0))
-        t["force_stream_mode"] = bool(m.get("force_stream_mode", False))
         t["temperature"] = float(m.get("temperature", 1.0))
+        t["force_stream_mode"] = bool(m.get("force_stream_mode", False))
+        t["visual"] = bool(m.get("visual", False))
         extra_tbl = table()
         for k, v in (m.get("extra_params") or {}).items():
             extra_tbl[k] = v
