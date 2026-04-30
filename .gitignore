@@ -374,3 +374,9 @@ packages/
 
 # backup
 backup/
+
+# 本地调试/草稿目录（wiki 抓取产物、probe 脚本输出等，都是一次性的）
+.scratch/
+
+# typo_generator 的汉字频率缓存——启动时如文件缺失会自动重建（~1s），不必入库
+depends-data/char_frequency.json

@@ -71,7 +71,8 @@ class ChineseTypoGenerator:
         max_freq = max(char_freq.values())
         normalized_freq = {char: freq / max_freq * 1000 for char, freq in char_freq.items()}
 
-        # 保存到缓存文件
+        # 保存到缓存文件（父目录可能已被清理，先补建）
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(normalized_freq, f, ensure_ascii=False, indent=2)
 

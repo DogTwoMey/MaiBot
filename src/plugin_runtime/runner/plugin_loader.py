@@ -580,25 +580,37 @@ class PluginLoader:
             from maibot_sdk.compat.base.base_plugin import BasePlugin as LegacyBasePlugin
         except ImportError:
             return
-        if hasattr(LegacyBasePlugin, "get_config"):
-            return
 
-        def get_config(self: Any, key: str, default: Any = None) -> Any:  # noqa: ANN001
-            cfg = getattr(self, "plugin_config", None) or {}
-            current: Any = cfg
-            for part in key.split("."):
-                if isinstance(current, dict) and part in current:
-                    current = current[part]
-                else:
-                    return default
-            return current
+        # --- get_config ---
+        if not hasattr(LegacyBasePlugin, "get_config"):
+            def get_config(self: Any, key: str, default: Any = None) -> Any:  # noqa: ANN001
+                cfg = getattr(self, "plugin_config", None) or {}
+                current: Any = cfg
+                for part in key.split("."):
+                    if isinstance(current, dict) and part in current:
+                        current = current[part]
+                    else:
+                        return default
+                return current
 
-        LegacyBasePlugin.get_config = get_config  # type: ignore[attr-defined]
-        # 给实例一个兜底的 plugin_config，避免 __init__ 里 super().__init__ 之后
-        # 紧跟 get_config 调用却找不到属性时静默失败。LegacyPluginAdapter 之后会把
-        # 真正的 config 注入进来。
+            LegacyBasePlugin.get_config = get_config  # type: ignore[attr-defined]
+
+        # --- plugin_config 类属性 ---
         if not hasattr(LegacyBasePlugin, "plugin_config"):
             LegacyBasePlugin.plugin_config = {}  # type: ignore[attr-defined]
+
+        # --- 容错 __init__ ---
+        # 旧版 MaiBot 的 BasePlugin 有各种 __init__ 签名（典型：``__init__(self, plugin_dir=None)``
+        # 或 ``__init__(self, *args, **kwargs)``）。兼容层的 BasePlugin 不提供 __init__，
+        # 直接落到 ``object.__init__``，后者不接任何 pos/kw 参数，导致
+        # ``TypeError: object.__init__() takes exactly one argument``。
+        # 注入一个吞参的 __init__——既能让旧代码 ``super().__init__(plugin_dir)`` 通过，
+        # 也不干扰任何子类自己定义的 __init__。
+        if LegacyBasePlugin.__init__ is object.__init__:
+            def _legacy_init(self: Any, *args: Any, **kwargs: Any) -> None:  # noqa: ANN001
+                pass
+
+            LegacyBasePlugin.__init__ = _legacy_init  # type: ignore[assignment]
 
     @staticmethod
     def _try_load_legacy_plugin(module: Any, plugin_id: str) -> Optional[Any]:
