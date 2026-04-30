@@ -14,9 +14,6 @@ from src.common.logger import get_logger
 
 logger = get_logger("webui.app")
 
-_DASHBOARD_PACKAGE_NAME = "maibot-dashboard"
-_MANUAL_INSTALL_COMMAND = f"pip install {_DASHBOARD_PACKAGE_NAME}"
-
 
 def _resolve_safe_static_file_path(static_path: Path, full_path: str) -> Path | None:
     static_root = static_path.resolve()
@@ -58,7 +55,6 @@ def _ensure_static_path_ready() -> Path | None:
     logger.warning(t("startup.webui_static_assets_unavailable"))
     error_key, error_kwargs = validation_error
     logger.warning(t(error_key, **error_kwargs))
-    logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
     return None
 
 
@@ -170,12 +166,10 @@ def _setup_static_files(app: FastAPI):
 
     if not static_path.exists():
         logger.warning(t("startup.webui_static_dir_missing_with_path", static_path=static_path))
-        logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
         return
 
     if not (static_path / "index.html").exists():
         logger.warning(t("startup.webui_index_missing", index_path=static_path / "index.html"))
-        logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
         return
 
     @app.get("/{full_path:path}", include_in_schema=False)
