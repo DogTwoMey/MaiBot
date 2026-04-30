@@ -134,22 +134,61 @@ def kill_tree(pid: int, timeout: float = 5.0) -> None:
         parent = psutil.Process(pid)
     except psutil.NoSuchProcess:
         return
-    children = parent.children(recursive=True)
+    try:
+        children = parent.children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        children = []
     for child in children:
         try:
             child.terminate()
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            # AccessDenied: elevated/protected child we can't touch from a
+            # non-admin launcher (typical for NapCat's Electron helpers when
+            # NapCat was started via runas). Nothing we can do — skip.
             pass
     try:
         parent.terminate()
-    except psutil.NoSuchProcess:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
-    gone, alive = psutil.wait_procs(children + [parent], timeout=timeout)
+    gone, alive = _wait_procs_tolerant(children + [parent], timeout=timeout)
     for p in alive:
         try:
             p.kill()
-        except psutil.NoSuchProcess:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
+
+
+def _wait_procs_tolerant(procs: list, timeout: float) -> tuple[list, list]:
+    """Like ``psutil.wait_procs`` but treats ``AccessDenied`` as "gone".
+
+    psutil.wait_procs internally calls OpenProcess for each target; on Windows
+    that fails with ERROR_ACCESS_DENIED for elevated / protected processes
+    when the caller runs unelevated. We can neither observe nor kill those
+    any further, so the best we can do is record them as "gone" and move on.
+    Without this, the whole stop command aborts mid-way through its cleanup.
+    """
+
+    deadline = time.monotonic() + timeout
+    gone: list = []
+    alive: list = list(procs)
+    while alive and time.monotonic() < deadline:
+        still_alive: list = []
+        for p in alive:
+            try:
+                if not p.is_running() or p.status() == psutil.STATUS_ZOMBIE:
+                    gone.append(p)
+                    continue
+            except psutil.NoSuchProcess:
+                gone.append(p)
+                continue
+            except psutil.AccessDenied:
+                gone.append(p)
+                continue
+            still_alive.append(p)
+        alive = still_alive
+        if alive:
+            time.sleep(0.1)
+    return gone, alive
 
 
 def probe_port(port: int, timeout: float, pid: int | None = None) -> bool:
