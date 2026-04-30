@@ -128,6 +128,14 @@ class ThumbnailPreheatResponse(BaseModel):
 
 
 def emoji_to_response(image: Images) -> EmojiResponse:
+    """将表情包模型转换为响应对象。
+
+    Args:
+        image: 数据库中的表情包记录。
+
+    Returns:
+        EmojiResponse: WebUI 可直接序列化的表情包数据。
+    """
     emotions: list[str] = []
     if image.description:
         emotions.extend(
@@ -145,10 +153,10 @@ def emoji_to_response(image: Images) -> EmojiResponse:
         id=image.id if image.id is not None else 0,
         full_path=image.full_path,
         format=ext or "unknown",
-        usage_count=image.query_count,
         emoji_hash=image.image_hash,
         description=image.description,
         query_count=image.query_count,
+        usage_count=image.query_count,
         is_registered=image.is_registered,
         is_banned=image.is_banned,
         emotion=emotion,

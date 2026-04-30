@@ -1,6 +1,5 @@
 """FastAPI 应用工厂 - 创建和配置 WebUI 应用实例"""
 
-from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -205,22 +204,11 @@ def _setup_static_files(app: FastAPI):
 
 
 def _resolve_static_path() -> Path | None:
-    # 临时仅允许使用已安装的 maibot-dashboard 包，不使用仓库本地 dashboard/dist。
-    # 如需恢复本地回退逻辑，可取消下方注释。
+    # 仅使用仓库本地 dashboard/dist（由 pnpm build 产出），不再回退到 maibot-dashboard pip 包。
     base_dir = _get_project_root()
     static_path = base_dir / "dashboard" / "dist"
     if static_path.is_dir() and (static_path / "index.html").exists():
         return static_path
-
-    try:
-        module = import_module("maibot_dashboard")
-        get_dist_path = getattr(module, "get_dist_path", None)
-        if callable(get_dist_path):
-            package_path = get_dist_path()
-            if isinstance(package_path, Path) and package_path.exists():
-                return package_path
-    except Exception:
-        pass
 
     return None
 
