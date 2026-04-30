@@ -147,6 +147,12 @@ class ConfigBase(BaseModel, AttrDocBase):
             class_fields.remove("suppress_any_warning")  # 忽略 suppress_any_warning 字
         for class_field in class_fields:
             if class_field not in data:
+                # default=None 的字段（典型如 Optional[int]）：TOML 无法表达 null，
+                # 迁移器也不会把 None 写回文件，所以它会在**每次启动时**都被报为"新增"，
+                # 污染日志。这里主动跳过——这种字段的缺失即等价于使用默认值。
+                field_info = cls.model_fields.get(class_field)
+                if field_info is not None and field_info.default is None:
+                    continue
                 attribute_data.missing_attributes.append(class_field)  # 记录缺失的属性
         cleaned_data_list: list[str] = []
         for data_field in data:
