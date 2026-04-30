@@ -320,7 +320,40 @@ rtk uv run python scripts/sync_upstream.py --apply --only napcat-src
 rtk uv run python scripts/build_napcat.py --clean
 ```
 
-### 6.3 依赖升级
+### 6.3 备份 / 迁移到新机器
+
+[scripts/backup.ps1](../../scripts/backup.ps1) 把统一工作区所有用户状态打成一个 tar.gz：
+
+| 包含（默认）| 跳过（默认）|
+|--|--|
+| `config/`, `data/`（MaiBot 主程序）| `data/a-memorix/web_import_*`、`temp/`、`__pycache__` |
+| `scripts/launcher.toml`（如存在）| `logs/`（加 `-IncludeLogs` 开启）|
+| `external/adapter/config.toml`, `external/adapter/data/` | `runtime/napcat/node_modules` / 各类构建产物（目标机 `build_napcat.py` 重出）|
+| `runtime/napcat/config/`（NapCat 登录 token + onebot 配置）| `runtime/napcat/cache/`（加 `-IncludeNapcatCache` 开启）|
+| `runtime/napcat/plugins/`（可选加 `-NoNapcatPlugins` 跳过）| |
+
+备份前**必须**先 stop 三件套（脚本会检查 `MaiBot.db` / `NapcatAdapter.db` 是否被占）：
+
+```powershell
+rtk uv run python scripts/launcher.py stop
+.\scripts\backup.ps1
+# 或包含更多内容：
+.\scripts\backup.ps1 -IncludeLogs -IncludeNapcatCache
+# 或指定输出：
+.\scripts\backup.ps1 -Output D:\transfer\maibot.tar.gz
+```
+
+**还原到新机器**：
+
+```powershell
+rtk git clone --recurse-submodules git@github.com:DogTwoMey/MaiBot.git
+cd MaiBot
+tar -xzf maibot-workspace-XXXX.tar.gz
+rtk uv run python scripts/bootstrap.py --build-napcat
+rtk uv run python scripts/launcher.py start
+```
+
+### 6.4 依赖升级
 
 ```powershell
 # MaiBot 主仓
@@ -331,7 +364,7 @@ rtk uv -C d:/Toy/MaiBot/external/adapter sync --upgrade
 pnpm -C d:/Toy/MaiBot/external/napcat-src install
 ```
 
-### 6.4 切换 LLM 服务商（apisource）
+### 6.5 切换 LLM 服务商（apisource）
 
 [apisource/manage.py](../../apisource/manage.py) 可把预设的 provider + tier 合并进 `config/model_config.toml`。每次 apply 会自动备份当前 config（带时间戳后缀）。
 
