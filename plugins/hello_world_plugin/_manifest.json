@@ -32,10 +32,10 @@
   ],
   "i18n": {
     "default_locale": "zh-CN",
-    "locales_path": "_locales",
     "supported_locales": [
       "zh-CN"
-    ]
+    ],
+    "locales_path": "_locales"
   },
   "id": "maibot-team.hello-world-plugin"
 }

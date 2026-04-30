@@ -568,6 +568,37 @@ class PluginLoader:
             self._compat_hook_installed = True
         except ImportError:
             logger.debug("maibot_sdk.compat 不可用，跳过导入钩子安装")
+        # 兼容层补齐：旧版 BasePlugin 没有 get_config 方法，但 pre-1.0 的插件
+        # （如 khiqwq.owner-auth-plugin）会在 __init__ 里调用 self.get_config(...)，
+        # 不打补丁会在实例化时就抛 AttributeError。这里注入一个与 Action/Command
+        # 一致的 dotted-key 读取器，读 self.plugin_config（adapter 会注入该属性）。
+        self._patch_legacy_base_plugin_get_config()
+
+    @staticmethod
+    def _patch_legacy_base_plugin_get_config() -> None:
+        try:
+            from maibot_sdk.compat.base.base_plugin import BasePlugin as LegacyBasePlugin
+        except ImportError:
+            return
+        if hasattr(LegacyBasePlugin, "get_config"):
+            return
+
+        def get_config(self: Any, key: str, default: Any = None) -> Any:  # noqa: ANN001
+            cfg = getattr(self, "plugin_config", None) or {}
+            current: Any = cfg
+            for part in key.split("."):
+                if isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    return default
+            return current
+
+        LegacyBasePlugin.get_config = get_config  # type: ignore[attr-defined]
+        # 给实例一个兜底的 plugin_config，避免 __init__ 里 super().__init__ 之后
+        # 紧跟 get_config 调用却找不到属性时静默失败。LegacyPluginAdapter 之后会把
+        # 真正的 config 注入进来。
+        if not hasattr(LegacyBasePlugin, "plugin_config"):
+            LegacyBasePlugin.plugin_config = {}  # type: ignore[attr-defined]
 
     @staticmethod
     def _try_load_legacy_plugin(module: Any, plugin_id: str) -> Optional[Any]:
