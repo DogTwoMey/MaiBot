@@ -492,11 +492,11 @@ def _convert_messages(messages: List[Message]) -> List[ChatCompletionMessagePara
             }
             if message.tool_calls:
                 assistant_payload["tool_calls"] = _convert_assistant_tool_calls(message.tool_calls)
-            # DeepSeek v4 thinking 模式要求 assistant history 里带 reasoning_content，
+            # DeepSeek v4 thinking 模式要求 **每条** assistant history 都带 reasoning_content，
             # 否则 400: "The `reasoning_content` in the thinking mode must be passed back to the API."
-            # 其它供应商会静默忽略该字段。
-            if message.reasoning_content:
-                assistant_payload["reasoning_content"] = message.reasoning_content  # type: ignore[typeddict-unknown-key]
+            # 即便是 guided_reply / timing_gate 等本身没思考链的消息也得有。其它供应商
+            # （OpenAI / Aliyun / gpt4novel 等）对未知字段静默忽略，所以无条件写入安全。
+            assistant_payload["reasoning_content"] = message.reasoning_content or ""  # type: ignore[typeddict-unknown-key]
             converted_messages.append(assistant_payload)
             continue
 

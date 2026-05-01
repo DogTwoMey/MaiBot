@@ -1312,6 +1312,9 @@ class MaisakaReasoningEngine:
                 timestamp=response.raw_message.timestamp,
                 tool_calls=[tool_call],
                 source_kind="timing_gate",
+                # DeepSeek v4 thinking 模式回传历史时必须带上 reasoning_content；
+                # 这里从 response.raw_message 透传避免下一轮 400。
+                reasoning_content=getattr(response.raw_message, "reasoning_content", "") or "",
             )
         )
         if tool_call.func_name == "wait":
