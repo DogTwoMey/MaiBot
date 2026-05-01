@@ -239,6 +239,7 @@ class BuiltinToolRuntimeContext:
             user_name=speaker_name,
             group_card=user_info.user_cardname or "",
             message_id=message.message_id,
+            user_id=user_info.user_id,
             include_message_id=not message.is_notify and bool(message.message_id),
         )
         history_message = SessionBackedMessage.from_session_message(

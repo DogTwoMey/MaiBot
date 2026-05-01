@@ -448,6 +448,7 @@ def _sanitize_messages_for_toolless_request(messages: List[Message]) -> List[Mes
                 tool_call_id=message.tool_call_id,
                 tool_name=message.tool_name,
                 tool_calls=None,
+                reasoning_content=message.reasoning_content,
             )
             sanitized_messages.append(assistant_message)
             continue
@@ -491,6 +492,11 @@ def _convert_messages(messages: List[Message]) -> List[ChatCompletionMessagePara
             }
             if message.tool_calls:
                 assistant_payload["tool_calls"] = _convert_assistant_tool_calls(message.tool_calls)
+            # DeepSeek v4 thinking 模式要求 assistant history 里带 reasoning_content，
+            # 否则 400: "The `reasoning_content` in the thinking mode must be passed back to the API."
+            # 其它供应商会静默忽略该字段。
+            if message.reasoning_content:
+                assistant_payload["reasoning_content"] = message.reasoning_content  # type: ignore[typeddict-unknown-key]
             converted_messages.append(assistant_payload)
             continue
 

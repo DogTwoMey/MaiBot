@@ -975,6 +975,19 @@ class LLMOrchestrator:
                 failed_models_this_request.add(model_info.name)
 
                 if isinstance(last_exception, RespNotOkException) and last_exception.status_code == 400:
+                    # 内容审核类硬错误在同服务商所有 VLM 上结果一致（审核器是统一的），
+                    # 继续挨个尝试只会浪费时间/log/token。遇到就提前退出轮询。
+                    full_err = (last_exception.message or "").lower()
+                    if (
+                        "data_inspection_failed" in full_err
+                        or "inappropriate content" in full_err
+                        or "datainspectionfailed" in full_err
+                    ):
+                        logger.warning(
+                            f"检测到内容审核拒绝（data_inspection_failed），"
+                            f"同服务商其它 VLM 模型大概率也会拒，提前终止 '{self.request_type or '未知任务'}' 任务的模型轮询。"
+                        )
+                        break
                     logger.warning("收到客户端错误 (400)，跳过当前模型并继续尝试其他模型。")
                     continue
 

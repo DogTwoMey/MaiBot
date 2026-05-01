@@ -50,17 +50,28 @@ class MessageUtils:
     def from_maim_message_segments_to_MaiSeq(message: "MessageBase") -> MessageSequence:
         """从maim_message.MessageBase.message_segment转换为MessageSequence"""
         raw_msg_seq = message.message_segment
-        components: List[StandardMessageComponents] = []
         if not raw_msg_seq:
-            return MessageSequence(components)
-        if raw_msg_seq.type == "seglist":
-            assert isinstance(raw_msg_seq.data, list), "seglist类型的message_segment数据应该是一个列表"
-            components.extend(MessageUtils._parse_maim_message_segment_to_component(item) for item in raw_msg_seq.data)
-        elif raw_msg_seq.type in {"text", "image", "emoji", "voice", "at", "reply"}:
-            components.append(MessageUtils._parse_maim_message_segment_to_component(raw_msg_seq))
-        else:
-            raise NotImplementedError(f"暂时不支持的消息片段类型: {raw_msg_seq.type}")
-        return MessageSequence(components)
+            return MessageSequence([])
+        # 统一走递归展开：不论最外层是 seglist 还是叶子类型，内部再嵌套 seglist
+        # 也能被正确打平。未知类型的子段会被静默跳过（打 warning）。
+        return MessageSequence(MessageUtils._flatten_maim_seg(raw_msg_seq))
+
+    @staticmethod
+    def _flatten_maim_seg(seg: "Seg") -> List["StandardMessageComponents"]:
+        """把一个 Seg（可能是任意深度嵌套的 seglist）展开成组件列表。"""
+        if seg.type == "seglist":
+            assert isinstance(seg.data, list), "seglist类型的message_segment数据应该是一个列表"
+            result: List[StandardMessageComponents] = []
+            for item in seg.data:
+                result.extend(MessageUtils._flatten_maim_seg(item))
+            return result
+        try:
+            return [MessageUtils._parse_maim_message_segment_to_component(seg)]
+        except NotImplementedError as e:
+            # 未知片段类型（例如 notify、card、forward 等）：丢弃并记录一次，不再抛出
+            # 以免整条消息预处理失败。
+            logger.warning(f"跳过暂不支持的消息片段类型: {seg.type} (detail={e})")
+            return []
 
     @staticmethod
     async def from_MaiSeq_to_maim_message_segments(msg_seq: MessageSequence) -> List[Seg]:

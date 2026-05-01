@@ -692,6 +692,9 @@ class MaisakaChatLoopService:
             content=final_response,
             timestamp=datetime.now(),
             tool_calls=final_tool_calls,
+            # 保留思考链，下一轮请求时 _convert_messages 会写回 assistant payload
+            # 的 reasoning_content 字段；DeepSeek v4 thinking 模式必须带此字段。
+            reasoning_content=(getattr(generation_result, "reasoning", "") or ""),
         )
         return ChatResponse(
             content=final_response or None,
@@ -806,6 +809,7 @@ class MaisakaChatLoopService:
                             timestamp=message.timestamp,
                             tool_calls=kept_tool_calls,
                             source_kind=message.source_kind,
+                            reasoning_content=getattr(message, "reasoning_content", ""),
                         )
                     )
                     continue

@@ -16,6 +16,7 @@ def build_planner_prefix(
     user_name: str,
     group_card: str = "",
     message_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     include_message_id: bool = True,
 ) -> str:
     """构造 Maisaka 规划器使用的统一消息前缀。
@@ -25,6 +26,8 @@ def build_planner_prefix(
         user_name: 展示给规划器的用户名。
         group_card: 群昵称。
         message_id: 消息 ID。
+        user_id: 发送者 QQ 号；唯一稳定身份。没有它，规划器只能依赖昵称
+            匹配——对于"主人"一类身份强相关的判断会因改昵称而翻车。
         include_message_id: 是否输出 `msg_id` 段。
 
     Returns:
@@ -34,12 +37,13 @@ def build_planner_prefix(
     prefix_parts = []
     if include_message_id:
         prefix_parts.append(f"[msg_id]{message_id or ''}\n")
-    prefix_parts.extend(
-        [
-            f"[时间]{timestamp.strftime('%H:%M:%S')}\n",
-            f"[用户名]{user_name}\n",
-        ]
-    )
+    prefix_parts.append(f"[时间]{timestamp.strftime('%H:%M:%S')}\n")
+    # [用户QQ] 必须紧跟时间，在 [用户名]/[用户群昵称] 之前；它才是身份校验
+    # 的唯一稳定锚点，昵称和群名片都可以被用户随时改。
+    normalized_user_id = str(user_id or "").strip()
+    if normalized_user_id:
+        prefix_parts.append(f"[用户QQ]{normalized_user_id}\n")
+    prefix_parts.append(f"[用户名]{user_name}\n")
     normalized_group_card = group_card.strip()
     if normalized_group_card:
         prefix_parts.append(f"[用户群昵称]{normalized_group_card}\n")
@@ -64,6 +68,7 @@ def build_planner_user_prefix_from_session_message(message: SessionMessage) -> s
         user_name=user_name,
         group_card=user_info.user_cardname or "",
         message_id=message.message_id,
+        user_id=user_info.user_id,
         include_message_id=not message.is_notify and bool(message.message_id),
     )
 

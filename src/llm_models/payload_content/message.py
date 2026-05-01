@@ -77,6 +77,11 @@ class Message:
     tool_call_id: str | None = None
     tool_name: str | None = None
     tool_calls: List[ToolCall] | None = None
+    # 保留上一轮 assistant 的 CoT/thinking 输出。DeepSeek v4 的思考模式要求把
+    # reasoning_content 随 assistant history 一起回传，否则 400：
+    # "The `reasoning_content` in the thinking mode must be passed back to the API."
+    # 其它供应商（OpenAI / Aliyun / gpt4novel 等）对未知字段静默忽略，不影响兼容性。
+    reasoning_content: str | None = None
 
     def __post_init__(self) -> None:
         """执行消息对象的基础校验。
@@ -139,6 +144,7 @@ class MessageBuilder:
         self.__tool_call_id: str | None = None
         self.__tool_name: str | None = None
         self.__tool_calls: List[ToolCall] | None = None
+        self.__reasoning_content: str | None = None
 
     def set_role(self, role: RoleType = RoleType.User) -> "MessageBuilder":
         """设置消息角色。
@@ -279,6 +285,19 @@ class MessageBuilder:
         self.__tool_calls = list(tool_calls)
         return self
 
+    def set_reasoning_content(self, reasoning_content: str | None) -> "MessageBuilder":
+        """设置助手消息的 reasoning_content（思考链）。
+
+        DeepSeek v4 的 thinking 模式在多轮请求里会校验 assistant history 必须包含
+        上一轮返回的 ``reasoning_content``，否则 400。
+        """
+
+        if self.__role != RoleType.Assistant:
+            # 非 Assistant 角色不保存 reasoning，但也不强制报错——沉默忽略更健壮
+            return self
+        self.__reasoning_content = reasoning_content or None
+        return self
+
     def build(self) -> Message:
         """构建消息对象。
 
@@ -291,4 +310,5 @@ class MessageBuilder:
             tool_call_id=self.__tool_call_id,
             tool_name=self.__tool_name,
             tool_calls=list(self.__tool_calls) if self.__tool_calls else None,
+            reasoning_content=self.__reasoning_content,
         )
