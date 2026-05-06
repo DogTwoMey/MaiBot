@@ -8,16 +8,18 @@
 
 | 文件 | 内容 |
 |------|------|
-| [`fork/deployment.md`](fork/deployment.md) | **主文档**。整体部署 / 启停 / 配置 / 运维 / 故障排查。新人从这里开始。 |
+| [`fork/deployment.md`](fork/deployment.md) | **工程层主文档**。部署 / 启停 / 配置 / 运维 / 故障排查。新机器从这里开始。 |
+| [`fork/design_divergence.md`](fork/design_divergence.md) | **业务层主文档**。fork 相对 upstream 的长期代码分歧（path_utils、本地 dist、@ 保活、KV cache revert、孤儿 tool call 兜底等）。合并 upstream 前必读。 |
 
-## 私有文档（[`private/`](private/)）
+## 私有文档（[`private/`](private/)，submodule）
 
-| 文件 | 内容 |
+`private/` 是指向独立私库 [`DogTwoMey/PrivateDocuments`](https://github.com/DogTwoMey/PrivateDocuments) 的 git submodule，配置 `update = none` —— 路人 clone 时被自动跳过，不会影响他们；自己用时显式 `git submodule update --init docs/private --checkout` 拉取。
+
+| 子目录 | 内容 |
 |------|------|
-| [`private/reviews/merge_main_into_upstream_main.md`](private/reviews/merge_main_into_upstream_main.md) | main ⇄ upstream/main 合并策略 & 冲突处理记录 |
-| [`private/personas/gumi_persona.md`](private/personas/gumi_persona.md) | 古米人格定义（本地定制备份） |
-
-> `private/` 内容不需要入库时可加 `/docs/private/` 到 `.gitignore`；默认跟仓库走。
+| `private/reviews/` | 各次 upstream 合并的具体处理记录 / 预合并报告 / 冲突方案 |
+| `private/personas/` | 角色人格定义本地定制备份 |
+| `private/utils/` / `private/worldview/` | 其他个人/项目内部资料 |
 
 ## Upstream 原生文档
 
