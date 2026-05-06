@@ -465,3 +465,13 @@ class SessionMessage(MaiMessage):
             else:
                 processed_texts.append(result)
         return " ".join(processed_texts)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat alias
+# ---------------------------------------------------------------------------
+# 旧版 MaiBot 的 ``MessageRecv`` 类在重构后被 ``SessionMessage`` 取代。第三方
+# 插件（如 A-Dawn_A_memorix 的多个 commands）仍然 ``from src.chat.message_receive.message
+# import MessageRecv``，此别名让它们在不改源码的情况下继续工作。
+# 新代码请直接使用 ``SessionMessage``。
+MessageRecv = SessionMessage

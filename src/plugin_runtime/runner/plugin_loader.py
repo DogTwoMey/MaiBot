@@ -600,6 +600,12 @@ class PluginLoader:
         if not hasattr(LegacyBasePlugin, "plugin_config"):
             LegacyBasePlugin.plugin_config = {}  # type: ignore[attr-defined]
 
+        # 老 API 有两种读配置的写法：self.get_config("a.b") 和 self.config["a"]["b"] /
+        # self.config.get("a", {}).get("b", default)。hypersharkawa 的 PortrayalPlugin
+        # 就用后者。同步注入一个空 dict 作为 class-level 默认，避免 AttributeError。
+        if not hasattr(LegacyBasePlugin, "config"):
+            LegacyBasePlugin.config = {}  # type: ignore[attr-defined]
+
         # --- 容错 __init__ ---
         # 旧版 MaiBot 的 BasePlugin 有各种 __init__ 签名（典型：``__init__(self, plugin_dir=None)``
         # 或 ``__init__(self, *args, **kwargs)``）。兼容层的 BasePlugin 不提供 __init__，
