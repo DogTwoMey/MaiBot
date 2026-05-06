@@ -66,8 +66,6 @@ uv run python scripts/launcher.py start
 # 4. 停止
 uv run python scripts/launcher.py stop
 
-欢迎参与贡献！请先阅读 [贡献指南](docs/CONTRIBUTE.md)。  
-<sub><sup>Contributions are welcome. Please read the <a href="docs/CONTRIBUTE.md">Contribution Guide</a> first.</sup></sub>
 # 5. 从上游 sync
 uv run python scripts/sync_upstream.py --apply
 
@@ -78,6 +76,9 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 PyCharm 用户：[`.run/`](.run/) 下有预置 Run Configurations（Start All / Stop All / Build NapCat / Sync Upstream / ApiSource Aliyun+DeepSeek High），接通后 IDE 里点就行。
 
 > 📘 详细参数、配置字段、故障排查一律见 [`docs/fork/deployment.md`](docs/fork/deployment.md)。
+
+欢迎参与贡献！请先阅读 [贡献指南](docs/CONTRIBUTE.md)。  
+<sub><sup>Contributions are welcome. Please read the <a href="docs/CONTRIBUTE.md">Contribution Guide</a> first.</sup></sub>
 
 ---
 
