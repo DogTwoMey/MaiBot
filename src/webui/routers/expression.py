@@ -704,11 +704,11 @@ async def get_review_list(
         if order == "random":
             statement = statement.order_by(func.random())
         else:
-        # 排序：创建时间倒序
-        statement = statement.order_by(
-            case((col(Expression.create_time).is_(None), 1), else_=0),
-            col(Expression.create_time).desc(),
-        )
+            # 排序：创建时间倒序
+            statement = statement.order_by(
+                case((col(Expression.create_time).is_(None), 1), else_=0),
+                col(Expression.create_time).desc(),
+            )
 
         offset = (page - 1) * page_size
         statement = statement.offset(offset).limit(page_size)
@@ -724,9 +724,8 @@ async def get_review_list(
             if chat_id:
                 count_statement = count_statement.where(col(Expression.session_id) == chat_id)
             total = len(session.exec(count_statement).all())
+            # 在 session 仍打开时序列化为响应模型，避免 DetachedInstanceError
             data = [expression_to_response(expr, session) for expr in expressions]
-
-            data = [expression_to_response(expr) for expr in expressions]
 
         return ReviewListResponse(
             success=True,
