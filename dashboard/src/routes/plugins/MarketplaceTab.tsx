@@ -16,6 +16,7 @@ interface MarketplaceTabProps {
   checkPluginCompatibility: (plugin: PluginInfo) => boolean
   needsUpdate: (plugin: PluginInfo) => boolean
   getStatusBadge: (plugin: PluginInfo) => React.JSX.Element | null
+  getIncompatibleReason: (plugin: PluginInfo) => string | null
 }
 
 export function MarketplaceTab({
@@ -33,12 +34,18 @@ export function MarketplaceTab({
   checkPluginCompatibility,
   needsUpdate,
   getStatusBadge,
+  getIncompatibleReason,
 }: MarketplaceTabProps) {
   // 过滤插件
   const filteredPlugins = plugins.filter(plugin => {
     // 跳过没有 manifest 的插件
     if (!plugin.manifest) {
       console.warn('[过滤] 跳过无 manifest 的插件:', plugin.id)
+      return false
+    }
+
+    // 全部插件只展示 plugin-repo 中存在的市场插件，本地独有插件只在“已安装”显示。
+    if (plugin.source === 'local') {
       return false
     }
     
@@ -76,6 +83,7 @@ export function MarketplaceTab({
           checkPluginCompatibility={checkPluginCompatibility}
           needsUpdate={needsUpdate}
           getStatusBadge={getStatusBadge}
+          getIncompatibleReason={getIncompatibleReason}
         />
       ))}
     </div>

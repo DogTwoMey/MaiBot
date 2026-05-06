@@ -65,6 +65,8 @@ uv run python scripts/launcher.py start
 # 4. 停止
 uv run python scripts/launcher.py stop
 
+欢迎参与贡献！请先阅读 [贡献指南](docs/CONTRIBUTE.md)。  
+<sub><sup>Contributions are welcome. Please read the <a href="docs/CONTRIBUTE.md">Contribution Guide</a> first.</sup></sub>
 # 5. 从上游 sync
 uv run python scripts/sync_upstream.py --apply
 

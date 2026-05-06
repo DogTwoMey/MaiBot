@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Tuple
 
 import json
+import random
 import time
 
 from rich.console import Group, RenderableType
@@ -83,6 +84,7 @@ class BaseMaisakaReplyGenerator:
         self.express_model = llm_client_cls(
             task_name="replyer",
             request_type=request_type,
+            session_id=getattr(chat_stream, "session_id", "") if chat_stream is not None else "",
         )
         self._personality_prompt = self._build_personality_prompt()
 
@@ -93,12 +95,32 @@ class BaseMaisakaReplyGenerator:
             alias_names = global_config.bot.alias_names
             bot_aliases = f"，也有人叫你{','.join(alias_names)}" if alias_names else ""
 
-            prompt_personality = global_config.personality.personality
+            prompt_personality = global_config.personality.personality.strip()
+            if not prompt_personality:
+                prompt_personality = "是人类。"
 
-            return f"你的名字是{bot_name}{bot_aliases}，你{prompt_personality};"
+            return f"你的名字是{bot_name}{bot_aliases}。\n{prompt_personality}"
         except Exception as exc:
             logger.warning(f"构建 Maisaka 人设提示词失败: {exc}")
-            return "你的名字是麦麦，你是一个活泼可爱的 AI 助手。"
+            return "你的名字是麦麦。\n是人类。"
+
+    @staticmethod
+    def _select_reply_style() -> str:
+        """按配置概率选择本次 replyer 使用的表达风格。"""
+        personality_config = global_config.personality
+        reply_style = personality_config.reply_style
+        candidate_styles = [style.strip() for style in personality_config.multiple_reply_style if style.strip()]
+
+        if not candidate_styles:
+            return reply_style
+
+        probability = personality_config.multiple_probability
+        if probability <= 0:
+            return reply_style
+        if random.random() > probability:
+            return reply_style
+
+        return random.choice(candidate_styles)
 
     @staticmethod
     def _normalize_content(content: str, limit: int = 500) -> str:
@@ -171,7 +193,7 @@ class BaseMaisakaReplyGenerator:
                 continue
 
             if isinstance(component, ImageComponent):
-                rendered_parts.append(component.content.strip() or "[图片]")
+                rendered_parts.append(component.content.strip() or "[图片，识别中.....]")
                 continue
 
             if isinstance(component, EmojiComponent):
@@ -290,7 +312,7 @@ class BaseMaisakaReplyGenerator:
                 group_chat_attention_block=self._build_group_chat_attention_block(session_id),
                 replyer_at_block=self._build_replyer_at_block(),
                 identity=self._personality_prompt,
-                reply_style=global_config.personality.reply_style,
+                reply_style=self._select_reply_style(),
             )
         except Exception:
             system_prompt = "你是一个友好的 AI 助手，请根据聊天记录自然回复。"

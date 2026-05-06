@@ -149,6 +149,35 @@ class PluginRuntimeManager(
         return validator.build_plugin_dependency_map(plugin_dirs)
 
     @classmethod
+    def _discover_llm_provider_conflicts(cls, plugin_dirs: Iterable[Path]) -> Dict[str, str]:
+        """扫描插件 Manifest，发现 LLM Provider client_type 冲突。
+
+        Args:
+            plugin_dirs: 需要扫描的插件根目录集合。
+
+        Returns:
+            Dict[str, str]: 需要阻止加载的插件 ID 与原因映射。
+        """
+        validator = ManifestValidator(validate_python_package_dependencies=False)
+        provider_owners: Dict[str, List[str]] = {}
+        for _plugin_path, manifest in validator.iter_plugin_manifests(plugin_dirs, require_entrypoint=True):
+            for client_type in manifest.llm_provider_client_types:
+                provider_owners.setdefault(client_type, []).append(manifest.id)
+
+        blocked_reasons: Dict[str, str] = {}
+        for client_type, plugin_ids in provider_owners.items():
+            unique_plugin_ids = sorted(set(plugin_ids))
+            if len(unique_plugin_ids) <= 1:
+                continue
+            reason = (
+                f"LLM Provider client_type 冲突: {client_type} 被以下插件重复声明: "
+                f"{', '.join(unique_plugin_ids)}"
+            )
+            for plugin_id in unique_plugin_ids:
+                blocked_reasons[plugin_id] = reason
+        return blocked_reasons
+
+    @classmethod
     def _build_group_start_order(
         cls,
         builtin_dirs: Sequence[Path],
@@ -271,7 +300,11 @@ class PluginRuntimeManager(
         """
 
         result = await self._plugin_dependency_pipeline.execute(plugin_dirs)
-        changed_plugin_ids = self._set_blocked_plugin_reasons(result.blocked_plugin_reasons)
+        blocked_plugin_reasons = {
+            **result.blocked_plugin_reasons,
+            **self._discover_llm_provider_conflicts(plugin_dirs),
+        }
+        changed_plugin_ids = self._set_blocked_plugin_reasons(blocked_plugin_reasons)
         return DependencySyncState(
             blocked_changed_plugin_ids=changed_plugin_ids,
             environment_changed=result.environment_changed,
@@ -623,6 +656,14 @@ class PluginRuntimeManager(
         return {
             plugin_id: supervisor for supervisor in self.supervisors for plugin_id in supervisor.get_loaded_plugin_ids()
         }
+
+    def get_plugin_load_statuses(self) -> Dict[str, str]:
+        """汇总所有 Supervisor 上报的插件加载状态。"""
+
+        statuses: Dict[str, str] = {}
+        for supervisor in self.supervisors:
+            statuses.update(supervisor.get_plugin_load_statuses())
+        return statuses
 
     def _build_external_available_plugins_for_supervisor(self, target_supervisor: "PluginSupervisor") -> Dict[str, str]:
         """收集某个 Supervisor 可用的外部插件版本映射。"""

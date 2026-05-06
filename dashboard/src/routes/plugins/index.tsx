@@ -214,6 +214,7 @@ function PluginsPageContent() {
             for (const installedPlugin of installed) {
               const existsInMarket = mergedData.some(p => p.id === installedPlugin.id)
               if (!existsInMarket && installedPlugin.manifest) {
+                const urls = installedPlugin.manifest.urls as PluginInfo['manifest']['urls'] | undefined
                 // 添加本地插件到列表
                 mergedData.push({
                   id: installedPlugin.id,
@@ -225,8 +226,9 @@ function PluginsPageContent() {
                     author: installedPlugin.manifest.author,
                     license: installedPlugin.manifest.license || 'Unknown',
                     host_application: installedPlugin.manifest.host_application,
-                    homepage_url: installedPlugin.manifest.homepage_url,
-                    repository_url: installedPlugin.manifest.repository_url,
+                    homepage_url: installedPlugin.manifest.homepage_url || urls?.homepage,
+                    repository_url: installedPlugin.manifest.repository_url || urls?.repository,
+                    urls,
                     keywords: installedPlugin.manifest.keywords || [],
                     categories: installedPlugin.manifest.categories || [],
                     default_locale: (installedPlugin.manifest.default_locale as string) || 'zh-CN',
@@ -237,6 +239,7 @@ function PluginsPageContent() {
                   review_count: 0,
                   installed: true,
                   installed_version: installedPlugin.manifest.version,
+                  source: 'local',
                   published_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 })
@@ -268,8 +271,8 @@ function PluginsPageContent() {
 
   // 获取插件状态徽章
   const getStatusBadge = (plugin: PluginInfo) => {
-    // 优先显示兼容性状态
-    if (!plugin.installed && maimaiVersion && !checkPluginCompatibility(plugin)) {
+    // 优先显示兼容性状态（已安装但不兼容也需要提示，避免用户误以为可继续更新）
+    if (maimaiVersion && !checkPluginCompatibility(plugin)) {
       return (
         <Badge variant="destructive" className="gap-1">
           <AlertCircle className="h-3 w-3" />
@@ -317,9 +320,20 @@ function PluginsPageContent() {
   }
 
   // 检查插件兼容性
+  // 规则：
+  // 1. manifest_version === 1 的插件在麦麦 >= 1.0.0 时一律视为不兼容（旧 manifest 已不再被宿主接受）；
+  // 2. 否则若声明了 host_application 范围，则按版本范围判定。
   const checkPluginCompatibility = (plugin: PluginInfo): boolean => {
-    if (!maimaiVersion || !plugin.manifest?.host_application) return true
-    
+    if (!maimaiVersion) return true
+
+    // manifest v1 在 1.0.0+ 麦麦上不再兼容
+    const manifestVersion = plugin.manifest?.manifest_version ?? 1
+    if (manifestVersion <= 1 && maimaiVersion.version_major >= 1) {
+      return false
+    }
+
+    if (!plugin.manifest?.host_application) return true
+
     return isPluginCompatible(
       plugin.manifest.host_application.min_version,
       plugin.manifest.host_application.max_version,
@@ -327,9 +341,33 @@ function PluginsPageContent() {
     )
   }
 
+  // 不兼容原因（用于 UI 提示）
+  const getIncompatibleReason = (plugin: PluginInfo): string | null => {
+    if (!maimaiVersion) return null
+    const manifestVersion = plugin.manifest?.manifest_version ?? 1
+    if (manifestVersion <= 1 && maimaiVersion.version_major >= 1) {
+      return `该插件使用旧版 manifest (v${manifestVersion})，已不被麦麦 ${maimaiVersion.version} 支持`
+    }
+    if (plugin.manifest?.host_application && !isPluginCompatible(
+      plugin.manifest.host_application.min_version,
+      plugin.manifest.host_application.max_version,
+      maimaiVersion
+    )) {
+      const min = plugin.manifest.host_application.min_version || '未知'
+      const max = plugin.manifest.host_application.max_version
+      const range = max ? `${min} - ${max}` : `${min}+`
+      return `不兼容当前版本 (需要 ${range}，当前 ${maimaiVersion.version})`
+    }
+    return null
+  }
+
   // 检查是否需要更新（市场版本比已安装版本新）
   const needsUpdate = (plugin: PluginInfo): boolean => {
     if (!plugin.installed || !plugin.installed_version || !plugin.manifest?.version) {
+      return false
+    }
+    // 不兼容的插件不允许更新
+    if (!checkPluginCompatibility(plugin)) {
       return false
     }
     
@@ -368,7 +406,7 @@ function PluginsPageContent() {
     if (maimaiVersion && !checkPluginCompatibility(plugin)) {
       toast({
         title: '无法安装',
-        description: '插件与当前麦麦版本不兼容',
+        description: getIncompatibleReason(plugin) ?? '插件与当前麦麦版本不兼容',
         variant: 'destructive',
       })
       return
@@ -395,7 +433,7 @@ function PluginsPageContent() {
       
       const installResult = await installPlugin(
         installingPlugin.id,
-        installingPlugin.manifest.repository_url || '',
+        installingPlugin.manifest.repository_url || installingPlugin.manifest.urls?.repository || '',
         branch
       )
       
@@ -526,10 +564,20 @@ function PluginsPageContent() {
       return
     }
 
+    // 不兼容的插件不允许更新
+    if (maimaiVersion && !checkPluginCompatibility(plugin)) {
+      toast({
+        title: '无法更新',
+        description: getIncompatibleReason(plugin) ?? '插件与当前麦麦版本不兼容',
+        variant: 'destructive',
+      })
+      return
+    }
+
     try {
       const updateResult = await updatePlugin(
         plugin.id,
-        plugin.manifest.repository_url || '',
+        plugin.manifest.repository_url || plugin.manifest.urls?.repository || '',
         'main'
       )
       
@@ -589,6 +637,7 @@ function PluginsPageContent() {
   const getFilteredPluginCount = (tab: 'all' | 'installed' | 'updates') => {
     return plugins.filter(p => {
       if (!p.manifest) return false
+      if (tab === 'all' && p.source === 'local') return false
       const matchesSearch = searchQuery === '' ||
         p.manifest.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.manifest.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -833,6 +882,7 @@ function PluginsPageContent() {
             checkPluginCompatibility={checkPluginCompatibility}
             needsUpdate={needsUpdate}
             getStatusBadge={getStatusBadge}
+            getIncompatibleReason={getIncompatibleReason}
           />
         ) : activeTab === 'installed' ? (
           <InstalledTab
@@ -850,6 +900,7 @@ function PluginsPageContent() {
             checkPluginCompatibility={checkPluginCompatibility}
             needsUpdate={needsUpdate}
             getStatusBadge={getStatusBadge}
+            getIncompatibleReason={getIncompatibleReason}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
