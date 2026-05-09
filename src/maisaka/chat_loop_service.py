@@ -726,6 +726,14 @@ class MaisakaChatLoopService:
             if private_chat_prompt := str(global_config.chat.private_chat_prompts or "").strip():
                 prompt_lines.append(f"通用注意事项：\n{private_chat_prompt}")
 
+        if self._session_id:
+            if chat_prompt := self._get_chat_prompt_for_chat(self._session_id, self._is_group_chat).strip():
+                prompt_lines.append(f"当前聊天额外注意事项：\n{chat_prompt}")
+
+        if cross_session_memory_prompt := str(
+            getattr(global_config.chat, "cross_session_memory_prompt", "") or ""
+        ).strip():
+            prompt_lines.append(f"跨聊天流记忆说明：\n{cross_session_memory_prompt}")
         if not prompt_lines:
             return ""
 

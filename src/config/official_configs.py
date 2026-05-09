@@ -786,6 +786,24 @@ class ChatConfig(ConfigBase):
     )
     """_wrap_私聊通用注意事项"""
 
+    cross_session_memory_prompt: str = Field(
+        default=(
+            "关于你的记忆：你的长期记忆不仅限于当前这个聊天场景。"
+            "同一个用户在其他群聊或私聊里说过的内容、达成的共识、你曾经承诺或记住的事情，"
+            "都可以通过调用 query_memory / query_person_info 等记忆工具回忆起来。\n"
+            "当用户提及当前聊天记录看不到的过去事实（例如「刚才私聊告诉你的」、"
+            "「上次在xx群说过的」、「昨天那件事」等），请先主动调用记忆工具检索再作答，"
+            "不要直接声称看不到或没发生过。即使暂时检索不到，也优先表达「让我想想」、"
+            "「好像有印象」等态度，而不是断然否认。"
+        ),
+        json_schema_extra={
+            "x-widget": "textarea",
+            "x-icon": "brain",
+            "advanced": True,
+        },
+    )
+    """_wrap_跨聊天流记忆说明：追加到 system prompt，提示模型记忆可跨群/私聊"""
+
     chat_prompts: list["ExtraPromptItem"] = Field(
         default_factory=lambda: [],
         json_schema_extra={

@@ -263,6 +263,11 @@ class BaseMaisakaReplyGenerator:
         if chat_prompt := self._get_chat_prompt_for_chat(session_id, is_group_chat).strip():
             prompt_lines.append(f"当前聊天额外注意事项：\n{chat_prompt}")
 
+        if cross_session_memory_prompt := str(
+            getattr(global_config.chat, "cross_session_memory_prompt", "") or ""
+        ).strip():
+            prompt_lines.append(f"跨聊天流记忆说明：\n{cross_session_memory_prompt}")
+
         if not prompt_lines:
             return ""
 
