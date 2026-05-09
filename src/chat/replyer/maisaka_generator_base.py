@@ -449,11 +449,32 @@ class BaseMaisakaReplyGenerator:
                 replyer_output_instruction=self._build_replyer_output_instruction(),
                 identity=self._build_personality_prompt(),
                 reply_style=self._select_reply_style(),
+                long_term_memory_block=self._build_long_term_memory_block(reference_info),
             )
         except Exception:
             system_prompt = "你是一个友好的 AI 助手，请根据聊天记录自然回复。"
 
         return system_prompt
+
+    @staticmethod
+    def _build_long_term_memory_block(reference_info: str) -> str:
+        """将 Planner 传入的记忆参考注入到 system prompt。
+
+        reference_info 原本只出现在最终 user message 的【参考信息】段落中，
+        这会让模型把它当作"用户给的额外提示"而非"我自己的记忆"。把它同时
+        放到 system prompt，让模型以第一人称认知这些事实（"我知道的事"），
+        在被问到跨聊天流事实时更愿意直接引用而非回退到"看不到"。
+
+        reference_info 为空时返回空字符串，避免输出冗余空块。
+        """
+
+        text = (reference_info or "").strip()
+        if not text:
+            return ""
+        return (
+            "【你已知的长期记忆要点（可直接以第一人称引用，不必说\"用户告诉我\"）】\n"
+            f"{text}\n"
+        )
 
     def _build_reply_instruction(self) -> str:
         if global_config.experimental.enable_replyer_format_output:
