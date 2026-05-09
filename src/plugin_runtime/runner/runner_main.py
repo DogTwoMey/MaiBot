@@ -502,6 +502,12 @@ class PluginRunner:
 
             无论调用方传入何种 plugin_id，实际发往 Host 的 plugin_id
             始终绑定为当前插件实例，避免伪造其他插件身份申请能力。
+
+            ``timeout_ms`` 默认放宽到 120s。原默认 30s 会让插件里使用 LLM 类
+            capability（如 ``cap.call`` → ``llm.generate``）在大上下文 + 慢模型
+            的常规情形下 100% 命中超时，使插件层 ``asyncio.wait_for`` 完全失效。
+            非 LLM 类 cap.call（send.text、db.query 等）走得很快，放宽上限不会
+            拖慢任何 happy-path。
             """
             if plugin_id and plugin_id != bound_plugin_id:
                 logger.warning(f"插件 {bound_plugin_id} 尝试以 {plugin_id} 身份发起 RPC，已强制绑定回自身身份")
@@ -514,6 +520,7 @@ class PluginRunner:
                 method=normalized_method,
                 plugin_id=bound_plugin_id,
                 payload=payload or {},
+                timeout_ms=120_000,
             )
             if resp.error:
                 raise RuntimeError(resp.error.get("message", "能力调用失败"))

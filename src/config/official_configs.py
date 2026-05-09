@@ -726,65 +726,113 @@ class MemoryConfig(ConfigBase):
 class AMemorixPluginConfig(ConfigBase):
     """A_Memorix 子系统状态"""
 
-    enabled: bool = Field(default=False)
+    enabled: bool = Field(
+        default=False,
+        json_schema_extra={
+            "x-widget": "switch",
+            "x-icon": "brain",
+        },
+    )
     """是否启用 A_Memorix"""
 
 
 class AMemorixStorageConfig(ConfigBase):
     """A_Memorix 存储位置"""
 
-    data_dir: str = Field(default="data/a-memorix")
+    data_dir: str = Field(
+        default="data/a-memorix",
+        json_schema_extra={"x-widget": "input", "x-icon": "folder"},
+    )
     """数据目录"""
 
 
 class AMemorixEmbeddingFallbackConfig(ConfigBase):
     """A_Memorix Embedding 回退"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "life-buoy"},
+    )
     """是否启用回退机制"""
 
-    probe_interval_seconds: int = Field(default=180, ge=10)
+    probe_interval_seconds: int = Field(
+        default=180, ge=10,
+        json_schema_extra={"x-widget": "input", "x-icon": "timer"},
+    )
     """探测间隔秒数"""
 
-    allow_metadata_only_write: bool = Field(default=True)
+    allow_metadata_only_write: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "database"},
+    )
     """是否允许仅写入元数据"""
 
 
 class AMemorixParagraphVectorBackfillConfig(ConfigBase):
     """A_Memorix 段落向量回填"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "recycle"},
+    )
     """是否启用回填任务"""
 
-    interval_seconds: int = Field(default=60, ge=5)
+    interval_seconds: int = Field(
+        default=60, ge=5,
+        json_schema_extra={"x-widget": "input", "x-icon": "timer"},
+    )
     """回填轮询间隔"""
 
-    batch_size: int = Field(default=64, ge=1)
+    batch_size: int = Field(
+        default=64, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "layers"},
+    )
     """单批回填数量"""
 
-    max_retry: int = Field(default=5, ge=0)
+    max_retry: int = Field(
+        default=5, ge=0,
+        json_schema_extra={"x-widget": "input", "x-icon": "repeat"},
+    )
     """最大重试次数"""
 
 
 class AMemorixEmbeddingConfig(ConfigBase):
     """A_Memorix Embedding 配置"""
 
-    model_name: str = Field(default="auto")
+    model_name: str = Field(
+        default="auto",
+        json_schema_extra={"x-widget": "input", "x-icon": "cpu"},
+    )
     """Embedding 模型选择"""
 
-    dimension: int = Field(default=1024, ge=1)
+    dimension: int = Field(
+        default=1024, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "axis-3d"},
+    )
     """向量维度"""
 
-    batch_size: int = Field(default=32, ge=1)
+    batch_size: int = Field(
+        default=32, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "layers"},
+    )
     """单批请求大小"""
 
-    max_concurrent: int = Field(default=5, ge=1)
+    max_concurrent: int = Field(
+        default=5, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "zap"},
+    )
     """最大并发数"""
 
-    enable_cache: bool = Field(default=False)
+    enable_cache: bool = Field(
+        default=False,
+        json_schema_extra={"x-widget": "switch", "x-icon": "database"},
+    )
     """是否启用缓存"""
 
-    quantization_type: Literal["int8"] = Field(default="int8")
+    quantization_type: Literal["int8"] = Field(
+        default="int8",
+        json_schema_extra={"x-widget": "select", "x-icon": "package"},
+    )
     """量化方式，当前 vNext 仅支持 int8(SQ8)"""
 
     fallback: AMemorixEmbeddingFallbackConfig = Field(default_factory=AMemorixEmbeddingFallbackConfig)
@@ -799,53 +847,98 @@ class AMemorixEmbeddingConfig(ConfigBase):
 class AMemorixSparseRetrievalConfig(ConfigBase):
     """A_Memorix 稀疏检索配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "search"},
+    )
     """是否启用稀疏检索"""
 
-    backend: Literal["fts5"] = Field(default="fts5")
+    backend: Literal["fts5"] = Field(
+        default="fts5",
+        json_schema_extra={"x-widget": "select", "x-icon": "database"},
+    )
     """稀疏检索后端"""
 
-    mode: Literal["auto", "fallback_only", "hybrid"] = Field(default="auto")
+    mode: Literal["auto", "fallback_only", "hybrid"] = Field(
+        default="auto",
+        json_schema_extra={"x-widget": "select", "x-icon": "shuffle"},
+    )
     """稀疏检索模式"""
 
-    tokenizer_mode: Literal["jieba", "mixed", "char_2gram"] = Field(default="jieba")
+    tokenizer_mode: Literal["jieba", "mixed", "char_2gram"] = Field(
+        default="jieba",
+        json_schema_extra={"x-widget": "select", "x-icon": "type"},
+    )
     """分词模式"""
 
-    candidate_k: int = Field(default=80, ge=1)
+    candidate_k: int = Field(
+        default=80, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """段落候选数"""
 
-    relation_candidate_k: int = Field(default=60, ge=1)
+    relation_candidate_k: int = Field(
+        default=60, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """关系候选数"""
 
 
 class AMemorixRetrievalConfig(ConfigBase):
     """A_Memorix 检索配置"""
 
-    top_k_paragraphs: int = Field(default=20, ge=1)
+    top_k_paragraphs: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """段落候选数"""
 
-    top_k_relations: int = Field(default=10, ge=1)
+    top_k_relations: int = Field(
+        default=10, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "share-2"},
+    )
     """关系候选数"""
 
-    top_k_final: int = Field(default=10, ge=1)
+    top_k_final: int = Field(
+        default=10, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "trophy"},
+    )
     """最终返回条数"""
 
-    alpha: float = Field(default=0.5, ge=0.0, le=1.0)
+    alpha: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        json_schema_extra={"x-widget": "slider", "x-icon": "blend", "step": 0.01},
+    )
     """关系融合权重"""
 
-    enable_ppr: bool = Field(default=True)
+    enable_ppr: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "git-branch"},
+    )
     """是否启用 PPR"""
 
-    ppr_alpha: float = Field(default=0.85, ge=0.0, le=1.0)
+    ppr_alpha: float = Field(
+        default=0.85, ge=0.0, le=1.0,
+        json_schema_extra={"x-widget": "slider", "x-icon": "git-branch", "step": 0.01},
+    )
     """PPR alpha"""
 
-    ppr_timeout_seconds: float = Field(default=1.5, ge=0.1)
+    ppr_timeout_seconds: float = Field(
+        default=1.5, ge=0.1,
+        json_schema_extra={"x-widget": "input", "x-icon": "timer"},
+    )
     """PPR 超时秒数"""
 
-    ppr_concurrency_limit: int = Field(default=4, ge=1)
+    ppr_concurrency_limit: int = Field(
+        default=4, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "zap"},
+    )
     """PPR 并发限制"""
 
-    enable_parallel: bool = Field(default=True)
+    enable_parallel: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "zap"},
+    )
     """是否启用并行检索"""
 
     sparse: AMemorixSparseRetrievalConfig = Field(default_factory=AMemorixSparseRetrievalConfig)
@@ -855,160 +948,284 @@ class AMemorixRetrievalConfig(ConfigBase):
 class AMemorixThresholdConfig(ConfigBase):
     """A_Memorix 阈值过滤配置"""
 
-    min_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    min_threshold: float = Field(
+        default=0.3, ge=0.0, le=1.0,
+        json_schema_extra={"x-widget": "slider", "x-icon": "ruler", "step": 0.01},
+    )
     """最小阈值"""
 
-    max_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
+    max_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0,
+        json_schema_extra={"x-widget": "slider", "x-icon": "ruler", "step": 0.01},
+    )
     """最大阈值"""
 
-    percentile: int = Field(default=75, ge=0, le=100)
+    percentile: int = Field(
+        default=75, ge=0, le=100,
+        json_schema_extra={"x-widget": "slider", "x-icon": "percent", "step": 1},
+    )
     """动态阈值百分位"""
 
-    min_results: int = Field(default=3, ge=1)
+    min_results: int = Field(
+        default=3, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """最小保留条数"""
 
-    enable_auto_adjust: bool = Field(default=True)
+    enable_auto_adjust: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "settings"},
+    )
     """是否启用自动阈值调整"""
 
 
 class AMemorixFilterConfig(ConfigBase):
     """A_Memorix 聊天过滤配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "filter"},
+    )
     """是否启用聊天过滤"""
 
-    mode: Literal["blacklist", "whitelist"] = Field(default="blacklist")
+    mode: Literal["blacklist", "whitelist"] = Field(
+        default="blacklist",
+        json_schema_extra={"x-widget": "select", "x-icon": "shield"},
+    )
     """过滤模式"""
 
-    chats: list[str] = Field(default_factory=lambda: [])
+    chats: list[str] = Field(
+        default_factory=lambda: [],
+        json_schema_extra={"x-widget": "input", "x-icon": "messages-square"},
+    )
     """聊天流列表"""
 
 
 class AMemorixEpisodeConfig(ConfigBase):
     """A_Memorix Episode 配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "book-open"},
+    )
     """是否启用 Episode"""
 
-    generation_enabled: bool = Field(default=True)
+    generation_enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "sparkles"},
+    )
     """是否启用自动生成"""
 
-    pending_batch_size: int = Field(default=20, ge=1)
+    pending_batch_size: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "layers"},
+    )
     """待处理批大小"""
 
-    pending_max_retry: int = Field(default=3, ge=0)
+    pending_max_retry: int = Field(
+        default=3, ge=0,
+        json_schema_extra={"x-widget": "input", "x-icon": "repeat"},
+    )
     """待处理最大重试次数"""
 
-    max_paragraphs_per_call: int = Field(default=20, ge=1)
+    max_paragraphs_per_call: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "hash"},
+    )
     """单次最大段落数"""
 
-    max_chars_per_call: int = Field(default=6000, ge=100)
+    max_chars_per_call: int = Field(
+        default=6000, ge=100,
+        json_schema_extra={"x-widget": "input", "x-icon": "type"},
+    )
     """单次最大字符数"""
 
-    source_time_window_hours: float = Field(default=24.0, ge=0.0)
+    source_time_window_hours: float = Field(
+        default=24.0, ge=0.0,
+        json_schema_extra={"x-widget": "input", "x-icon": "clock"},
+    )
     """时间窗口小时数"""
 
-    segmentation_model: str = Field(default="auto")
+    segmentation_model: str = Field(
+        default="auto",
+        json_schema_extra={"x-widget": "input", "x-icon": "scissors"},
+    )
     """分段模型选择"""
 
 
 class AMemorixPersonProfileConfig(ConfigBase):
     """A_Memorix 人物画像配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "user-round"},
+    )
     """是否启用画像"""
 
-    refresh_interval_minutes: int = Field(default=30, ge=1)
+    refresh_interval_minutes: int = Field(
+        default=30, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "refresh-cw"},
+    )
     """刷新间隔分钟数"""
 
-    active_window_hours: float = Field(default=72.0, ge=1.0)
+    active_window_hours: float = Field(
+        default=72.0, ge=1.0,
+        json_schema_extra={"x-widget": "input", "x-icon": "clock"},
+    )
     """活跃窗口小时数"""
 
-    max_refresh_per_cycle: int = Field(default=50, ge=1)
+    max_refresh_per_cycle: int = Field(
+        default=50, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "layers"},
+    )
     """单轮最大刷新数"""
 
-    top_k_evidence: int = Field(default=12, ge=1)
+    top_k_evidence: int = Field(
+        default=12, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """证据条数"""
 
 
 class AMemorixMemoryEvolutionConfig(ConfigBase):
     """A_Memorix 记忆演化配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "git-branch"},
+    )
     """是否启用记忆演化"""
 
-    half_life_hours: float = Field(default=24.0, ge=0.1)
+    half_life_hours: float = Field(
+        default=24.0, ge=0.1,
+        json_schema_extra={"x-widget": "input", "x-icon": "hourglass"},
+    )
     """半衰期小时数"""
 
-    prune_threshold: float = Field(default=0.1, ge=0.0, le=1.0)
+    prune_threshold: float = Field(
+        default=0.1, ge=0.0, le=1.0,
+        json_schema_extra={"x-widget": "slider", "x-icon": "trash-2", "step": 0.01},
+    )
     """裁剪阈值"""
 
-    freeze_duration_hours: float = Field(default=24.0, ge=0.0)
+    freeze_duration_hours: float = Field(
+        default=24.0, ge=0.0,
+        json_schema_extra={"x-widget": "input", "x-icon": "snowflake"},
+    )
     """冻结时长小时数"""
 
 
 class AMemorixAdvancedConfig(ConfigBase):
     """A_Memorix 高级运行时配置"""
 
-    enable_auto_save: bool = Field(default=True)
+    enable_auto_save: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "save"},
+    )
     """是否启用自动保存"""
 
-    auto_save_interval_minutes: int = Field(default=5, ge=1)
+    auto_save_interval_minutes: int = Field(
+        default=5, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "timer"},
+    )
     """自动保存间隔"""
 
-    debug: bool = Field(default=False)
+    debug: bool = Field(
+        default=False,
+        json_schema_extra={"x-widget": "switch", "x-icon": "bug"},
+    )
     """是否启用调试"""
 
 
 class AMemorixWebImportConfig(ConfigBase):
     """A_Memorix 导入中心配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "upload"},
+    )
     """是否启用导入中心"""
 
-    max_queue_size: int = Field(default=20, ge=1)
+    max_queue_size: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list-ordered"},
+    )
     """最大队列长度"""
 
-    max_files_per_task: int = Field(default=200, ge=1)
+    max_files_per_task: int = Field(
+        default=200, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "files"},
+    )
     """单任务最大文件数"""
 
-    max_file_size_mb: int = Field(default=20, ge=1)
+    max_file_size_mb: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "file-up"},
+    )
     """单文件大小上限 MB"""
 
-    max_paste_chars: int = Field(default=200000, ge=100)
+    max_paste_chars: int = Field(
+        default=200000, ge=100,
+        json_schema_extra={"x-widget": "input", "x-icon": "clipboard-paste"},
+    )
     """粘贴字符数上限"""
 
-    default_file_concurrency: int = Field(default=2, ge=1)
+    default_file_concurrency: int = Field(
+        default=2, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "zap"},
+    )
     """默认文件并发"""
 
-    default_chunk_concurrency: int = Field(default=4, ge=1)
+    default_chunk_concurrency: int = Field(
+        default=4, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "zap"},
+    )
     """默认分块并发"""
 
 
 class AMemorixWebTuningConfig(ConfigBase):
     """A_Memorix 调优中心配置"""
 
-    enabled: bool = Field(default=True)
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={"x-widget": "switch", "x-icon": "sliders"},
+    )
     """是否启用调优中心"""
 
-    max_queue_size: int = Field(default=8, ge=1)
+    max_queue_size: int = Field(
+        default=8, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list-ordered"},
+    )
     """最大队列长度"""
 
-    poll_interval_ms: int = Field(default=1200, ge=200)
+    poll_interval_ms: int = Field(
+        default=1200, ge=200,
+        json_schema_extra={"x-widget": "input", "x-icon": "timer"},
+    )
     """轮询间隔毫秒数"""
 
-    default_intensity: Literal["quick", "standard", "deep"] = Field(default="standard")
+    default_intensity: Literal["quick", "standard", "deep"] = Field(
+        default="standard",
+        json_schema_extra={"x-widget": "select", "x-icon": "gauge"},
+    )
     """默认调优强度"""
 
     default_objective: Literal["precision_priority", "balanced", "recall_priority"] = Field(
-        default="precision_priority"
+        default="precision_priority",
+        json_schema_extra={"x-widget": "select", "x-icon": "target"},
     )
     """默认调优目标"""
 
-    default_top_k_eval: int = Field(default=20, ge=1)
+    default_top_k_eval: int = Field(
+        default=20, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "list"},
+    )
     """默认评估 Top-K"""
 
-    default_sample_size: int = Field(default=24, ge=1)
+    default_sample_size: int = Field(
+        default=24, ge=1,
+        json_schema_extra={"x-widget": "input", "x-icon": "blocks"},
+    )
     """默认样本数"""
 
 
