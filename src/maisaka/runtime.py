@@ -42,11 +42,17 @@ from .context_messages import (
     ReferenceMessageType,
     ToolResultMessage,
 )
+from .buffer_reviewer import BufferedMessageReviewer
 from .display.display_utils import build_tool_call_summary_lines, format_token_count
 from .display.prompt_cli_renderer import PromptCLIVisualizer
 from .display.stage_status_board import remove_stage_status, update_stage_status
 from .history_utils import drop_leading_orphan_tool_results
 from .monitor_events import emit_session_start
+from .planner_interrupt_policy import (
+    InterruptDecisionContext,
+    PlannerInterruptPolicy,
+    get_policy,
+)
 from .reasoning_engine import MaisakaReasoningEngine
 from .reply_effect import ReplyEffectTracker
 from .reply_effect.image_utils import extract_visual_attachments_from_sequence
@@ -126,6 +132,12 @@ class MaisakaHeartFlowChatting:
             0,
             int(global_config.chat.planner_interrupt_max_consecutive_count),
         )
+        # 本地 fork 改动：打断策略与缓冲浏览子代理，详见
+        # src/maisaka/planner_interrupt_policy.py 与 src/maisaka/buffer_reviewer/__init__.py
+        self._interrupt_policy: PlannerInterruptPolicy = get_policy(
+            getattr(global_config.chat, "planner_interrupt_strategy", None)
+        )
+        self._buffer_reviewer = BufferedMessageReviewer(self)
 
         expr_use, expr_learn, jargon_learn = ExpressionConfigUtils.get_expression_config_for_chat(session_id)
         self._enable_expression_use = expr_use
@@ -290,30 +302,24 @@ class MaisakaHeartFlowChatting:
         if self._agent_state == self._STATE_RUNNING:
             self._message_debounce_required = True
         if self._agent_state == self._STATE_RUNNING and self._planner_interrupt_flag is not None:
-            if self._planner_interrupt_requested:
-                logger.info(
-                    f"{self.log_prefix} 收到新消息，但当前请求已发起过一次规划器打断，"
-                    f"本次不重复打断; 消息编号={message.message_id} "
-                    f"连续打断次数={self._planner_interrupt_consecutive_count}/"
-                    f"{self._planner_interrupt_max_consecutive_count}"
+            # 打断决策由独立策略模块承担，见 planner_interrupt_policy.py
+            decision = self._interrupt_policy.decide(
+                InterruptDecisionContext(
+                    message_id=message.message_id,
+                    is_at_bot=bool(getattr(message, "is_at", False)),
+                    is_mentioned=bool(getattr(message, "is_mentioned", False)),
+                    already_requested=self._planner_interrupt_requested,
+                    consecutive_count=self._planner_interrupt_consecutive_count,
+                    max_consecutive_count=self._planner_interrupt_max_consecutive_count,
                 )
-            elif self._planner_interrupt_consecutive_count >= self._planner_interrupt_max_consecutive_count:
-                logger.info(
-                    f"{self.log_prefix} 收到新消息，但已达到规划器连续打断上限，"
-                    f"将等待当前请求自然完成; 消息编号={message.message_id} "
-                    f"连续打断次数={self._planner_interrupt_consecutive_count}/"
-                    f"{self._planner_interrupt_max_consecutive_count}"
-                )
-            else:
+            )
+            logger.info(
+                f"{self.log_prefix} [interrupt_policy={self._interrupt_policy.name}] "
+                f"{decision.log_reason}"
+            )
+            if decision.should_interrupt:
                 self._planner_interrupt_requested = True
                 self._planner_interrupt_consecutive_count += 1
-                logger.info(
-                    f"{self.log_prefix} 收到新消息，发起规划器打断; "
-                    f"消息编号={message.message_id} 缓存条数={len(self.message_cache)} "
-                    f"时间戳={time.time():.3f} "
-                    f"连续打断次数={self._planner_interrupt_consecutive_count}/"
-                    f"{self._planner_interrupt_max_consecutive_count}"
-                )
                 self._planner_interrupt_flag.set()
         if self._running:
             self._schedule_message_turn()

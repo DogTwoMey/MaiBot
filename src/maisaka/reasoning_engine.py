@@ -20,6 +20,7 @@ from src.llm_models.payload_content.tool_option import ToolCall
 from src.services import database_service as database_api
 from src.services.memory_service import memory_service
 
+from .buffer_reviewer import merge_reminders
 from .builtin_tool import build_builtin_tool_handlers as build_split_builtin_tool_handlers
 from .builtin_tool import get_builtin_tool_visibility, is_builtin_tool_in_action_stage
 from .builtin_tool import get_timing_tools
@@ -541,6 +542,26 @@ class MaisakaReasoningEngine:
                             current_stage_started_at = planner_started_at
                             self._runtime._update_stage_status("Planner", "组织上下文并请求模型", round_text=round_text)
                             action_tool_definitions, deferred_tools_reminder = await self._build_action_tool_definitions()
+
+                            # 本地 fork 改动：吸收 Planner 期间积累的缓冲消息，并在必要时让浏览子代理产出要点摘要。
+                            # 缓冲机制与打断策略协同工作，详见 src/maisaka/buffer_reviewer/__init__.py。
+                            pending_messages_for_round: list[SessionMessage] = []
+                            if self._runtime._has_pending_messages():
+                                pending_messages_for_round = self._runtime._collect_pending_messages()
+                                if pending_messages_for_round:
+                                    asyncio.create_task(self._runtime._trigger_batch_learning(pending_messages_for_round))
+                                    await self._ingest_messages(pending_messages_for_round)
+                                    anchor_message = pending_messages_for_round[-1]
+                                    logger.info(
+                                        f"{self._runtime.log_prefix} [buffer] 本轮入口吸收缓冲区新消息 "
+                                        f"{len(pending_messages_for_round)} 条; 回合={round_index + 1}"
+                                    )
+                            buffer_review_note = await self._runtime._buffer_reviewer.review_if_needed(
+                                pending_count=len(pending_messages_for_round),
+                                round_index=round_index,
+                            )
+                            injected_user_messages = merge_reminders(deferred_tools_reminder, buffer_review_note)
+
                             logger.info(
                                 f"{self._runtime.log_prefix} 规划器开始执行: "
                                 f"回合={round_index + 1} "
@@ -548,7 +569,7 @@ class MaisakaReasoningEngine:
                                 f"开始时间={planner_started_at:.3f}"
                             )
                             response = await self._run_interruptible_planner(
-                                injected_user_messages=[deferred_tools_reminder] if deferred_tools_reminder else None,
+                                injected_user_messages=injected_user_messages,
                                 tool_definitions=action_tool_definitions,
                             )
                             planner_duration_ms = (time.time() - planner_started_at) * 1000

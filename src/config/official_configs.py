@@ -303,6 +303,27 @@ class ChatConfig(ConfigBase):
     )
     """Planner 连续被新消息打断的最大次数，0 表示不启用打断"""
 
+    planner_interrupt_strategy: Literal["aggressive", "buffered", "strict_buffered"] = Field(
+        default="buffered",
+        json_schema_extra={
+            "x-widget": "select",
+            "x-icon": "filter",
+            "advanced": True,
+        },
+    )
+    """Planner 打断策略：aggressive=任意消息都打断；buffered=仅@/提及打断（默认）；strict_buffered=完全不打断"""
+
+    buffer_review_threshold: int = Field(
+        default=3,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+            "x-icon": "eye",
+            "advanced": True,
+        },
+    )
+    """Planner 单轮处理期间积压消息达到该阈值时启用浏览子代理整理要点；0 表示禁用浏览子代理"""
+
     group_chat_prompt: str = Field(
         default=(
             "你正在qq群里聊天，下面是群里正在聊的内容，其中包含聊天记录和聊天中的图片和表情包。\n"
