@@ -1065,6 +1065,7 @@ class MaisakaChatLoopService:
                 interrupt_flag=self._interrupt_flag,
             ),
         )
+        llm_duration_ms = round((time.perf_counter() - llm_started_at) * 1000, 2)
 
         final_response = generation_result.response or ""
         final_tool_calls = list(generation_result.tool_calls or [])
