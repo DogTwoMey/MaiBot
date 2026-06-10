@@ -9,16 +9,13 @@ import os
 import sys
 
 from src.common.logger import get_logger
-from src.config.config import config_manager, global_config
-from src.llm_models.model_client.base_client import ClientProviderRegistration, client_registry
-from src.llm_models.model_client.plugin_client import PluginLLMClient
+from src.config.config import global_config
 from src.platform_io import DriverKind, InboundMessageEnvelope, RouteBinding, RouteKey, get_platform_io_manager
 from src.platform_io.drivers import PluginPlatformDriver
 from src.platform_io.route_key_factory import RouteKeyFactory
 from src.plugin_runtime import (
     ENV_BLOCKED_PLUGIN_REASONS,
     ENV_EXTERNAL_PLUGIN_IDS,
-    ENV_GLOBAL_CONFIG_SNAPSHOT,
     ENV_HOST_VERSION,
     ENV_IPC_ADDRESS,
     ENV_PLUGIN_DIRS,
@@ -828,21 +825,25 @@ class PluginRunnerSupervisor:
 
         component_declarations = [component.model_dump() for component in payload.components]
         runtime_components, api_components = self._split_component_declarations(component_declarations)
-        try:
-            client_registry.validate_plugin_provider_replacement(
-                payload.plugin_id,
-                [provider.client_type for provider in payload.llm_providers],
-            )
-        except Exception as exc:
-            logger.error(f"插件 {payload.plugin_id} LLM Provider 注册校验失败: {exc}")
-            return envelope.make_error_response(
-                ErrorCode.E_BAD_PAYLOAD.value,
-                str(exc),
-                details={
-                    "plugin_id": payload.plugin_id,
-                    "llm_provider_count": len(payload.llm_providers),
-                },
-            )
+        should_sync_llm_providers = bool(payload.llm_providers) or payload.plugin_id in self._registered_plugins
+        if should_sync_llm_providers:
+            from src.llm_models.model_client.base_client import client_registry
+
+            try:
+                client_registry.validate_plugin_provider_replacement(
+                    payload.plugin_id,
+                    [provider.client_type for provider in payload.llm_providers],
+                )
+            except Exception as exc:
+                logger.error(f"插件 {payload.plugin_id} LLM Provider 注册校验失败: {exc}")
+                return envelope.make_error_response(
+                    ErrorCode.E_BAD_PAYLOAD.value,
+                    str(exc),
+                    details={
+                        "plugin_id": payload.plugin_id,
+                        "llm_provider_count": len(payload.llm_providers),
+                    },
+                )
 
         try:
             registered_count = self._component_registry.register_plugin_components(
@@ -863,24 +864,28 @@ class PluginRunnerSupervisor:
         self._api_registry.remove_apis_by_plugin(payload.plugin_id)
         registered_api_count = self._api_registry.register_plugin_apis(payload.plugin_id, api_components)
         await self._unregister_all_message_gateway_drivers_for_plugin(payload.plugin_id)
-        client_registry.replace_plugin_providers(
-            payload.plugin_id,
-            [
-                ClientProviderRegistration(
-                    client_type=provider.client_type,
-                    factory=lambda api_provider, provider_client_type=provider.client_type: PluginLLMClient(
-                        api_provider=api_provider,
-                        supervisor=self,
-                        plugin_id=payload.plugin_id,
-                        client_type=provider_client_type,
-                    ),
-                    owner_plugin_id=payload.plugin_id,
-                    version=provider.version,
-                    description=provider.description or provider.name,
-                )
-                for provider in payload.llm_providers
-            ],
-        )
+        if should_sync_llm_providers:
+            from src.llm_models.model_client.base_client import ClientProviderRegistration, client_registry
+            from src.llm_models.model_client.plugin_client import PluginLLMClient
+
+            client_registry.replace_plugin_providers(
+                payload.plugin_id,
+                [
+                    ClientProviderRegistration(
+                        client_type=provider.client_type,
+                        factory=lambda api_provider, provider_client_type=provider.client_type: PluginLLMClient(
+                            api_provider=api_provider,
+                            supervisor=self,
+                            plugin_id=payload.plugin_id,
+                            client_type=provider_client_type,
+                        ),
+                        owner_plugin_id=payload.plugin_id,
+                        version=provider.version,
+                        description=provider.description or provider.name,
+                    )
+                    for provider in payload.llm_providers
+                ],
+            )
         self._registered_plugins[payload.plugin_id] = payload
         self._message_gateway_states[payload.plugin_id] = {}
 
@@ -913,7 +918,12 @@ class PluginRunnerSupervisor:
 
         removed_components = self._component_registry.remove_components_by_plugin(payload.plugin_id)
         removed_apis = self._api_registry.remove_apis_by_plugin(payload.plugin_id)
-        removed_llm_providers = client_registry.unregister_plugin_providers(payload.plugin_id)
+        registration = self._registered_plugins.get(payload.plugin_id)
+        removed_llm_providers = 0
+        if registration is not None and registration.llm_providers:
+            from src.llm_models.model_client.base_client import client_registry
+
+            removed_llm_providers = client_registry.unregister_plugin_providers(payload.plugin_id)
         self._authorization.revoke_permission_token(payload.plugin_id)
         removed_registration = self._registered_plugins.pop(payload.plugin_id, None) is not None
         await self._unregister_all_message_gateway_drivers_for_plugin(payload.plugin_id)
@@ -1409,12 +1419,9 @@ class PluginRunnerSupervisor:
         Returns:
             Dict[str, str]: 传递给 Runner 进程的环境变量映射。
         """
-        global_config_snapshot = config_manager.get_global_config().model_dump(mode="json")
-        global_config_snapshot["model"] = config_manager.get_model_config().model_dump(mode="json")
         return {
             ENV_BLOCKED_PLUGIN_REASONS: json.dumps(self._blocked_plugin_reasons, ensure_ascii=False),
             ENV_EXTERNAL_PLUGIN_IDS: json.dumps(self._external_available_plugins, ensure_ascii=False),
-            ENV_GLOBAL_CONFIG_SNAPSHOT: json.dumps(global_config_snapshot, ensure_ascii=False),
             ENV_HOST_VERSION: PROTOCOL_VERSION,
             ENV_IPC_ADDRESS: self._transport.get_address(),
             ENV_PLUGIN_DIRS: os.pathsep.join(str(path) for path in self._plugin_dirs),
@@ -1591,8 +1598,12 @@ class PluginRunnerSupervisor:
 
     def _clear_runner_state(self) -> None:
         """清理当前 Runner 对应的 Host 侧注册状态。"""
-        for plugin_id in list(self._registered_plugins):
-            client_registry.unregister_plugin_providers(plugin_id)
+        if any(registration.llm_providers for registration in self._registered_plugins.values()):
+            from src.llm_models.model_client.base_client import client_registry
+
+            for plugin_id, registration in list(self._registered_plugins.items()):
+                if registration.llm_providers:
+                    client_registry.unregister_plugin_providers(plugin_id)
         self._authorization.clear()
         self._api_registry.clear()
         self._component_registry.clear()

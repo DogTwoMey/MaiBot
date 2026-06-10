@@ -1,14 +1,18 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import {
   BookOpen,
+  Check,
   ChevronLeft,
+  FileText,
   Globe,
   LogOut,
   Menu,
   MessageSquare,
   Moon,
+  MoreHorizontal,
   Search,
   Server,
+  Settings,
   SlidersHorizontal,
   Sun,
 } from 'lucide-react'
@@ -24,9 +28,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ShortcutKbd } from '@/components/ui/kbd'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toggleThemeWithTransition } from '@/components/use-theme'
 import { useBackground } from '@/hooks/use-background'
@@ -70,6 +77,7 @@ export function Header({
   const currentLang = i18nInstance.language || 'zh'
   const { config: headerBg, inheritedFrom } = useBackground('header')
   const inheritsPageBackground = inheritedFrom === 'page'
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const [backendManagerOpen, setBackendManagerOpen] = useState(false)
   const [activeBackendName, setActiveBackendName] = useState<string>('')
 
@@ -78,7 +86,7 @@ export function Header({
     window.electronAPI!.getActiveBackend().then((b) => {
       setActiveBackendName(b?.name ?? t('header.notConnected'))
     })
-  }, [])
+  }, [t])
 
   const handleLogout = async () => {
     await logout()
@@ -86,13 +94,14 @@ export function Header({
 
   return (
     <header
+      data-dashboard-header="true"
       className={cn(
-        'sticky top-0 isolate z-10 flex h-16 items-center justify-between border-b px-4 backdrop-blur-md',
+        'sticky top-0 isolate z-10 flex h-16 min-w-0 items-center justify-between gap-2 border-b px-3 backdrop-blur-md sm:px-4',
         inheritsPageBackground ? 'bg-transparent' : 'bg-card/80'
       )}
     >
       {!inheritsPageBackground && <BackgroundLayer config={headerBg} layerId="header" />}
-      <div className="relative z-10 flex items-center gap-4">
+      <div className="relative z-10 flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
         {/* 移动端菜单按钮 */}
         <button
           onClick={onMobileMenuToggle}
@@ -100,7 +109,7 @@ export function Header({
           aria-expanded={mobileMenuOpen}
           className={cn(
             'hover:bg-accent rounded-lg p-2 lg:hidden',
-            workspaceMode === 'chat' && 'hidden'
+            workspaceMode !== 'settings' && 'hidden'
           )}
         >
           <Menu className="h-5 w-5" />
@@ -113,7 +122,7 @@ export function Header({
           aria-expanded={sidebarOpen}
           className={cn(
             'hover:bg-accent hidden rounded-lg p-2 lg:block',
-            workspaceMode === 'chat' && 'lg:hidden'
+            workspaceMode !== 'settings' && 'lg:hidden'
           )}
         >
           <ChevronLeft
@@ -122,7 +131,7 @@ export function Header({
         </button>
       </div>
 
-      <div className="relative z-10 flex items-center gap-2">
+      <div className="relative z-10 flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
         {/* 工作区切换：复用 Tabs 组件 + Motion 动画指示器 */}
         <LayoutGroup id="workspace-switcher">
           <Tabs value={workspaceMode} aria-label={t('workspace.switcherLabel')}>
@@ -130,7 +139,7 @@ export function Header({
               <TabsTrigger
                 asChild
                 value="settings"
-                className="relative h-7 gap-1.5 bg-transparent px-2.5 text-xs font-medium data-[state=active]:bg-transparent data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+                className="data-[state=active]:text-primary-foreground relative h-7 gap-1.5 bg-transparent px-2.5 text-xs font-medium data-[state=active]:bg-transparent data-[state=active]:shadow-none"
               >
                 <Link to="/">
                   {workspaceMode === 'settings' && (
@@ -147,7 +156,7 @@ export function Header({
               <TabsTrigger
                 asChild
                 value="chat"
-                className="relative h-7 gap-1.5 bg-transparent px-2.5 text-xs font-medium data-[state=active]:bg-transparent data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+                className="data-[state=active]:text-primary-foreground relative h-7 gap-1.5 bg-transparent px-2.5 text-xs font-medium data-[state=active]:bg-transparent data-[state=active]:shadow-none"
               >
                 <Link to="/chat">
                   {workspaceMode === 'chat' && (
@@ -161,11 +170,40 @@ export function Header({
                   <span className="hidden sm:inline">{t('workspace.chat')}</span>
                 </Link>
               </TabsTrigger>
+              <TabsTrigger
+                asChild
+                value="logs"
+                className="data-[state=active]:text-primary-foreground relative h-7 gap-1.5 bg-transparent px-2.5 text-xs font-medium data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              >
+                <Link to="/logs">
+                  {workspaceMode === 'logs' && (
+                    <motion.span
+                      layoutId="workspace-tab-pill"
+                      className="bg-primary absolute inset-0 -z-10 rounded-md shadow-sm"
+                      transition={{ type: 'spring', stiffness: 480, damping: 38, mass: 0.6 }}
+                    />
+                  )}
+                  <FileText className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{t('workspace.logs')}</span>
+                </Link>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </LayoutGroup>
 
-        <div className="bg-border h-6 w-px" />
+        <div className="bg-border hidden h-6 w-px sm:block" />
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className={cn(pathname === '/settings' && 'bg-accent text-accent-foreground')}
+          title={t('sidebar.menu.settings')}
+          aria-label={t('sidebar.menu.settings')}
+        >
+          <Link to="/settings">
+            <Settings className="h-4 w-4" />
+          </Link>
+        </Button>
         {/* 后端切换按钮（仅 Electron） */}
         {isElectron() && (
           <>
@@ -186,22 +224,16 @@ export function Header({
           </>
         )}
         {/* 搜索框 */}
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => onSearchOpenChange(true)}
           aria-label={t('header.searchPlaceholder')}
-          className="bg-background/50 hover:bg-accent/50 relative hidden h-9 w-64 items-center rounded-md border pr-16 pl-9 text-left transition-colors md:flex"
+          title={t('header.searchPlaceholder')}
+          className="hidden md:inline-flex"
         >
-          <Search
-            className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-            aria-hidden="true"
-          />
-          <span className="text-muted-foreground text-sm">{t('header.searchPlaceholder')}</span>
-          <ShortcutKbd
-            size="sm"
-            className="absolute top-1/2 right-2 -translate-y-1/2"
-            keys={['mod', 'k']}
-          />
-        </button>
+          <Search className="h-4 w-4" aria-hidden="true" />
+        </Button>
 
         {/* 搜索对话框 */}
         <SearchDialog open={searchOpen} onOpenChange={onSearchOpenChange} />
@@ -209,42 +241,45 @@ export function Header({
         {/* 麦麦文档链接 */}
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={() => window.open('https://docs.mai-mai.org', '_blank')}
-          className="gap-2"
+          className="hidden sm:inline-flex"
           title={t('header.viewDocs')}
+          aria-label={t('header.viewDocs')}
         >
           <BookOpen className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('header.docs')}</span>
         </Button>
 
         {/* 语言切换 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <Globe className="h-4 w-4" />
-              <span className="hidden text-xs sm:inline">
-                {LANGUAGE_NAMES[currentLang.split('-')[0] as 'zh' | 'en' | 'ja' | 'ko'] ??
-                  currentLang}
-              </span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {LANGUAGE_CODES.map((code) => (
-              <DropdownMenuItem
-                key={code}
-                onClick={() => i18nInstance.changeLanguage(code)}
-                className={cn(
-                  'cursor-pointer',
-                  currentLang.split('-')[0] === code && 'text-primary font-semibold'
-                )}
+        <div className="hidden sm:block">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                title={t('header.switchLanguage')}
+                aria-label={t('header.switchLanguage')}
               >
-                {currentLang.split('-')[0] === code && <span className="mr-2">✓</span>}
-                {LANGUAGE_NAMES[code]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Globe className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {LANGUAGE_CODES.map((code) => (
+                <DropdownMenuItem
+                  key={code}
+                  onClick={() => i18nInstance.changeLanguage(code)}
+                  className={cn(
+                    'cursor-pointer',
+                    currentLang.split('-')[0] === code && 'text-primary font-semibold'
+                  )}
+                >
+                  {currentLang.split('-')[0] === code && <Check className="mr-2 h-3 w-3" />}
+                  {LANGUAGE_NAMES[code]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         {/* 主题切换按钮 */}
         <button
@@ -253,25 +288,77 @@ export function Header({
             toggleThemeWithTransition(newTheme, onThemeChange, e)
           }}
           aria-label={actualTheme === 'dark' ? t('header.switchToLight') : t('header.switchToDark')}
-          className="hover:bg-accent rounded-lg p-2"
+          className="hover:bg-accent hidden rounded-lg p-2 sm:inline-flex"
         >
           {actualTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </button>
 
         {/* 分隔线 */}
-        <div className="bg-border h-6 w-px" />
+        <div className="bg-border hidden h-6 w-px sm:block" />
 
         {/* 登出按钮 */}
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={handleLogout}
-          className="gap-2"
           title={t('header.logout')}
+          aria-label={t('header.logout')}
+          className="hidden sm:inline-flex"
         >
           <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('header.logoutLabel')}</span>
         </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="sm:hidden"
+              title={t('header.moreActions')}
+              aria-label={t('header.moreActions')}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem
+              onClick={(event) => {
+                const newTheme = actualTheme === 'dark' ? 'light' : 'dark'
+                toggleThemeWithTransition(newTheme, onThemeChange, event)
+              }}
+              className="cursor-pointer gap-2"
+            >
+              {actualTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {actualTheme === 'dark' ? t('header.switchToLight') : t('header.switchToDark')}
+            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                <Globe className="h-4 w-4" />
+                {t('header.switchLanguage')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent alignOffset={-4}>
+                {LANGUAGE_CODES.map((code) => (
+                  <DropdownMenuItem
+                    key={code}
+                    onClick={() => i18nInstance.changeLanguage(code)}
+                    className={cn(
+                      'cursor-pointer',
+                      currentLang.split('-')[0] === code && 'text-primary font-semibold'
+                    )}
+                  >
+                    {currentLang.split('-')[0] === code && <Check className="mr-2 h-3 w-3" />}
+                    {LANGUAGE_NAMES[code]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer gap-2">
+              <LogOut className="h-4 w-4" />
+              {t('header.logoutLabel')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ThinkingIllustration } from '@/components/ui/thinking-illustration'
 import {
   ArrowLeft,
   Download,
@@ -32,6 +33,7 @@ import {
   uninstallPlugin,
   updatePlugin,
   checkPluginInstalled,
+  fetchPluginList,
   getInstalledPluginVersion,
   getInstalledPlugins,
   type GitStatus,
@@ -40,18 +42,8 @@ import {
 import { MarkdownRenderer } from '@/components/markdown-renderer'
 import { PluginStats } from '@/components/plugin-stats'
 import { recordPluginDownload } from '@/lib/plugin-stats'
-
-// 分类名称映射
-const CATEGORY_NAMES: Record<string, string> = {
-  'Group Management': '群组管理',
-  'Entertainment & Interaction': '娱乐互动',
-  'Utility Tools': '实用工具',
-  'Content Generation': '内容生成',
-  Multimedia: '多媒体',
-  'External Integration': '外部集成',
-  'Data Analysis & Insights': '数据分析与洞察',
-  Other: '其他',
-}
+import { PluginIcon } from './plugins/PluginIcon'
+import { getPluginTypeLabel } from './plugins/types'
 
 export function PluginDetailPage() {
   const navigate = useNavigate()
@@ -82,96 +74,20 @@ export function PluginDetailPage() {
         setLoading(true)
         setError(null)
 
-        // 从插件列表 API 获取数据
-        const response = await fetchWithAuth('/api/webui/plugins/fetch-raw', {
-          method: 'POST',
-          body: JSON.stringify({
-            owner: 'Mai-with-u',
-            repo: 'plugin-repo',
-            branch: 'main',
-            file_path: 'plugin_details.json',
-          }),
-        })
+        const result = await fetchPluginList()
 
-        if (!response.ok) {
-          throw new Error('获取插件列表失败')
-        }
-
-        const result = await response.json()
-
-        if (!result.success || !result.data) {
+        if (!result.success) {
           throw new Error(result.error || '获取插件列表失败')
         }
 
-        const pluginList = JSON.parse(result.data)
-        const foundPlugin = pluginList.find((p: any) => p.id === search.pluginId)
+        const foundPlugin = result.data.find((p) => p.id === search.pluginId || p.marketplace_id === search.pluginId)
 
         if (!foundPlugin) {
           throw new Error('未找到该插件')
         }
 
-        const rawManifest = foundPlugin.manifest || {}
-        const repositoryUrl = rawManifest.repository_url || rawManifest.urls?.repository
-        const homepageUrl = rawManifest.homepage_url || rawManifest.urls?.homepage
+        setPlugin(foundPlugin)
 
-        // 转换为 PluginInfo 格式
-        const pluginInfo: PluginInfo = {
-          id: foundPlugin.id,
-          manifest: {
-            ...rawManifest,
-            homepage_url: homepageUrl,
-            repository_url: repositoryUrl,
-            default_locale: rawManifest.default_locale || rawManifest.i18n?.default_locale || 'zh-CN',
-            locales_path: rawManifest.locales_path || rawManifest.i18n?.locales_path,
-          },
-          downloads: 0,
-          rating: 0,
-          review_count: 0,
-          installed: false,
-          published_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-
-        setPlugin(pluginInfo)
-
-        // 加载额外信息
-        const [gitStatusResult, versionResult, installedPlugins] = await Promise.all([
-          checkGitStatus(),
-          getMaimaiVersion(),
-          getInstalledPlugins(),
-        ])
-
-        if (!gitStatusResult.success) {
-          toast({
-            title: 'Git 状态检查失败',
-            description: gitStatusResult.error,
-            variant: 'destructive',
-          })
-        } else {
-          setGitStatus(gitStatusResult.data)
-        }
-        
-        if (!versionResult.success) {
-          toast({
-            title: '版本获取失败',
-            description: versionResult.error,
-            variant: 'destructive',
-          })
-        } else {
-          setMaimaiVersion(versionResult.data)
-        }
-        
-        if (!installedPlugins.success) {
-          toast({
-            title: '获取已安装插件失败',
-            description: installedPlugins.error,
-            variant: 'destructive',
-          })
-          return
-        }
-        
-        setIsInstalled(checkPluginInstalled(search.pluginId, installedPlugins.data))
-        setInstalledVersion(getInstalledPluginVersion(search.pluginId, installedPlugins.data))
       } catch (err) {
         setError(err instanceof Error ? err.message : '加载失败')
       } finally {
@@ -181,6 +97,64 @@ export function PluginDetailPage() {
 
     loadPluginInfo()
   }, [search.pluginId])
+
+  useEffect(() => {
+    if (!plugin) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadRuntimeInfo = async () => {
+      const [gitStatusResult, versionResult, installedPlugins] = await Promise.all([
+        checkGitStatus(),
+        getMaimaiVersion(),
+        getInstalledPlugins(),
+      ])
+
+      if (cancelled) {
+        return
+      }
+
+      if (!gitStatusResult.success) {
+        toast({
+          title: 'Git 状态检查失败',
+          description: gitStatusResult.error,
+          variant: 'destructive',
+        })
+      } else {
+        setGitStatus(gitStatusResult.data)
+      }
+
+      if (!versionResult.success) {
+        toast({
+          title: '版本获取失败',
+          description: versionResult.error,
+          variant: 'destructive',
+        })
+      } else {
+        setMaimaiVersion(versionResult.data)
+      }
+
+      if (!installedPlugins.success) {
+        toast({
+          title: '获取已安装插件失败',
+          description: installedPlugins.error,
+          variant: 'destructive',
+        })
+        return
+      }
+
+      setIsInstalled(checkPluginInstalled(plugin.id, installedPlugins.data))
+      setInstalledVersion(getInstalledPluginVersion(plugin.id, installedPlugins.data))
+    }
+
+    loadRuntimeInfo()
+
+    return () => {
+      cancelled = true
+    }
+  }, [plugin, toast])
 
   // 加载 README
   useEffect(() => {
@@ -196,7 +170,7 @@ export function PluginDetailPage() {
         // 如果插件已安装，优先尝试从本地读取 README
         if (isInstalled && search.pluginId) {
           try {
-            const localResponse = await fetchWithAuth(`/api/webui/plugins/local-readme/${search.pluginId}`)
+            const localResponse = await fetchWithAuth(`/api/webui/plugins/local-readme/${plugin.id}`)
             
             if (localResponse.ok) {
               const localResult = await localResponse.json()
@@ -207,8 +181,7 @@ export function PluginDetailPage() {
                 return // 成功获取本地 README，直接返回
               }
             }
-          } catch (err) {
-            console.log('本地 README 获取失败，尝试远程获取:', err)
+          } catch {
             // 继续执行远程获取逻辑
           }
         }
@@ -293,9 +266,11 @@ export function PluginDetailPage() {
       }
 
       // 记录下载统计
-      recordPluginDownload(plugin.id).catch((err) => {
-        console.warn('Failed to record download:', err)
-      })
+      if (plugin.manifest.id) {
+        recordPluginDownload(plugin.manifest.id).catch((err) => {
+          console.warn('Failed to record download:', err)
+        })
+      }
 
       toast({
         title: '安装成功',
@@ -436,8 +411,7 @@ export function PluginDetailPage() {
           </div>
         </div>
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="ml-3 text-muted-foreground">加载插件信息中...</span>
+          <ThinkingIllustration size="lg" />
         </div>
       </div>
     )
@@ -570,31 +544,45 @@ export function PluginDetailPage() {
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <CardTitle className="text-2xl">{plugin.manifest.name}</CardTitle>
-                    <Badge variant="secondary" className="text-sm">
-                      v{plugin.manifest.version}
-                    </Badge>
-                    {isInstalled && (
-                      <Badge variant="default" className="text-sm">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        已安装 {installedVersion && `(v${installedVersion})`}
-                      </Badge>
-                    )}
-                    {needsUpdate() && (
-                      <Badge variant="outline" className="text-sm border-orange-500 text-orange-500">
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        可更新
-                      </Badge>
-                    )}
-                    {!isCompatible && (
-                      <Badge variant="destructive" className="text-sm">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        不兼容
-                      </Badge>
-                    )}
+                  <div className="flex items-start gap-4">
+                    <PluginIcon
+                      pluginId={plugin.id}
+                      manifest={plugin.manifest}
+                      installed={isInstalled}
+                      className="h-14 w-14"
+                      iconClassName="h-7 w-7"
+                    />
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <CardTitle className="text-2xl">{plugin.manifest.name}</CardTitle>
+                        <Badge variant="secondary" className="text-sm">
+                          v{plugin.manifest.version}
+                        </Badge>
+                        <Badge variant="outline" className="text-sm">
+                          {getPluginTypeLabel(plugin)}
+                        </Badge>
+                        {isInstalled && (
+                          <Badge variant="default" className="text-sm">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            已安装 {installedVersion && `(v${installedVersion})`}
+                          </Badge>
+                        )}
+                        {needsUpdate() && (
+                          <Badge variant="outline" className="text-sm border-orange-500 text-orange-500">
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            可更新
+                          </Badge>
+                        )}
+                        {!isCompatible && (
+                          <Badge variant="destructive" className="text-sm">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            不兼容
+                          </Badge>
+                        )}
+                      </div>
+                      <CardDescription className="text-base">{plugin.manifest.description}</CardDescription>
+                    </div>
                   </div>
-                  <CardDescription className="text-base">{plugin.manifest.description}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -609,7 +597,7 @@ export function PluginDetailPage() {
                   <CardTitle className="text-lg">统计信息</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <PluginStats pluginId={plugin.id} />
+                  {plugin.manifest.id && <PluginStats pluginId={plugin.manifest.id} />}
                 </CardContent>
               </Card>
 
@@ -640,6 +628,12 @@ export function PluginDetailPage() {
                       <Package className="h-4 w-4 text-muted-foreground" />
                       <span className="text-muted-foreground">版本:</span>
                       <span className="font-medium">v{plugin.manifest.version}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">类型:</span>
+                      <span className="font-medium">{getPluginTypeLabel(plugin)}</span>
                     </div>
 
                     <div className="flex items-center gap-2 text-sm">
@@ -696,39 +690,24 @@ export function PluginDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* 分类和标签 */}
-              {(plugin.manifest.categories || plugin.manifest.keywords) && (
+              {/* 类型和标签 */}
+              {plugin.manifest.keywords && plugin.manifest.keywords.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">分类与标签</CardTitle>
+                    <CardTitle className="text-lg">标签</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {plugin.manifest.categories && plugin.manifest.categories.length > 0 && (
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-2">分类</p>
-                        <div className="flex flex-wrap gap-2">
-                          {plugin.manifest.categories.map((category) => (
-                            <Badge key={category} variant="secondary">
-                              {CATEGORY_NAMES[category] || category}
-                            </Badge>
-                          ))}
-                        </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-2">关键词</p>
+                      <div className="flex flex-wrap gap-2">
+                        {plugin.manifest.keywords.map((keyword) => (
+                          <Badge key={keyword} variant="outline" className="text-xs">
+                            <Tag className="h-3 w-3 mr-1" />
+                            {keyword}
+                          </Badge>
+                        ))}
                       </div>
-                    )}
-
-                    {plugin.manifest.keywords && plugin.manifest.keywords.length > 0 && (
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-2">标签</p>
-                        <div className="flex flex-wrap gap-2">
-                          {plugin.manifest.keywords.map((keyword) => (
-                            <Badge key={keyword} variant="outline" className="text-xs">
-                              <Tag className="h-3 w-3 mr-1" />
-                              {keyword}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -743,8 +722,7 @@ export function PluginDetailPage() {
                 <ScrollArea className="h-[600px] pr-4">
                   {readmeLoading ? (
                     <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      <span className="ml-3 text-sm text-muted-foreground">加载说明文档中...</span>
+                      <ThinkingIllustration />
                     </div>
                   ) : readme ? (
                     <MarkdownRenderer content={readme} />

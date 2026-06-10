@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, Float, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Float, Index, Integer, Text, UniqueConstraint
 from sqlmodel import Field, LargeBinary, SQLModel
 
 
@@ -19,6 +19,11 @@ class ImageType(str, Enum):
 class ModifiedBy(str, Enum):
     AI = "AI"
     USER = "USER"
+
+
+class JargonCreatedBy(str, Enum):
+    AI = "AI"
+    MANUAL = "MANUAL"
 
 
 class Messages(SQLModel, table=True):
@@ -54,6 +59,8 @@ class Messages(SQLModel, table=True):
 
     # 其他配置
     additional_config: Optional[str] = Field(default=None)  # 额外配置，JSON格式存储
+    reply_frequency: Optional[float] = Field(default=None, sa_column=Column(Float, nullable=True))
+    # 消息发生时当前会话的生效回复频率；无法解析时为空
 
 
 class ModelUsage(SQLModel, table=True):
@@ -69,6 +76,7 @@ class ModelUsage(SQLModel, table=True):
     # 请求相关信息
     endpoint: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 模型API的具体endpoint
     user_type: ModelUser = Field(sa_column=Column(SQLEnum(ModelUser)), default=ModelUser.SYSTEM)  # 模型使用者类型
+    task_name: Optional[str] = Field(default=None, index=True, max_length=100, nullable=True)  # 模型任务配置名称
     request_type: str = Field(max_length=50)  # 内部请求类型，记录哪种模块使用了此模型
     time_cost: float = Field(sa_column=Column(Float))  # 本次请求耗时，单位秒
     timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))  # 请求时间戳
@@ -77,6 +85,18 @@ class ModelUsage(SQLModel, table=True):
     prompt_tokens: int  # 提示词令牌数
     completion_tokens: int  # 完成词令牌数
     total_tokens: int  # 总令牌数
+    prompt_cache_enabled: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default="0"),
+    )  # 本次请求发生时是否启用了模型输入缓存计费
+    prompt_cache_hit_tokens: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default="0"),
+    )  # prompt cache 命中令牌数
+    prompt_cache_miss_tokens: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default="0"),
+    )  # prompt cache 未命中令牌数
     cost: float  # 本次请求的费用，单位元
 
 
@@ -132,6 +152,79 @@ class ToolRecord(SQLModel, table=True):
     tool_display_prompt: Optional[str] = Field(default=None)  # 最终输入到 Prompt 的内容
 
 
+class StatisticsAggregationCursor(SQLModel, table=True):
+    """统计汇总增量游标。"""
+
+    __tablename__ = "statistics_aggregation_cursors"  # type: ignore
+
+    source_name: str = Field(primary_key=True, max_length=100)
+    last_processed_id: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))
+
+
+class StatisticsMessageHourly(SQLModel, table=True):
+    """按小时聚合的消息统计。"""
+
+    __tablename__ = "statistics_message_hourly"  # type: ignore
+    __table_args__ = (
+        UniqueConstraint("bucket_time", "chat_id", name="uq_statistics_message_hourly_bucket_chat"),
+        Index("ix_statistics_message_hourly_bucket_time", "bucket_time"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    bucket_time: datetime = Field(sa_column=Column(DateTime, nullable=False))
+    chat_id: str = Field(max_length=255)
+    chat_name: str = Field(max_length=255)
+    chat_type: str = Field(max_length=20)
+    message_count: int = Field(default=0)
+    latest_timestamp: datetime = Field(sa_column=Column(DateTime, nullable=False))
+
+
+class StatisticsToolHourly(SQLModel, table=True):
+    """按小时聚合的工具调用统计。"""
+
+    __tablename__ = "statistics_tool_hourly"  # type: ignore
+    __table_args__ = (
+        UniqueConstraint("bucket_time", "tool_name", name="uq_statistics_tool_hourly_bucket_tool"),
+        Index("ix_statistics_tool_hourly_bucket_time", "bucket_time"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    bucket_time: datetime = Field(sa_column=Column(DateTime, nullable=False))
+    tool_name: str = Field(max_length=255)
+    call_count: int = Field(default=0)
+
+
+class StatisticsModelHourly(SQLModel, table=True):
+    """按小时聚合的模型调用统计。"""
+
+    __tablename__ = "statistics_model_hourly"  # type: ignore
+    __table_args__ = (
+        UniqueConstraint(
+            "bucket_time",
+            "request_type",
+            "model_name",
+            "provider_name",
+            name="uq_statistics_model_hourly_bucket_request_model_provider",
+        ),
+        Index("ix_statistics_model_hourly_bucket_time", "bucket_time"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    bucket_time: datetime = Field(sa_column=Column(DateTime, nullable=False))
+    request_type: str = Field(max_length=100)
+    module_name: str = Field(max_length=100)
+    provider_name: str = Field(max_length=255)
+    model_name: str = Field(max_length=255)
+    request_count: int = Field(default=0)
+    prompt_tokens: int = Field(default=0)
+    completion_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    cost: float = Field(default=0.0)
+    time_cost_sum: float = Field(default=0.0)
+    time_cost_sq_sum: float = Field(default=0.0)
+
+
 class CommandRecord(SQLModel, table=True):
     """记录命令执行情况"""
 
@@ -185,11 +278,10 @@ class Expression(SQLModel, table=True):
     create_time: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime))  # 创建时间
     session_id: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 会话ID，区分是否为全局表达方式
 
-    checked: bool = Field(default=False)  # 是否已经被检查过
-    rejected: bool = Field(default=False)  # 是否被拒绝但是未更新
+    checked: bool = Field(default=False)  # 是否已经通过人工审核
     modified_by: Optional[ModifiedBy] = Field(
         default=None, sa_column=Column(SQLEnum(ModifiedBy), nullable=True)
-    )  # 最后修改者，标记用户或AI，为空表示未检查
+    )  # 最后修改者，标记用户或AI，为空表示暂无修改来源
 
 
 class Jargon(SQLModel, table=True):
@@ -214,12 +306,14 @@ class Jargon(SQLModel, table=True):
     is_complete: bool = Field(default=False)  # 是否为已经完成全部推断（count > 100后不再推断）
     is_global: bool = Field(default=False)  # 是否为全局黑话（独立于session_id_dict）
     last_inference_count: int = Field(default=0)  # 上一次进行推断时的count值，用于判断是否需要重新推断
-    inference_with_context: Optional[str] = Field(
-        default=None, sa_column=Column(Text, nullable=True)
-    )  # 带上下文的推断结果，JSON格式
-    inference_with_content_only: Optional[str] = Field(
-        default=None, sa_column=Column(Text, nullable=True)
-    )  # 只基于词条的推断结果，JSON格式
+    created_by: JargonCreatedBy = Field(
+        default=JargonCreatedBy.AI,
+        sa_column=Column(SQLEnum(JargonCreatedBy), nullable=False),
+    )  # 创建来源，AI 表示自动学习，MANUAL 表示手动创建
+    created_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))
+    updated_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))
+
+
 class ChatHistory(SQLModel, table=True):
     """存储聊天历史记录的模型"""
 
@@ -302,5 +396,10 @@ class ChatSession(SQLModel, table=True):
 
     # 身份元数据
     user_id: Optional[str] = Field(index=True, max_length=255, nullable=True)  # 用户ID
+    user_nickname: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 私聊用户昵称
+    user_cardname: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 私聊用户群名片/备注
     group_id: Optional[str] = Field(index=True, default=None, max_length=255, nullable=True)  # 群组id
+    group_name: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 群组名称
     platform: str = Field(index=True, max_length=100)  # 会话所在平台
+    account_id: Optional[str] = Field(default=None, index=True, max_length=255, nullable=True)  # 平台账号 ID
+    scope: Optional[str] = Field(default=None, index=True, max_length=255, nullable=True)  # 路由作用域

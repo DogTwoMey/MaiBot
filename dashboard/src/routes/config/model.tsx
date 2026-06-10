@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ThinkingIllustration } from '@/components/ui/thinking-illustration'
 import {
   Dialog,
   DialogBody,
@@ -47,8 +49,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Pencil, Trash2, Save, Search, Info, Power, Check, ChevronsUpDown, RefreshCw, Loader2, GraduationCap, Share2, AlertTriangle, Settings, Lock, Unlock } from 'lucide-react'
-import { getModelConfig, getModelConfigSchema, updateModelConfig } from '@/lib/config-api'
+import { Plus, Trash2, Save, Search, Info, Power, Check, ChevronsUpDown, RefreshCw, Loader2, GraduationCap, Share2, AlertTriangle, Settings, Zap } from 'lucide-react'
+import {
+  getModelConfig,
+  getModelConfigCached,
+  getModelConfigSchema,
+  testProviderConnection,
+  updateModelConfig,
+  updateModelConfigSection,
+} from '@/lib/config-api'
+import type { TestConnectionResult } from '@/lib/config-api'
+import { resolveFieldLabel } from '@/lib/config-label'
 import type { ConfigSchema } from '@/types/config-schema'
 import { useToast } from '@/hooks/use-toast'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -57,6 +68,12 @@ import { RestartOverlay } from '@/components/restart-overlay'
 import { RestartProvider, useRestart } from '@/lib/restart-context'
 import { ExtraParamsDialog } from '@/components/ui/extra-params-dialog'
 import { SharePackDialog } from '@/components/share-pack-dialog'
+import { TaskConfigCard, Pagination, ModelTable, ModelCardList } from './model/components'
+import { useModelTour, useModelFetcher, useModelAutoSave } from './model/hooks'
+import { ProviderForm } from './modelProvider/ProviderForm'
+import { ProviderList } from './modelProvider/ProviderList'
+import type { APIProvider, DeleteConfirmState } from './modelProvider/types'
+import { cleanProviderData } from './modelProvider/utils'
 
 // 导入模块化的类型定义和组件
 import type { ModelInfo, ProviderConfig, ModelTaskConfig, TaskConfig } from './model/types'
@@ -68,8 +85,27 @@ function unwrapModelConfig(data: unknown): Record<string, unknown> {
   }
   return data as Record<string, unknown>
 }
-import { TaskConfigCard, Pagination, ModelTable, ModelCardList } from './model/components'
-import { useModelTour, useModelFetcher, useModelAutoSave } from './model/hooks'
+
+const ADVANCED_MODEL_TASK_NAMES = new Set(['memory', 'learner', 'emoji', 'voice'])
+const MODEL_CONFIG_TABS = ['providers', 'models', 'tasks'] as const
+type ModelConfigTab = (typeof MODEL_CONFIG_TABS)[number]
+
+function getInitialModelConfigTab(): ModelConfigTab {
+  if (typeof window === 'undefined') {
+    return 'providers'
+  }
+
+  const tab = new URLSearchParams(window.location.search).get('tab')
+  return MODEL_CONFIG_TABS.includes(tab as ModelConfigTab) ? (tab as ModelConfigTab) : 'providers'
+}
+
+function getRequiredTaskNames(schema: ConfigSchema | null): Set<string> {
+  return new Set(
+    (schema?.fields ?? [])
+      .filter((field) => field.type === 'object' && !field.advanced && !ADVANCED_MODEL_TASK_NAMES.has(field.name))
+      .map((field) => field.name)
+  )
+}
 
 // 主导出组件：包装 RestartProvider
 export function ModelConfigPage() {
@@ -82,9 +118,11 @@ export function ModelConfigPage() {
 
 // 内部实现组件
 function ModelConfigPageContent() {
+  const { i18n } = useTranslation()
   const [models, setModels] = useState<ModelInfo[]>([])
   const [providers, setProviders] = useState<string[]>([])
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([])
+  const [apiProviders, setApiProviders] = useState<APIProvider[]>([])
   const [modelNames, setModelNames] = useState<string[]>([])
   const [taskConfig, setTaskConfig] = useState<ModelTaskConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,15 +135,33 @@ function ModelConfigPageContent() {
   const [extraParamsDialogOpen, setExtraParamsDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null)
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false)
+  const [editingProvider, setEditingProvider] = useState<APIProvider | null>(null)
+  const [editingProviderIndex, setEditingProviderIndex] = useState<number | null>(null)
+  const [providerDeleteDialogOpen, setProviderDeleteDialogOpen] = useState(false)
+  const [deletingProviderIndex, setDeletingProviderIndex] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedModels, setSelectedModels] = useState<Set<number>>(new Set())
+  const [selectedProviders, setSelectedProviders] = useState<Set<number>>(new Set())
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
+  const [providerBatchDeleteDialogOpen, setProviderBatchDeleteDialogOpen] = useState(false)
+  const [testingProviders, setTestingProviders] = useState<Set<string>>(new Set())
+  const [testResults, setTestResults] = useState<Map<string, TestConnectionResult>>(new Map())
+  const [deleteConfirmState, setDeleteConfirmState] = useState<DeleteConfirmState>({
+    isOpen: false,
+    providersToDelete: [],
+    affectedModels: [],
+    pendingProviders: [],
+    context: 'auto',
+    oldProviders: [],
+  })
   const [taskConfigSchema, setTaskConfigSchema] = useState<ConfigSchema | null>(null)
+  const taskConfigSchemaRef = useRef<ConfigSchema | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [jumpToPage, setJumpToPage] = useState('')
+  const [activeTab, setActiveTab] = useState<ModelConfigTab>(getInitialModelConfigTab)
   
-  const [advancedTemperatureMode, setAdvancedTemperatureMode] = useState(false)
   const [advancedModelSettingsVisible, setAdvancedModelSettingsVisible] = useState(false)
   const [advancedTaskSettingsVisible, setAdvancedTaskSettingsVisible] = useState(false)
   const [restartNoticeVisible, setRestartNoticeVisible] = useState(
@@ -117,6 +173,8 @@ function ModelConfigPageContent() {
   
   // 模型 Combobox 状态
   const [modelComboboxOpen, setModelComboboxOpen] = useState(false)
+  const providerAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const providersSnapshotRef = useRef<string | null>(null)
   
   // 嵌入模型警告相关状态
   const [embeddingWarningOpen, setEmbeddingWarningOpen] = useState(false)
@@ -146,10 +204,15 @@ function ModelConfigPageContent() {
   })
 
   // 检查任务配置问题
-  const checkTaskConfigIssues = useCallback((taskConf: ModelTaskConfig | null, modelList: ModelInfo[]) => {
+  const checkTaskConfigIssues = useCallback((
+    taskConf: ModelTaskConfig | null,
+    modelList: ModelInfo[],
+    schema?: ConfigSchema | null
+  ) => {
     if (!taskConf) return
     
     const modelNameSet = new Set(modelList.map(m => m.name))
+    const requiredTaskNames = getRequiredTaskNames(schema ?? taskConfigSchemaRef.current)
     const invalidRefs: { taskName: string; invalidModels: string[] }[] = []
     const emptyTaskList: string[] = []
     
@@ -158,7 +221,7 @@ function ModelConfigPageContent() {
       
       // 检查是否有模型
       if (!task.model_list || task.model_list.length === 0) {
-        if (key !== 'learner') {
+        if (requiredTaskNames.has(key)) {
           emptyTaskList.push(key)
         }
         continue
@@ -179,7 +242,7 @@ function ModelConfigPageContent() {
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
-      const [result, schemaResult] = await Promise.all([getModelConfig(), getModelConfigSchema()])
+      const [result, schemaResult] = await Promise.all([getModelConfigCached(), getModelConfigSchema()])
       if (!result.success) {
         toast({
           title: '加载失败',
@@ -197,19 +260,24 @@ function ModelConfigPageContent() {
       const providerList = (config.api_providers as ProviderConfig[]) || []
       setProviders(providerList.map((p) => p.name))
       setProviderConfigs(providerList)
+      setApiProviders(providerList.map((provider) => cleanProviderData(provider as APIProvider)))
+      providersSnapshotRef.current = JSON.stringify(providerList.map((provider) => cleanProviderData(provider as APIProvider)))
       
       const taskConf = (config.model_task_config as ModelTaskConfig) || null
       setTaskConfig(taskConf)
       resetSnapshots(modelList, taskConf)
       
       // 解析 model_task_config 的 schema
+      let nextTaskConfigSchema: ConfigSchema | null = null
       if (schemaResult.success && schemaResult.data) {
         const schema = (schemaResult.data as unknown as Record<string, unknown>).schema as ConfigSchema
-        setTaskConfigSchema(schema.nested?.model_task_config ?? null)
+        nextTaskConfigSchema = schema.nested?.model_task_config ?? null
+        taskConfigSchemaRef.current = nextTaskConfigSchema
+        setTaskConfigSchema(nextTaskConfigSchema)
       }
       
       // 检查任务配置问题
-      checkTaskConfigIssues(taskConf, modelList)
+      checkTaskConfigIssues(taskConf, modelList, nextTaskConfigSchema)
       
       // 初始化上一次的 embedding 模型列表
       const embeddingModels = taskConf?.embedding?.model_list || []
@@ -265,6 +333,167 @@ function ModelConfigPageContent() {
     localStorage.setItem('model-assignment-tour-entry-dismissed', 'true')
     setTourEntryVisible(false)
   }
+
+  const syncProviderState = useCallback((nextProviders: APIProvider[]) => {
+    const cleanedProviders = nextProviders.map(cleanProviderData)
+    setApiProviders(cleanedProviders)
+    setProviders(cleanedProviders.map((provider) => provider.name))
+    setProviderConfigs(cleanedProviders.map((provider) => ({
+      name: provider.name,
+      base_url: provider.base_url,
+      api_key: provider.api_key,
+      client_type: provider.client_type,
+      max_retry: provider.max_retry ?? 2,
+      timeout: provider.timeout ?? 30,
+      retry_interval: provider.retry_interval ?? 10,
+    })))
+  }, [])
+
+  const removeModelsForProviders = useCallback((
+    sourceModels: ModelInfo[],
+    sourceTaskConfig: ModelTaskConfig | null,
+    removedModels: unknown[],
+  ) => {
+    const removedModelNames = new Set(
+      removedModels
+        .map((model) => (typeof model === 'object' && model !== null && 'name' in model ? String((model as Record<string, unknown>).name) : ''))
+        .filter(Boolean)
+    )
+    if (removedModelNames.size === 0) {
+      return { models: sourceModels, taskConfig: sourceTaskConfig }
+    }
+
+    const nextModels = sourceModels.filter((model) => !removedModelNames.has(model.name))
+    if (!sourceTaskConfig) {
+      return { models: nextModels, taskConfig: sourceTaskConfig }
+    }
+
+    const nextTaskConfig: ModelTaskConfig = {}
+    for (const [taskName, task] of Object.entries(sourceTaskConfig)) {
+      nextTaskConfig[taskName] = {
+        ...task,
+        model_list: (task?.model_list || []).filter((modelName) => !removedModelNames.has(modelName)),
+      }
+    }
+    return { models: nextModels, taskConfig: nextTaskConfig }
+  }, [])
+
+  const checkDeleteProviderImpact = useCallback(async (
+    nextProviders: APIProvider[],
+    context: 'auto' | 'manual' | 'restart' = 'auto'
+  ) => {
+    const oldProviderNames = new Set(apiProviders.map((provider) => provider.name))
+    const nextProviderNames = new Set(nextProviders.map((provider) => provider.name))
+    const deletedProviders = Array.from(oldProviderNames).filter((name) => !nextProviderNames.has(name))
+
+    if (deletedProviders.length === 0) {
+      return { shouldProceed: true }
+    }
+
+    const affectedModels = models.filter((model) => deletedProviders.includes(model.api_provider))
+    if (affectedModels.length === 0) {
+      return { shouldProceed: true }
+    }
+
+    setDeleteConfirmState({
+      isOpen: true,
+      providersToDelete: deletedProviders,
+      affectedModels,
+      pendingProviders: nextProviders,
+      context,
+      oldProviders: [...apiProviders],
+    })
+    return { shouldProceed: false }
+  }, [apiProviders, models])
+
+  const saveProviders = useCallback(async (
+    nextProviders: APIProvider[],
+    context: 'auto' | 'manual' | 'restart' = 'auto',
+    affectedModels: unknown[] = []
+  ) => {
+    const cleanedProviders = nextProviders.map(cleanProviderData)
+    const { models: nextModels, taskConfig: nextTaskConfig } = removeModelsForProviders(models, taskConfig, affectedModels)
+
+    if (context === 'auto' && affectedModels.length === 0) {
+      const result = await updateModelConfigSection('api_providers', cleanedProviders)
+      if (!result.success) {
+        throw new Error(result.error || '保存提供商失败')
+      }
+    } else {
+      const resultGet = await getModelConfig()
+      if (!resultGet.success) {
+        throw new Error(resultGet.error || '加载模型配置失败')
+      }
+      const config = unwrapModelConfig(resultGet.data)
+      config.api_providers = cleanedProviders
+      config.models = nextModels.map(cleanModelForSave)
+      config.model_task_config = nextTaskConfig
+      const resultUpdate = await updateModelConfig(config)
+      if (!resultUpdate.success) {
+        throw new Error(resultUpdate.error || '保存模型配置失败')
+      }
+    }
+
+    syncProviderState(cleanedProviders)
+    setModels(nextModels)
+    setModelNames(nextModels.map((model) => model.name))
+    setTaskConfig(nextTaskConfig)
+    checkTaskConfigIssues(nextTaskConfig, nextModels)
+    providersSnapshotRef.current = JSON.stringify(cleanedProviders)
+    setHasUnsavedChanges(false)
+
+    if (context === 'restart') {
+      await handleRestart()
+    }
+  }, [checkTaskConfigIssues, models, removeModelsForProviders, syncProviderState, taskConfig])
+
+  const autoSaveProviders = useCallback(async (nextProviders: APIProvider[]) => {
+    if (initialLoadRef.current) return
+    const { shouldProceed } = await checkDeleteProviderImpact(nextProviders, 'auto')
+    if (!shouldProceed) {
+      setHasUnsavedChanges(true)
+      return
+    }
+
+    try {
+      setAutoSaving(true)
+      await saveProviders(nextProviders, 'auto')
+    } catch (error) {
+      console.error('自动保存提供商失败:', error)
+      toast({
+        title: '自动保存失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+      setHasUnsavedChanges(true)
+    } finally {
+      setAutoSaving(false)
+    }
+  }, [checkDeleteProviderImpact, initialLoadRef, saveProviders, toast])
+
+  useEffect(() => {
+    if (initialLoadRef.current) return
+    const snapshot = JSON.stringify(apiProviders.map(cleanProviderData))
+    if (providersSnapshotRef.current === null) {
+      providersSnapshotRef.current = snapshot
+      return
+    }
+    if (snapshot === providersSnapshotRef.current) return
+
+    setHasUnsavedChanges(true)
+    if (providerAutoSaveTimerRef.current) {
+      clearTimeout(providerAutoSaveTimerRef.current)
+    }
+    providerAutoSaveTimerRef.current = setTimeout(() => {
+      autoSaveProviders(apiProviders)
+    }, 2000)
+
+    return () => {
+      if (providerAutoSaveTimerRef.current) {
+        clearTimeout(providerAutoSaveTimerRef.current)
+      }
+    }
+  }, [apiProviders, autoSaveProviders, initialLoadRef])
   
   // 一键删除所有无效模型引用
   const handleRemoveInvalidRefs = useCallback(() => {
@@ -320,6 +549,9 @@ function ModelConfigPageContent() {
     try {
       setSaving(true)
       clearAutoSaveTimers()
+      if (providerAutoSaveTimerRef.current) {
+        clearTimeout(providerAutoSaveTimerRef.current)
+      }
       const resultGet = await getModelConfig()
       if (!resultGet.success) {
         toast({
@@ -332,6 +564,7 @@ function ModelConfigPageContent() {
       }
       const config = unwrapModelConfig(resultGet.data)
       // 清理每个模型中的 null 值
+      config.api_providers = apiProviders.map(cleanProviderData)
       config.models = models.map(cleanModelForSave)
       config.model_task_config = taskConfig
       const resultUpdate = await updateModelConfig(config)
@@ -345,6 +578,7 @@ function ModelConfigPageContent() {
         return
       }
       resetSnapshots(config.models as ModelInfo[], taskConfig)
+      providersSnapshotRef.current = JSON.stringify(config.api_providers)
       setHasUnsavedChanges(false)
       toast({
         title: '保存成功',
@@ -369,6 +603,9 @@ function ModelConfigPageContent() {
       
       // 先取消自动保存定时器
       clearAutoSaveTimers()
+      if (providerAutoSaveTimerRef.current) {
+        clearTimeout(providerAutoSaveTimerRef.current)
+      }
 
       const resultGet = await getModelConfig()
       if (!resultGet.success) {
@@ -382,6 +619,7 @@ function ModelConfigPageContent() {
       }
       const config = unwrapModelConfig(resultGet.data)
       // 清理每个模型中的 null 值
+      config.api_providers = apiProviders.map(cleanProviderData)
       config.models = models.map(cleanModelForSave)
       config.model_task_config = taskConfig
       const resultUpdate = await updateModelConfig(config)
@@ -395,6 +633,7 @@ function ModelConfigPageContent() {
         return
       }
       resetSnapshots(config.models as ModelInfo[], taskConfig)
+      providersSnapshotRef.current = JSON.stringify(config.api_providers)
       setHasUnsavedChanges(false)
       toast({
         title: '保存成功',
@@ -439,11 +678,57 @@ function ModelConfigPageContent() {
     setEditDialogOpen(true)
   }
 
+  const openProviderDialog = (provider: APIProvider | null, index: number | null) => {
+    setEditingProvider(provider || {
+      name: '',
+      base_url: '',
+      api_key: '',
+      client_type: 'openai',
+      max_retry: 2,
+      timeout: 30,
+      retry_interval: 10,
+    })
+    setEditingProviderIndex(index)
+    setProviderDialogOpen(true)
+  }
+
+  const handleActiveTabChange = useCallback((value: string) => {
+    const nextTab = MODEL_CONFIG_TABS.includes(value as ModelConfigTab)
+      ? (value as ModelConfigTab)
+      : 'providers'
+    setActiveTab(nextTab)
+    const nextUrl = nextTab === 'providers' ? '/config/model' : `/config/model?tab=${nextTab}`
+    window.history.replaceState(null, '', nextUrl)
+  }, [])
+
   // Tour 引导 (使用 hook 封装的逻辑)
   const { startTour: handleStartTour, isRunning: tourIsRunning } = useModelTour({
     onOpenEditDialog: () => openEditDialog(null, null),
     onCloseEditDialog: () => setEditDialogOpen(false),
+    onOpenProviderDialog: () => openProviderDialog(null, null),
+    onCloseProviderDialog: () => setProviderDialogOpen(false),
+    onOpenProvidersTab: () => handleActiveTabChange('providers'),
+    onOpenModelsTab: () => handleActiveTabChange('models'),
+    onOpenTasksTab: () => handleActiveTabChange('tasks'),
   })
+
+  const handleSaveProviderEdit = (provider: APIProvider, index: number | null) => {
+    const providerToSave = cleanProviderData(provider)
+    if (index !== null) {
+      const nextProviders = [...apiProviders]
+      nextProviders[index] = providerToSave
+      syncProviderState(nextProviders)
+    } else {
+      syncProviderState([...apiProviders, providerToSave])
+    }
+    setProviderDialogOpen(false)
+    setEditingProvider(null)
+    setEditingProviderIndex(null)
+    toast({
+      title: index !== null ? '提供商已更新' : '提供商已添加',
+      description: '配置将在 2 秒后自动保存，或点击右上角"保存配置"按钮立即保存',
+    })
+  }
 
   // 保存编辑
   const handleSaveEdit = () => {
@@ -577,6 +862,168 @@ function ModelConfigPageContent() {
     }
     setDeleteDialogOpen(false)
     setDeletingIndex(null)
+  }
+
+  const openProviderDeleteDialog = (index: number) => {
+    setDeletingProviderIndex(index)
+    setProviderDeleteDialogOpen(true)
+  }
+
+  const handleConfirmProviderDelete = async () => {
+    if (deletingProviderIndex !== null) {
+      const nextProviders = apiProviders.filter((_, index) => index !== deletingProviderIndex)
+      const { shouldProceed } = await checkDeleteProviderImpact(nextProviders, 'manual')
+      if (shouldProceed) {
+        syncProviderState(nextProviders)
+        toast({
+          title: '删除成功',
+          description: '提供商已从列表中移除',
+        })
+      }
+    }
+    setProviderDeleteDialogOpen(false)
+    setDeletingProviderIndex(null)
+  }
+
+  const toggleProviderSelection = (index: number) => {
+    const nextSelected = new Set(selectedProviders)
+    if (nextSelected.has(index)) {
+      nextSelected.delete(index)
+    } else {
+      nextSelected.add(index)
+    }
+    setSelectedProviders(nextSelected)
+  }
+
+  const toggleSelectAllProviders = () => {
+    if (selectedProviders.size === apiProviders.length) {
+      setSelectedProviders(new Set())
+    } else {
+      setSelectedProviders(new Set(apiProviders.map((_, index) => index)))
+    }
+  }
+
+  const openProviderBatchDeleteDialog = () => {
+    if (selectedProviders.size === 0) {
+      toast({
+        title: '提示',
+        description: '请先选择要删除的提供商',
+        variant: 'default',
+      })
+      return
+    }
+    setProviderBatchDeleteDialogOpen(true)
+  }
+
+  const handleConfirmProviderBatchDelete = async () => {
+    const nextProviders = apiProviders.filter((_, index) => !selectedProviders.has(index))
+    const { shouldProceed } = await checkDeleteProviderImpact(nextProviders, 'manual')
+    if (shouldProceed) {
+      const deletedCount = selectedProviders.size
+      syncProviderState(nextProviders)
+      setSelectedProviders(new Set())
+      toast({
+        title: '批量删除成功',
+        description: `已删除 ${deletedCount} 个提供商`,
+      })
+    }
+    setProviderBatchDeleteDialogOpen(false)
+  }
+
+  const handleConfirmDeleteProviderImpact = async () => {
+    try {
+      const savingFlag = deleteConfirmState.context === 'auto' ? setAutoSaving : setSaving
+      savingFlag(true)
+      await saveProviders(
+        deleteConfirmState.pendingProviders,
+        deleteConfirmState.context,
+        deleteConfirmState.affectedModels
+      )
+      toast({
+        title: '删除成功',
+        description: `已删除 ${deleteConfirmState.providersToDelete.length} 个提供商和 ${deleteConfirmState.affectedModels.length} 个关联模型`,
+      })
+      setDeleteConfirmState({
+        isOpen: false,
+        providersToDelete: [],
+        affectedModels: [],
+        pendingProviders: [],
+        context: 'auto',
+        oldProviders: [],
+      })
+      setSelectedProviders(new Set())
+    } catch (error) {
+      toast({
+        title: '删除失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+      setAutoSaving(false)
+    }
+  }
+
+  const handleCancelDeleteProviderImpact = () => {
+    if (deleteConfirmState.oldProviders.length > 0) {
+      syncProviderState(deleteConfirmState.oldProviders)
+    }
+    setDeleteConfirmState({
+      isOpen: false,
+      providersToDelete: [],
+      affectedModels: [],
+      pendingProviders: [],
+      context: 'auto',
+      oldProviders: [],
+    })
+    setHasUnsavedChanges(false)
+  }
+
+  const handleTestProviderConnection = async (providerName: string) => {
+    setTestingProviders((prev) => new Set(prev).add(providerName))
+    try {
+      const result = await testProviderConnection(providerName)
+      if (!result.success) {
+        toast({
+          title: '测试失败',
+          description: result.error,
+          variant: 'destructive',
+        })
+        return
+      }
+      const testResult = result.data
+      setTestResults((prev) => new Map(prev).set(providerName, testResult))
+      if (testResult.network_ok && testResult.api_key_valid !== false) {
+        toast({
+          title: testResult.api_key_valid === true ? '连接正常' : '网络连接正常',
+          description: `${providerName} 可以访问 (${testResult.latency_ms}ms)`,
+        })
+      } else {
+        toast({
+          title: testResult.network_ok ? '连接正常但 Key 无效' : '连接失败',
+          description: testResult.error || `${providerName} API Key 无效或无法连接`,
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      toast({
+        title: '测试失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    } finally {
+      setTestingProviders((prev) => {
+        const next = new Set(prev)
+        next.delete(providerName)
+        return next
+      })
+    }
+  }
+
+  const handleTestAllProviderConnections = async () => {
+    for (const provider of apiProviders) {
+      await handleTestProviderConnection(provider.name)
+    }
   }
 
   // 切换单个模型选择
@@ -752,7 +1199,7 @@ function ModelConfigPageContent() {
       <ScrollArea className="h-full">
         <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
           <div className="flex items-center justify-center h-64">
-            <p className="text-muted-foreground">加载中...</p>
+            <ThinkingIllustration size="lg" />
           </div>
         </div>
       </ScrollArea>
@@ -900,18 +1347,91 @@ function ModelConfigPageContent() {
         )}
 
         {/* 标签页 */}
-        <Tabs defaultValue="models" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="models" className="w-full">添加模型</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="providers" className="w-full" data-tour="providers-tab-trigger">模型厂商设置</TabsTrigger>
+            <TabsTrigger value="models" className="w-full" data-tour="models-tab-trigger">模型列表</TabsTrigger>
             <TabsTrigger value="tasks" className="w-full" data-tour="tasks-tab-trigger">为模型分配功能</TabsTrigger>
           </TabsList>
+          {/* 模型厂商设置标签页 */}
+          <TabsContent value="providers" className="space-y-4 mt-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="hidden">
+                {selectedProviders.size > 0 && (
+                  <Button
+                    onClick={openProviderBatchDeleteDialog}
+                    size="sm"
+                    variant="destructive"
+                    className="w-full sm:w-auto"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                    批量删除 ({selectedProviders.size})
+                  </Button>
+                )}
+                <Button
+                  onClick={handleTestAllProviderConnections}
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  disabled={apiProviders.length === 0 || testingProviders.size > 0}
+                >
+                  <Zap className="mr-2 h-4 w-4" />
+                  {testingProviders.size > 0 ? `测试中 (${testingProviders.size})` : '测试全部'}
+                </Button>
+                <Button onClick={() => openProviderDialog(null, null)} size="sm" variant="outline" className="w-full sm:w-auto">
+                  <Plus className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                  添加提供商
+                </Button>
+              </div>
+            </div>
+
+            <ProviderList
+              providers={apiProviders}
+              testingProviders={testingProviders}
+              testResults={testResults}
+              selectedProviders={selectedProviders}
+              toolbarActions={(
+                <>
+                  {selectedProviders.size > 0 && (
+                    <Button
+                      onClick={openProviderBatchDeleteDialog}
+                      size="sm"
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                      <span className="text-sm">批量删除 ({selectedProviders.size})</span>
+                    </Button>
+                  )}
+                  <Button
+                    onClick={handleTestAllProviderConnections}
+                    size="sm"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={apiProviders.length === 0 || testingProviders.size > 0}
+                  >
+                    <Zap className="mr-2 h-4 w-4" />
+                    <span className="text-sm">
+                      {testingProviders.size > 0 ? `测试中 (${testingProviders.size})` : '测试全部连接'}
+                    </span>
+                  </Button>
+                  <Button onClick={() => openProviderDialog(null, null)} size="sm" variant="outline" className="w-full sm:w-auto" data-tour="add-provider-button">
+                    <Plus className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                    <span className="text-sm">添加厂商</span>
+                  </Button>
+                </>
+              )}
+              onEdit={openProviderDialog}
+              onDelete={openProviderDeleteDialog}
+              onTest={handleTestProviderConnection}
+              onToggleSelect={toggleProviderSelection}
+              onToggleSelectAll={toggleSelectAllProviders}
+            />
+          </TabsContent>
           {/* 模型配置标签页 */}
           <TabsContent value="models" className="space-y-4 mt-0">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <p className="text-sm text-muted-foreground">
-                配置可用的模型列表
-              </p>
-              <div className="flex gap-2 w-full sm:w-auto">
+              <div className="hidden">
                 {selectedModels.size > 0 && (
                   <Button 
                     onClick={openBatchDeleteDialog} 
@@ -923,7 +1443,7 @@ function ModelConfigPageContent() {
                     批量删除 ({selectedModels.size})
                   </Button>
                 )}
-                <Button onClick={() => openEditDialog(null, null)} size="sm" variant="outline" className="w-full sm:w-auto" data-tour="add-model-button">
+                <Button onClick={() => openEditDialog(null, null)} size="sm" variant="outline" className="w-full sm:w-auto">
                   <Plus className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
                   添加模型
                 </Button>
@@ -931,7 +1451,7 @@ function ModelConfigPageContent() {
             </div>
 
           {/* 搜索框 */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:flex-1 sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -946,9 +1466,27 @@ function ModelConfigPageContent() {
                 找到 {filteredModels.length} 个结果
               </p>
             )}
-          </div>
 
           {/* 模型列表 - 移动端卡片视图 */}
+            <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+              {selectedModels.size > 0 && (
+                <Button
+                  onClick={openBatchDeleteDialog}
+                  size="sm"
+                  variant="destructive"
+                  className="w-full sm:w-auto"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                  <span className="text-sm">批量删除 ({selectedModels.size})</span>
+                </Button>
+              )}
+              <Button onClick={() => openEditDialog(null, null)} size="sm" variant="outline" className="w-full sm:w-auto" data-tour="add-model-button">
+                <Plus className="mr-2 h-4 w-4" strokeWidth={2} fill="none" />
+                <span className="text-sm">添加模型</span>
+              </Button>
+            </div>
+          </div>
+
           <ModelCardList
             paginatedModels={paginatedModels}
             allModels={models}
@@ -1009,15 +1547,11 @@ function ModelConfigPageContent() {
               {taskConfigSchema.fields
                 .filter(f => f.type === 'object' && (advancedTaskSettingsVisible || !f.advanced))
                 .map((field, index) => {
-                  const desc = field.description || field.name
-                  const commaIdx = desc.search(/[,，]/)
-                  const title = commaIdx > 0 ? desc.slice(0, commaIdx).trim() : desc
-                  const subtitle = commaIdx > 0 ? desc.slice(commaIdx + 1).trim() : ''
                   return (
                     <TaskConfigCard
                       key={field.name}
-                      title={`${title} (${field.name})`}
-                      description={subtitle}
+                      title={resolveFieldLabel(field, i18n.language)}
+                      description={field.description}
                       taskConfig={taskConfig[field.name] ?? { model_list: [] }}
                       modelNames={modelNames}
                       onChange={(f, value) => updateTaskConfig(field.name, f, value)}
@@ -1032,10 +1566,108 @@ function ModelConfigPageContent() {
         </TabsContent>
       </Tabs>
 
+      <ProviderForm
+        open={providerDialogOpen}
+        onOpenChange={setProviderDialogOpen}
+        editingProvider={editingProvider}
+        editingIndex={editingProviderIndex}
+        providers={apiProviders}
+        onSave={handleSaveProviderEdit}
+        tourState={{ isRunning: tourIsRunning }}
+      />
+
+      {/* 删除提供商确认对话框 */}
+      <AlertDialog open={providerDeleteDialogOpen} onOpenChange={setProviderDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除提供商</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除提供商"{deletingProviderIndex !== null ? apiProviders[deletingProviderIndex]?.name : ''}"吗？
+              如果该提供商下存在模型，确认时会提示一并处理关联模型。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmProviderDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 批量删除提供商确认对话框 */}
+      <AlertDialog open={providerBatchDeleteDialogOpen} onOpenChange={setProviderBatchDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量删除提供商</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除选中的 {selectedProviders.size} 个提供商吗？
+              如果这些提供商下存在模型，确认时会提示一并处理关联模型。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmProviderBatchDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              批量删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 删除提供商影响确认对话框 */}
+      <AlertDialog open={deleteConfirmState.isOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              删除提供商会同时移除关联模型
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  将删除 {deleteConfirmState.providersToDelete.length} 个提供商，并移除
+                  {' '}{deleteConfirmState.affectedModels.length} 个使用这些提供商的模型。
+                </p>
+                {deleteConfirmState.affectedModels.length > 0 && (
+                  <div className="rounded-md bg-muted p-3 text-muted-foreground">
+                    {deleteConfirmState.affectedModels.slice(0, 8).map((model) => (
+                      <div key={(model as ModelInfo).name}>
+                        {(model as ModelInfo).name} ({(model as ModelInfo).api_provider})
+                      </div>
+                    ))}
+                    {deleteConfirmState.affectedModels.length > 8 && (
+                      <div>还有 {deleteConfirmState.affectedModels.length - 8} 个模型...</div>
+                    )}
+                  </div>
+                )}
+                <p className="font-medium text-foreground">
+                  关联模型会从模型列表和任务分配中移除，此操作无法撤销。
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDeleteProviderImpact}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteProviderImpact}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* 编辑模型对话框 */}
       <Dialog open={editDialogOpen} onOpenChange={handleEditDialogClose}>
         <DialogContent 
-          className="max-w-[95vw] sm:max-w-2xl" 
+          className="max-w-[95vw] gap-3 p-4 sm:max-w-2xl sm:gap-4 sm:p-6"
           data-tour="model-dialog"
           preventOutsideClose={tourIsRunning}
           confirmOnEnter
@@ -1058,10 +1690,10 @@ function ModelConfigPageContent() {
             </div>
           </DialogHeader>
 
-          <DialogBody>
-          <div className="grid gap-4 py-4">
+          <DialogBody viewportClassName="min-h-0 flex-1 pr-3 sm:pr-4 [&>div]:!block">
+          <div className="grid gap-3 py-2 sm:gap-4 sm:py-4">
             <div className="grid gap-2" data-tour="model-name-input">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
                 <Label
                   htmlFor="model_name"
                   className={`sm:w-28 sm:flex-shrink-0 ${formErrors.name ? 'text-destructive' : ''}`}
@@ -1085,15 +1717,11 @@ function ModelConfigPageContent() {
               </div>
               {formErrors.name ? (
                 <p className="text-xs text-destructive sm:pl-28">{formErrors.name}</p>
-              ) : (
-                <p className="text-xs text-muted-foreground sm:pl-28">
-                  用于在任务配置中引用此模型
-                </p>
-              )}
+              ) : null}
             </div>
 
             <div className="grid gap-2" data-tour="model-provider-select">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
                 <Label
                   htmlFor="api_provider"
                   className={`sm:w-28 sm:flex-shrink-0 ${formErrors.api_provider ? 'text-destructive' : ''}`}
@@ -1155,37 +1783,37 @@ function ModelConfigPageContent() {
                 )}
               </div>
               
-              {/* 模型标识符 Combobox */}
-              {matchedTemplate?.modelFetcher ? (
-                <Popover open={modelComboboxOpen} onOpenChange={setModelComboboxOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={modelComboboxOpen}
-                      className="w-full justify-between font-normal"
-                      disabled={fetchingModels || !!modelFetchError}
-                    >
-                      {fetchingModels ? (
-                        <span className="flex items-center gap-2 text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          正在获取模型列表...
-                        </span>
-                      ) : modelFetchError ? (
-                        <span className="text-muted-foreground text-sm">点击下方输入框手动填写</span>
-                      ) : editingModel?.model_identifier ? (
-                        <span className="truncate">{editingModel.model_identifier}</span>
-                      ) : (
-                        <span className="text-muted-foreground">搜索或选择模型...</span>
-                      )}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-                    <Command>
-                      <CommandInput placeholder="搜索模型..." />
-                      <ScrollArea className="h-[300px]">
-                        <CommandList className="max-h-none overflow-visible">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:gap-2">
+                {/* 模型标识符 Combobox */}
+                {matchedTemplate?.modelFetcher && (
+                  <Popover open={modelComboboxOpen} onOpenChange={setModelComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={modelComboboxOpen}
+                        className="w-full justify-between font-normal sm:w-[46%]"
+                        disabled={fetchingModels || !!modelFetchError}
+                      >
+                        {fetchingModels ? (
+                          <span className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            正在获取模型列表...
+                          </span>
+                        ) : modelFetchError ? (
+                          <span className="text-muted-foreground text-sm">手动填写</span>
+                        ) : editingModel?.model_identifier ? (
+                          <span className="truncate">{editingModel.model_identifier}</span>
+                        ) : (
+                          <span className="text-muted-foreground">搜索或选择模型...</span>
+                        )}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0" align="start" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+                      <Command>
+                        <CommandInput placeholder="搜索模型..." />
+                        <CommandList className="max-h-[300px]">
                           <CommandEmpty>
                             {modelFetchError ? (
                               <div className="py-4 px-2 text-center space-y-2">
@@ -1209,6 +1837,7 @@ function ModelConfigPageContent() {
                               <CommandItem
                                 key={model.id}
                                 value={model.id}
+                                className="pr-8"
                                 onSelect={() => {
                                   setEditingModel((prev) =>
                                     prev ? { ...prev, model_identifier: model.id } : null
@@ -1216,38 +1845,24 @@ function ModelConfigPageContent() {
                                   setModelComboboxOpen(false)
                                 }}
                               >
-                                <Check
-                                  className={`mr-2 h-4 w-4 ${
-                                    editingModel?.model_identifier === model.id ? 'opacity-100' : 'opacity-0'
-                                  }`}
-                                />
-                                <div className="flex flex-col">
-                                  <span>{model.id}</span>
+                                {editingModel?.model_identifier === model.id && (
+                                  <Check className="absolute right-2 h-4 w-4" />
+                                )}
+                                <div className="flex min-w-0 flex-col">
+                                  <span className="truncate">{model.id}</span>
                                   {model.name !== model.id && (
-                                    <span className="text-xs text-muted-foreground">{model.name}</span>
+                                    <span className="truncate text-xs text-muted-foreground">{model.name}</span>
                                   )}
                                 </div>
                               </CommandItem>
                             ))}
                           </CommandGroup>
-                          <CommandGroup heading="手动输入">
-                            <CommandItem
-                              value="__manual_input__"
-                              onSelect={() => {
-                                setModelComboboxOpen(false)
-                                // 聚焦到手动输入框（如果需要的话可以实现）
-                              }}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              手动输入模型标识符...
-                            </CommandItem>
-                          </CommandGroup>
                         </CommandList>
-                      </ScrollArea>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              ) : (
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+
                 <Input
                   id="model_identifier"
                   value={editingModel?.model_identifier || ''}
@@ -1259,10 +1874,10 @@ function ModelConfigPageContent() {
                       setFormErrors((prev) => ({ ...prev, model_identifier: undefined }))
                     }
                   }}
-                  placeholder="Qwen/Qwen3-30B-A3B-Instruct-2507"
-                  className={formErrors.model_identifier ? 'border-destructive focus-visible:ring-destructive' : ''}
+                  placeholder={matchedTemplate?.modelFetcher ? '手动输入模型标识符' : 'Qwen/Qwen3-30B-A3B-Instruct-2507'}
+                  className={`${matchedTemplate?.modelFetcher ? 'sm:flex-1' : 'w-full'} ${formErrors.model_identifier ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-              )}
+              </div>
               
               {/* 表单验证错误提示 */}
               {formErrors.model_identifier && (
@@ -1279,27 +1894,10 @@ function ModelConfigPageContent() {
                 </Alert>
               )}
               
-              {/* 手动输入区域 - 当使用 Combobox 时也显示一个可编辑的输入框 */}
-              {matchedTemplate?.modelFetcher && (
-                <Input
-                  value={editingModel?.model_identifier || ''}
-                  onChange={(e) => {
-                    setEditingModel((prev) =>
-                      prev ? { ...prev, model_identifier: e.target.value } : null
-                    )
-                    if (formErrors.model_identifier) {
-                      setFormErrors((prev) => ({ ...prev, model_identifier: undefined }))
-                    }
-                  }}
-                  placeholder="或手动输入模型标识符"
-                  className={`mt-2 ${formErrors.model_identifier ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                />
-              )}
-              
               {!formErrors.model_identifier && (
                 <p className="text-xs text-muted-foreground">
                   {modelFetchError 
-                    ? '请手动输入模型标识符，或前往"模型提供商配置"检查 API Key'
+                    ? '请手动输入模型标识符，或前往"模型厂商设置"检查 API Key'
                     : matchedTemplate?.modelFetcher 
                       ? `已识别为 ${matchedTemplate.display_name}，支持自动获取模型列表` 
                       : 'API 提供商提供的模型 ID'}
@@ -1307,7 +1905,39 @@ function ModelConfigPageContent() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-6">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="model_visual"
+                  checked={editingModel?.visual || false}
+                  onCheckedChange={(checked) =>
+                    setEditingModel((prev) =>
+                      prev ? { ...prev, visual: checked } : null
+                    )
+                  }
+                />
+                <Label htmlFor="model_visual" className="cursor-pointer">
+                  启用视觉
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="model_cache"
+                  checked={editingModel?.cache || false}
+                  onCheckedChange={(checked) =>
+                    setEditingModel((prev) =>
+                      prev ? { ...prev, cache: checked } : null
+                    )
+                  }
+                />
+                <Label htmlFor="model_cache" className="cursor-pointer">
+                  支持缓存
+                </Label>
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-1 gap-3 sm:gap-4 ${editingModel?.cache ? 'md:grid-cols-3' : 'sm:grid-cols-2'}`}>
               <div className="grid gap-2">
                 <Label htmlFor="price_in">输入价格 (¥/M token)</Label>
                 <Input
@@ -1347,54 +1977,54 @@ function ModelConfigPageContent() {
                   placeholder="默认: 0"
                 />
               </div>
+
+              {editingModel?.cache && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cache_price_in">缓存价格 (¥/M token)</Label>
+                  <Input
+                    id="cache_price_in"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={editingModel?.cache_price_in ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? null : parseFloat(e.target.value)
+                      setEditingModel((prev) =>
+                        prev
+                          ? { ...prev, cache_price_in: val }
+                          : null
+                      )
+                    }}
+                    placeholder="默认: 0"
+                  />
+                </div>
+              )}
             </div>
 
             {advancedModelSettingsVisible && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10 sm:space-y-4 sm:p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <Label htmlFor="model_cache" className="cursor-pointer">支持缓存计费</Label>
+                    <Label htmlFor="force_stream_mode" className="cursor-pointer">强制流式输出模式</Label>
                     <p className="text-xs text-muted-foreground">
-                      开启后，命中缓存的输入 token 会按缓存输入价格统计
+                      用于必须通过流式响应返回内容的模型
                     </p>
                   </div>
                   <Switch
-                    id="model_cache"
-                    checked={editingModel?.cache || false}
+                    id="force_stream_mode"
+                    checked={editingModel?.force_stream_mode || false}
                     onCheckedChange={(checked) =>
                       setEditingModel((prev) =>
-                        prev ? { ...prev, cache: checked } : null
+                        prev ? { ...prev, force_stream_mode: checked } : null
                       )
                     }
                   />
                 </div>
-
-                {editingModel?.cache && (
-                  <div className="grid gap-2 border-t pt-4">
-                    <Label htmlFor="cache_price_in">缓存输入价格 (¥/M token)</Label>
-                    <Input
-                      id="cache_price_in"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={editingModel?.cache_price_in ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value === '' ? null : parseFloat(e.target.value)
-                        setEditingModel((prev) =>
-                          prev
-                            ? { ...prev, cache_price_in: val }
-                            : null
-                        )
-                      }}
-                      placeholder="默认: 0"
-                    />
-                  </div>
-                )}
               </div>
             )}
 
             {/* 模型级别温度 */}
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-2 rounded-lg border p-3 sm:space-y-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5">
@@ -1425,7 +2055,7 @@ function ModelConfigPageContent() {
                   checked={editingModel?.temperature != null}
                   onCheckedChange={(checked) => {
                     if (checked) {
-                      setEditingModel((prev) => prev ? { ...prev, temperature: 0.5 } : null)
+                      setEditingModel((prev) => prev ? { ...prev, temperature: 0.7 } : null)
                     } else {
                       setEditingModel((prev) => prev ? { ...prev, temperature: null } : null)
                     }
@@ -1437,43 +2067,28 @@ function ModelConfigPageContent() {
                 <div className="space-y-3 pt-2 border-t">
                   <div className="flex items-center justify-between gap-3">
                     <Label className="text-sm">温度值</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        value={editingModel.temperature}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value)
-                          if (!isNaN(value) && value >= 0 && value <= 2) {
-                            setEditingModel((prev) => prev ? { ...prev, temperature: value } : null)
-                          }
-                        }}
-                        onBlur={(e) => {
-                          const value = parseFloat(e.target.value)
-                          if (isNaN(value) || value < 0) {
-                            setEditingModel((prev) => prev ? { ...prev, temperature: 0 } : null)
-                          } else if (value > 2) {
-                            setEditingModel((prev) => prev ? { ...prev, temperature: 2 } : null)
-                          }
-                        }}
-                        step={0.01}
-                        min={0}
-                        max={2}
-                        className="w-20 h-8 text-sm text-right tabular-nums"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAdvancedTemperatureMode(!advancedTemperatureMode)}
-                        className="h-8 px-2"
-                        title={advancedTemperatureMode ? "切换到基础模式 (0-1)" : "解锁高级范围 (0-2)"}
-                      >
-                        {advancedTemperatureMode ? (
-                          <Unlock className="h-4 w-4" />
-                        ) : (
-                          <Lock className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
+                    <Input
+                      type="number"
+                      value={editingModel.temperature}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value)
+                        if (!isNaN(value) && value >= 0 && value <= 2) {
+                          setEditingModel((prev) => prev ? { ...prev, temperature: value } : null)
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const value = parseFloat(e.target.value)
+                        if (isNaN(value) || value < 0) {
+                          setEditingModel((prev) => prev ? { ...prev, temperature: 0 } : null)
+                        } else if (value > 2) {
+                          setEditingModel((prev) => prev ? { ...prev, temperature: 2 } : null)
+                        }
+                      }}
+                      step={0.01}
+                      min={0}
+                      max={2}
+                      className="w-20 h-8 text-sm text-right tabular-nums"
+                    />
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-muted-foreground tabular-nums">0</span>
@@ -1485,32 +2100,29 @@ function ModelConfigPageContent() {
                         )
                       }
                       min={0}
-                      max={advancedTemperatureMode ? 2 : 1}
-                      step={advancedTemperatureMode ? 0.05 : 0.1}
+                      max={2}
+                      step={0.05}
                       className="flex-1"
                     />
-                    <span className="text-xs text-muted-foreground tabular-nums">{advancedTemperatureMode ? '2' : '1'}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">2</span>
                   </div>
-                  {advancedTemperatureMode && (
+                  {editingModel.temperature > 1 && (
                     <Alert className="bg-amber-500/10 border-amber-500/20 [&>svg+div]:translate-y-0">
                       <AlertTriangle className="h-4 w-4 text-amber-500" />
                       <AlertDescription className="text-xs text-amber-600 dark:text-amber-400">
-                        高级模式：温度 &gt; 1 会产生更随机、更不可预测的输出，请谨慎使用
+                        温度 &gt; 1 会产生更随机、更不可预测的输出，请谨慎使用
                       </AlertDescription>
                     </Alert>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {advancedTemperatureMode 
-                      ? "较低（0.1-0.5）产生确定输出，中等（0.5-1.0）平衡创造性，较高（1.0-2.0）产生极度随机输出"
-                      : "较低的温度（0.1-0.3）产生更确定的输出，较高的温度（0.7-1.0）产生更多样化的输出"
-                    }
+                    较低（0.1-0.5）产生确定输出，中等（0.5-1.0）平衡创造性，较高（1.0-2.0）产生极度随机输出
                   </p>
                 </div>
               )}
             </div>
 
             {/* 模型级别最大 Token */}
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-2 rounded-lg border p-3 sm:space-y-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5">
@@ -1575,36 +2187,6 @@ function ModelConfigPageContent() {
               )}
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="model_visual"
-                checked={editingModel?.visual || false}
-                onCheckedChange={(checked) =>
-                  setEditingModel((prev) =>
-                    prev ? { ...prev, visual: checked } : null
-                  )
-                }
-              />
-              <Label htmlFor="model_visual" className="cursor-pointer">
-                启用视觉
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="force_stream_mode"
-                checked={editingModel?.force_stream_mode || false}
-                onCheckedChange={(checked) =>
-                  setEditingModel((prev) =>
-                    prev ? { ...prev, force_stream_mode: checked } : null
-                  )
-                }
-              />
-              <Label htmlFor="force_stream_mode" className="cursor-pointer">
-                强制流式输出模式
-              </Label>
-            </div>
-
             {/* 额外参数 */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">额外参数</Label>
@@ -1644,11 +2226,23 @@ function ModelConfigPageContent() {
           </div>
           </DialogBody>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} data-tour="model-cancel-button">
+          <DialogFooter className="flex-row justify-end gap-2 space-x-0">
+            <Button
+              variant="outline"
+              className="flex-1 sm:flex-none"
+              onClick={() => setEditDialogOpen(false)}
+              data-tour="model-cancel-button"
+            >
               取消
             </Button>
-            <Button data-dialog-action="confirm" onClick={handleSaveEdit} data-tour="model-save-button">保存</Button>
+            <Button
+              data-dialog-action="confirm"
+              className="flex-1 sm:flex-none"
+              onClick={handleSaveEdit}
+              data-tour="model-save-button"
+            >
+              保存
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

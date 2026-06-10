@@ -1,8 +1,10 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Edit, Eye, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { ThinkingIllustration } from '@/components/ui/thinking-illustration'
 import {
   Table,
   TableBody,
@@ -26,6 +28,7 @@ export function ExpressionList({
   pageSize,
   selectedIds,
   chatNameMap,
+  hideChatColumn = false,
   onEdit,
   onViewDetail,
   onDelete,
@@ -41,6 +44,7 @@ export function ExpressionList({
   pageSize: number
   selectedIds: Set<number>
   chatNameMap: Map<string, string>
+  hideChatColumn?: boolean
   onEdit: (expression: Expression) => void
   onViewDetail: (expression: Expression) => void
   onDelete: (expression: Expression) => void
@@ -55,7 +59,24 @@ export function ExpressionList({
     return expression.chat_name || chatNameMap.get(expression.chat_id) || expression.chat_id
   }
 
+  const getReviewBadge = (expression: Expression) => {
+    const modifier = expression.modified_by?.toLowerCase()
+
+    if (!expression.checked) {
+      if (modifier === 'ai') {
+        return <Badge variant="secondary" className="whitespace-nowrap">AI预检通过</Badge>
+      }
+      return <Badge variant="outline" className="whitespace-nowrap text-muted-foreground">未审核</Badge>
+    }
+
+    if (modifier === 'user') {
+      return <Badge className="whitespace-nowrap bg-green-600 hover:bg-green-600">人工通过</Badge>
+    }
+    return <Badge className="whitespace-nowrap bg-green-600 hover:bg-green-600">已通过</Badge>
+  }
+
   const totalPages = Math.ceil(total / pageSize)
+  const tableColSpan = hideChatColumn ? 5 : 6
 
   const handleJumpToPage = (jumpToPage: string) => {
     const targetPage = parseInt(jumpToPage)
@@ -85,20 +106,21 @@ export function ExpressionList({
               </TableHead>
               <TableHead>情境</TableHead>
               <TableHead>风格</TableHead>
-              <TableHead>聊天</TableHead>
+              {!hideChatColumn && <TableHead>聊天</TableHead>}
+              <TableHead>审核</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  加载中...
+                <TableCell colSpan={tableColSpan} className="text-center py-8 text-muted-foreground">
+                  <ThinkingIllustration size="sm" className="mx-auto" />
                 </TableCell>
               </TableRow>
             ) : expressions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={tableColSpan} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -115,14 +137,21 @@ export function ExpressionList({
                     {expression.situation}
                   </TableCell>
                   <TableCell className="max-w-xs truncate">{expression.style}</TableCell>
-                  <TableCell 
-                    className="max-w-[200px] truncate" 
-                    title={getChatName(expression)}
-                    style={{ wordBreak: 'keep-all' }}
-                  >
-                    <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
-                      {getChatName(expression)}
-                    </span>
+                  {!hideChatColumn && (
+                    <TableCell
+                      className="max-w-[200px] truncate"
+                      title={getChatName(expression)}
+                      style={{ wordBreak: 'keep-all' }}
+                    >
+                      <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
+                        {getChatName(expression)}
+                      </span>
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {getReviewBadge(expression)}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -161,10 +190,10 @@ export function ExpressionList({
       </div>
 
       {/* 移动端卡片视图 */}
-      <div className="md:hidden space-y-3 p-4">
+      <div className="space-y-4 p-4 md:hidden">
         {loading ? (
           <div className="text-center py-8 text-muted-foreground">
-            加载中...
+            <ThinkingIllustration size="sm" className="mx-auto" />
           </div>
         ) : expressions.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
@@ -172,7 +201,7 @@ export function ExpressionList({
           </div>
         ) : (
           expressions.map((expression) => (
-            <div key={expression.id} className="rounded-lg border bg-card p-4 space-y-3 overflow-hidden">
+            <div key={expression.id} className="space-y-4 overflow-hidden rounded-lg border bg-card p-4">
               {/* 复选框和情境 */}
               <div className="flex items-start gap-3">
                 <Checkbox
@@ -180,16 +209,16 @@ export function ExpressionList({
                   onCheckedChange={() => onToggleSelect(expression.id)}
                   className="mt-1"
                 />
-                <div className="min-w-0 flex-1 overflow-hidden space-y-2">
+                <div className="min-w-0 flex-1 space-y-3 overflow-hidden">
                   <div>
                     <div className="text-xs text-muted-foreground mb-1">情境</div>
-                    <h3 className="font-semibold text-sm line-clamp-2 w-full break-all" title={expression.situation}>
+                    <h3 className="line-clamp-3 w-full break-all text-sm font-semibold leading-relaxed" title={expression.situation}>
                       {expression.situation}
                     </h3>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground mb-1">风格</div>
-                    <p className="text-sm line-clamp-2 w-full break-all" title={expression.style}>
+                    <p className="line-clamp-3 w-full break-all text-sm leading-relaxed" title={expression.style}>
                       {expression.style}
                     </p>
                   </div>
@@ -197,24 +226,33 @@ export function ExpressionList({
               </div>
 
               {/* 聊天名称 */}
+              {!hideChatColumn && (
               <div className="text-sm">
                 <div className="text-xs text-muted-foreground mb-1">聊天</div>
                 <p 
-                  className="text-sm truncate" 
+                  className="truncate text-sm leading-relaxed"
                   title={getChatName(expression)}
                   style={{ wordBreak: 'keep-all' }}
                 >
                   {getChatName(expression)}
                 </p>
               </div>
+              )}
+
+              <div className="text-sm">
+                <div className="text-xs text-muted-foreground mb-1">审核</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {getReviewBadge(expression)}
+                </div>
+              </div>
 
               {/* 操作按钮 */}
-              <div className="flex flex-wrap gap-1 pt-2 border-t overflow-hidden">
+              <div className="grid grid-cols-3 gap-2 overflow-hidden border-t pt-3">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => onEdit(expression)}
-                  className="text-xs px-2 py-1 h-auto flex-shrink-0"
+                  className="h-9 justify-center px-2 text-xs"
                 >
                   <Edit className="h-3 w-3 mr-1" />
                   编辑
@@ -223,15 +261,16 @@ export function ExpressionList({
                   variant="outline"
                   size="sm"
                   onClick={() => onViewDetail(expression)}
-                  className="text-xs px-2 py-1 h-auto flex-shrink-0"
+                  className="h-9 justify-center px-2 text-xs"
                 >
-                  <Eye className="h-3 w-3" />
+                  <Eye className="mr-1 h-3 w-3" />
+                  详情
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => onDelete(expression)}
-                  className="text-xs px-2 py-1 h-auto flex-shrink-0 text-destructive hover:text-destructive"
+                  className="h-9 justify-center px-2 text-xs text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-3 w-3 mr-1" />
                   删除
@@ -283,11 +322,11 @@ function Pagination({
   }
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t">
+    <div className="flex flex-col items-center justify-between gap-4 border-t px-4 py-4 sm:flex-row sm:py-3">
       <div className="text-sm text-muted-foreground">
         共 {total} 条记录，第 {page} / {totalPages} 页
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:flex-nowrap">
         {/* 首页 */}
         <Button
           variant="outline"
@@ -318,7 +357,7 @@ function Pagination({
             onChange={(e) => setJumpToPage(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleJump()}
             placeholder={page.toString()}
-            className="w-16 h-8 text-center"
+            className="h-9 w-16 text-center sm:h-8"
             min={1}
             max={totalPages}
           />
@@ -327,7 +366,7 @@ function Pagination({
             size="sm"
             onClick={handleJump}
             disabled={!jumpToPage}
-            className="h-8"
+            className="h-9 sm:h-8"
           >
             跳转
           </Button>

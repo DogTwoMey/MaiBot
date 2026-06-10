@@ -497,6 +497,7 @@ class PluginRunner:
             method: str,
             plugin_id: str = "",
             payload: Optional[Dict[str, Any]] = None,
+            timeout_ms: Optional[int] = None,
         ) -> Any:
             """桥接 PluginContext 的原始 RPC 调用到 Host。
 
@@ -516,19 +517,78 @@ class PluginRunner:
                 raise PermissionError(
                     f"插件 {bound_plugin_id} 不允许直接调用 Host 原始 RPC 方法: {normalized_method or '<empty>'}"
                 )
+            request_payload = dict(payload or {})
+            if timeout_ms is None and normalized_method == "cap.call":
+                capability_name = str(request_payload.get("capability") or "").strip()
+                cap_args = request_payload.get("args")
+                if isinstance(cap_args, dict):
+                    if "rpc_timeout_ms" in cap_args:
+                        timeout_ms = cap_args.pop("rpc_timeout_ms")
+                    elif "_timeout_ms" in cap_args:
+                        timeout_ms = cap_args.pop("_timeout_ms")
+                    # 旧版 render.html2png 使用 timeout_ms 表示渲染业务超时，不能按 RPC 超时移除。
+                    elif capability_name != "render.html2png" and "timeout_ms" in cap_args:
+                        timeout_ms = cap_args.pop("timeout_ms")
+
+            request_timeout_ms = 120_000
+            if timeout_ms is not None:
+                try:
+                    request_timeout_ms = int(timeout_ms)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"RPC timeout_ms 无效: {timeout_ms}") from exc
+                if request_timeout_ms <= 0:
+                    raise ValueError(f"RPC timeout_ms 必须大于 0: {timeout_ms}")
+
             resp = await rpc_client.send_request(
                 method=normalized_method,
                 plugin_id=bound_plugin_id,
-                payload=payload or {},
-                timeout_ms=120_000,
+                payload=request_payload,
+                timeout_ms=request_timeout_ms,
             )
             if resp.error:
                 raise RuntimeError(resp.error.get("message", "能力调用失败"))
+            if normalized_method == "cap.call" and isinstance(resp.payload, dict) and "result" in resp.payload:
+                return resp.payload.get("result")
             return resp.payload
 
         ctx = PluginContext(plugin_id=plugin_id, rpc_call=_rpc_call)
+        self._ensure_context_llm_embed(ctx)
         cast(_ContextAwarePlugin, instance)._set_context(ctx)
         logger.debug(f"已为插件 {plugin_id} 注入 PluginContext")
+
+    @staticmethod
+    def _ensure_context_llm_embed(ctx: Any) -> None:
+        """为旧版 SDK 的 LLM 代理补齐 embed 便捷方法。"""
+
+        llm_proxy = getattr(ctx, "llm", None)
+        if llm_proxy is None or hasattr(llm_proxy, "embed"):
+            return
+
+        async def _embed(
+            text: str | None = None,
+            texts: List[str] | None = None,
+            task_name: str = "",
+            model: str = "",
+            model_name: str = "",
+            max_concurrent: int | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            payload: Dict[str, Any] = dict(kwargs)
+            if text is not None:
+                payload["text"] = text
+            if texts is not None:
+                payload["texts"] = texts
+            if task_name:
+                payload["task_name"] = task_name
+            if model:
+                payload["model"] = model
+            if model_name:
+                payload["model_name"] = model_name
+            if max_concurrent is not None:
+                payload["max_concurrent"] = max_concurrent
+            return await ctx.call_capability("llm.embed", **payload)
+
+        llm_proxy.embed = _embed
 
     def _apply_plugin_config(self, meta: PluginMeta, config_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """在 Runner 侧为插件实例注入当前插件配置。

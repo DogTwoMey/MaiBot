@@ -1,7 +1,10 @@
+import { useBlocker } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DraftNumberInput } from '@/components/ui/draft-number-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -66,7 +69,10 @@ import {
   type PluginConfigSchema,
   type ConfigFieldSchema,
   type ConfigSectionSchema,
+  type ItemFieldDefinition,
 } from '@/lib/plugin-api'
+import { PluginIcon } from './plugins/PluginIcon'
+import { getPluginTypeLabel } from './plugins/types'
 
 // 字段渲染组件
 interface FieldRendererProps {
@@ -76,7 +82,77 @@ interface FieldRendererProps {
   sectionName: string
 }
 
-function getNestedRecord(config: Record<string, unknown>, path: string): Record<string, unknown> | undefined {
+function getLocaleCandidates(language: string): string[] {
+  const normalized = (language || 'zh').replace('-', '_')
+  const base = normalized.split('_')[0]
+  const candidates = [language, normalized, base]
+
+  if (base === 'zh') candidates.push('zh_CN', 'zh-CN')
+  if (base === 'en') candidates.push('en_US', 'en-US')
+  if (base === 'ja') candidates.push('ja_JP', 'ja-JP')
+  if (base === 'ko') candidates.push('ko_KR', 'ko-KR')
+
+  candidates.push('zh_CN', 'zh-CN', 'zh')
+  return Array.from(new Set(candidates.filter(Boolean)))
+}
+
+function resolveLocalizedText(
+  value: unknown,
+  language: string,
+  fallback = '',
+  i18n?: Record<string, Record<string, string>>,
+  key?: string,
+): string {
+  const candidates = getLocaleCandidates(language)
+
+  if (i18n && key) {
+    for (const locale of candidates) {
+      const localized = i18n[locale]?.[key]
+      if (typeof localized === 'string' && localized.trim()) {
+        return localized
+      }
+    }
+  }
+
+  if (typeof value === 'string') {
+    return value || fallback
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const localizedMap = value as Record<string, unknown>
+    for (const locale of candidates) {
+      const localized = localizedMap[locale]
+      if (typeof localized === 'string' && localized.trim()) {
+        return localized
+      }
+    }
+  }
+
+  return fallback
+}
+
+function localizeItemFields(
+  itemFields: Record<string, ItemFieldDefinition> | undefined,
+  language: string,
+): Record<string, ItemFieldDefinition> | undefined {
+  if (!itemFields) return undefined
+
+  return Object.fromEntries(
+    Object.entries(itemFields).map(([fieldName, field]) => [
+      fieldName,
+      {
+        ...field,
+        label: resolveLocalizedText(field.label, language, fieldName, field.i18n, 'label'),
+        placeholder: resolveLocalizedText(field.placeholder, language, '', field.i18n, 'placeholder') || undefined,
+      },
+    ])
+  )
+}
+
+function getNestedRecord(config: Record<string, unknown>, path?: string): Record<string, unknown> | undefined {
+  if (!path) {
+    return undefined
+  }
   const parts = path.split('.').filter(Boolean)
   let current: unknown = config
 
@@ -125,6 +201,12 @@ function setNestedField(
 
 function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
   const [showPassword, setShowPassword] = useState(false)
+  const { i18n } = useTranslation()
+  const language = i18n.resolvedLanguage || i18n.language || 'zh'
+  const label = resolveLocalizedText(field.label, language, field.name, field.i18n, 'label')
+  const hint = resolveLocalizedText(field.hint, language, '', field.i18n, 'hint')
+  const placeholder = resolveLocalizedText(field.placeholder, language, '', field.i18n, 'placeholder')
+  const localizedItemFields = localizeItemFields(field.item_fields, language)
 
   // 根据 ui_type 渲染不同的控件
   switch (field.ui_type) {
@@ -132,9 +214,9 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
       return (
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label>{field.label}</Label>
-            {field.hint && (
-              <p className="text-xs text-muted-foreground">{field.hint}</p>
+            <Label>{label}</Label>
+            {hint && (
+              <p className="text-xs text-muted-foreground">{hint}</p>
             )}
           </div>
           <Switch
@@ -148,19 +230,19 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     case 'number':
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
-          <Input
-            type="number"
-            value={value as number ?? field.default}
-            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          <Label>{label}</Label>
+          <DraftNumberInput
+            value={value}
+            defaultValue={field.default}
+            onValueChange={onChange}
             min={field.min}
             max={field.max}
             step={field.step ?? 1}
-            placeholder={field.placeholder}
+            placeholder={placeholder}
             disabled={field.disabled}
           />
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -169,7 +251,7 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label>{field.label}</Label>
+            <Label>{label}</Label>
             <span className="text-sm text-muted-foreground">
               {value as number ?? field.default}
             </span>
@@ -182,8 +264,8 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
             step={field.step ?? 1}
             disabled={field.disabled}
           />
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -191,14 +273,14 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     case 'select':
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
+          <Label>{label}</Label>
           <Select
             value={String(value ?? field.default)}
             onValueChange={onChange}
             disabled={field.disabled}
           >
             <SelectTrigger>
-              <SelectValue placeholder={field.placeholder ?? '请选择'} />
+              <SelectValue placeholder={placeholder || '请选择'} />
             </SelectTrigger>
             <SelectContent>
               {field.choices?.map((choice) => (
@@ -208,8 +290,8 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
               ))}
             </SelectContent>
           </Select>
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -217,16 +299,16 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     case 'textarea':
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
+          <Label>{label}</Label>
           <Textarea
             value={value as string ?? field.default}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder}
+            placeholder={placeholder}
             rows={field.rows ?? 3}
             disabled={field.disabled}
           />
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -234,13 +316,13 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     case 'password':
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
+          <Label>{label}</Label>
           <div className="relative">
             <Input
               type={showPassword ? 'text' : 'password'}
               value={value as string ?? ''}
               onChange={(e) => onChange(e.target.value)}
-              placeholder={field.placeholder}
+              placeholder={placeholder}
               disabled={field.disabled}
               className="pr-10"
             />
@@ -258,8 +340,8 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
               )}
             </Button>
           </div>
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -267,19 +349,19 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     case 'list':
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
+          <Label>{label}</Label>
           <ListFieldEditor
             value={Array.isArray(value) ? value : (Array.isArray(field.default) ? field.default : [])}
             onChange={(newValue) => onChange(newValue)}
             itemType={field.item_type ?? 'string'}
-            itemFields={field.item_fields}
+            itemFields={localizedItemFields}
             minItems={field.min_items}
             maxItems={field.max_items}
             disabled={field.disabled}
-            placeholder={field.placeholder}
+            placeholder={placeholder}
           />
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -288,17 +370,17 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
     default:
       return (
         <div className="space-y-2">
-          <Label>{field.label}</Label>
+          <Label>{label}</Label>
           <Input
             type="text"
             value={value as string ?? field.default ?? ''}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder}
+            placeholder={placeholder}
             maxLength={field.max_length}
             disabled={field.disabled}
           />
-          {field.hint && (
-            <p className="text-xs text-muted-foreground">{field.hint}</p>
+          {hint && (
+            <p className="text-xs text-muted-foreground">{hint}</p>
           )}
         </div>
       )
@@ -307,19 +389,25 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
 
 // Section 渲染组件
 interface SectionRendererProps {
+  sectionName: string
   section: ConfigSectionSchema
   config: Record<string, unknown>
   onChange: (sectionName: string, fieldName: string, value: unknown) => void
 }
 
-function SectionRenderer({ section, config, onChange }: SectionRendererProps) {
+function SectionRenderer({ sectionName, section, config, onChange }: SectionRendererProps) {
   const [isOpen, setIsOpen] = useState(!section.collapsed)
-  const sectionConfig = getNestedRecord(config, section.name)
+  const { i18n } = useTranslation()
+  const language = i18n.resolvedLanguage || i18n.language || 'zh'
+  const resolvedSectionName = section.name || sectionName
+  const sectionConfig = getNestedRecord(config, resolvedSectionName)
+  const title = resolveLocalizedText(section.title, language, sectionName, section.i18n, 'title')
+  const description = resolveLocalizedText(section.description, language, '', section.i18n, 'description')
   
   // 按 order 排序字段
   const sortedFields = Object.entries(section.fields)
     .filter(([, field]) => !field.hidden)
-    .sort(([, a], [, b]) => a.order - b.order)
+    .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -333,15 +421,15 @@ function SectionRenderer({ section, config, onChange }: SectionRendererProps) {
                 ) : (
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 )}
-                <CardTitle className="text-lg">{section.title}</CardTitle>
+                <CardTitle className="text-lg">{title}</CardTitle>
               </div>
               <Badge variant="secondary" className="text-xs">
                 {sortedFields.length} 项
               </Badge>
             </div>
-            {section.description && (
+            {description && (
               <CardDescription className="ml-6">
-                {section.description}
+                {description}
               </CardDescription>
             )}
           </CardHeader>
@@ -353,8 +441,8 @@ function SectionRenderer({ section, config, onChange }: SectionRendererProps) {
                 key={fieldName}
                 field={field}
                 value={sectionConfig?.[fieldName]}
-                onChange={(value) => onChange(section.name, fieldName, value)}
-                sectionName={section.name}
+                onChange={(value) => onChange(resolvedSectionName, fieldName, value)}
+                sectionName={resolvedSectionName}
               />
             ))}
           </CardContent>
@@ -368,13 +456,17 @@ function SectionRenderer({ section, config, onChange }: SectionRendererProps) {
 interface PluginConfigEditorProps {
   plugin: InstalledPlugin
   onBack: () => void
+  initialTab?: string
 }
 
-function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
+function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorProps) {
   const { toast } = useToast()
   const { triggerRestart, isRestarting } = useRestart()
+  const { i18n } = useTranslation()
+  const language = i18n.resolvedLanguage || i18n.language || 'zh'
   const [editMode, setEditMode] = useState<'visual' | 'source'>('visual')
   const [schema, setSchema] = useState<PluginConfigSchema | null>(null)
+  const [activeConfigTab, setActiveConfigTab] = useState<string | undefined>(initialTab)
   const [config, setConfig] = useState<Record<string, unknown>>({})
   const [originalConfig, setOriginalConfig] = useState<Record<string, unknown>>({})
   const [sourceCode, setSourceCode] = useState('')
@@ -384,6 +476,13 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
   const [hasChanges, setHasChanges] = useState(false)
   const [hasTomlError, setHasTomlError] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [internalLeavePromptOpen, setInternalLeavePromptOpen] = useState(false)
+
+  const navigationBlocker = useBlocker({
+    shouldBlockFn: () => hasChanges,
+    enableBeforeUnload: hasChanges,
+    withResolver: true,
+  })
 
   // 加载配置
   const loadConfig = useCallback(async () => {
@@ -457,7 +556,7 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
   }
 
   // 保存配置
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true)
     try {
       if (editMode === 'source') {
@@ -472,7 +571,7 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
             variant: 'destructive'
           })
           setSaving(false)
-          return
+          return false
         }
         
         // 格式正确，保存原始配置
@@ -489,15 +588,54 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
         title: '配置已保存',
         description: '更改将在插件重新加载后生效'
       })
+      return true
     } catch (error) {
       toast({
         title: '保存失败',
         description: error instanceof Error ? error.message : '未知错误',
         variant: 'destructive'
       })
+      return false
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleBack = () => {
+    if (!hasChanges) {
+      onBack()
+      return
+    }
+    setInternalLeavePromptOpen(true)
+  }
+
+  const closeLeavePrompt = () => {
+    if (navigationBlocker.status === 'blocked') {
+      navigationBlocker.reset?.()
+    }
+    setInternalLeavePromptOpen(false)
+  }
+
+  const leaveWithoutSaving = () => {
+    if (internalLeavePromptOpen) {
+      setInternalLeavePromptOpen(false)
+      onBack()
+      return
+    }
+    navigationBlocker.proceed?.()
+  }
+
+  const saveAndLeave = async () => {
+    const saved = await handleSave()
+    if (!saved) {
+      return
+    }
+    if (internalLeavePromptOpen) {
+      setInternalLeavePromptOpen(false)
+      onBack()
+      return
+    }
+    navigationBlocker.proceed?.()
   }
 
   // 重置配置
@@ -575,23 +713,40 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
   }
 
   // 按 order 排序 sections
-  const sortedSections = Object.values(schema.sections)
-    .sort((a, b) => a.order - b.order)
+  const sortedSections = Object.entries(schema.sections)
+    .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+  const schemaTabs = schema.layout.type === 'tabs' ? schema.layout.tabs : []
+  const selectedConfigTab = schemaTabs.some((tab) => tab.id === activeConfigTab)
+    ? activeConfigTab
+    : schemaTabs[0]?.id
+
+  const handleConfigTabChange = (nextTab: string) => {
+    setActiveConfigTab(nextTab)
+    const params = new URLSearchParams({ plugin: plugin.id, tab: nextTab })
+    window.history.replaceState(null, '', `/plugin-config?${params.toString()}`)
+  }
 
   // 获取当前启用状态
   const isEnabled = (config.plugin as Record<string, unknown>)?.enabled !== false
+  const pluginName = resolveLocalizedText(
+    schema.plugin_info.name,
+    language,
+    plugin.manifest.name,
+    schema.plugin_info.i18n,
+    'name',
+  )
 
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex items-start gap-3">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={handleBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">
-              {schema.plugin_info.name || plugin.manifest.name}
+            <h1 className="text-2xl sm:text-3xl font-bold" data-plugin-config-title>
+              {pluginName}
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant={isEnabled ? 'default' : 'secondary'}>
@@ -603,7 +758,7 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
             </div>
           </div>
         </div>
-        <div className="flex gap-2 ml-10 sm:ml-0">
+        <div className="ml-10 flex flex-wrap gap-3 sm:ml-0">
           <Button
             variant="outline"
             size="sm"
@@ -707,23 +862,14 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
       {/* 可视化模式 */}
       {editMode === 'visual' && (
       <>
-      {/* 插件未加载提示 */}
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          <strong>提示：</strong>如果插件当前未加载或未启用，WebUI 适配器的高级插件可视化编辑功能可能会不可用。
-          请确保插件已启用并成功加载后，再进行配置编辑。
-        </AlertDescription>
-      </Alert>
-
       {/* 配置区域 */}
-      {schema.layout.type === 'tabs' && schema.layout.tabs.length > 0 ? (
+      {schema.layout.type === 'tabs' && schemaTabs.length > 0 ? (
         // 标签页布局
-        <Tabs defaultValue={schema.layout.tabs[0]?.id}>
+        <Tabs value={selectedConfigTab} onValueChange={handleConfigTabChange}>
           <TabsList>
-            {schema.layout.tabs.map(tab => (
+            {schemaTabs.map(tab => (
               <TabsTrigger key={tab.id} value={tab.id}>
-                {tab.title}
+                {resolveLocalizedText(tab.title, language, tab.id, tab.i18n, 'title')}
                 {tab.badge && (
                   <Badge variant="secondary" className="ml-2 text-xs">
                     {tab.badge}
@@ -732,7 +878,7 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
               </TabsTrigger>
             ))}
           </TabsList>
-          {schema.layout.tabs.map(tab => (
+          {schemaTabs.map(tab => (
             <TabsContent key={tab.id} value={tab.id} className="space-y-4 mt-4">
               {tab.sections.map(sectionName => {
                 const section = schema.sections[sectionName]
@@ -740,6 +886,7 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
                 return (
                   <SectionRenderer
                     key={sectionName}
+                    sectionName={sectionName}
                     section={section}
                     config={config}
                     onChange={handleFieldChange}
@@ -752,9 +899,10 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
       ) : (
         // 自动布局
         <div className="space-y-4">
-          {sortedSections.map(section => (
+          {sortedSections.map(([sectionName, section]) => (
             <SectionRenderer
-              key={section.name}
+              key={sectionName}
+              sectionName={sectionName}
               section={section}
               config={config}
               onChange={handleFieldChange}
@@ -764,6 +912,36 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
       )}
       </>
       )}
+
+      <Dialog
+        open={internalLeavePromptOpen || navigationBlocker.status === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeLeavePrompt()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>有未保存的更改</DialogTitle>
+            <DialogDescription>
+              当前插件配置文件有修改，离开页面前是否保存？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeLeavePrompt} disabled={saving}>
+              取消
+            </Button>
+            <Button variant="outline" onClick={leaveWithoutSaving} disabled={saving}>
+              不保存
+            </Button>
+            <Button onClick={saveAndLeave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              保存并离开
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 重置确认对话框 */}
       <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
@@ -789,6 +967,18 @@ function PluginConfigEditor({ plugin, onBack }: PluginConfigEditorProps) {
 }
 
 // 主页面组件 - 包装 RestartProvider
+function getInitialPluginConfigTarget(): { pluginId: string | null; tabId: string | null } {
+  if (typeof window === 'undefined') {
+    return { pluginId: null, tabId: null }
+  }
+
+  const params = new URLSearchParams(window.location.search)
+  return {
+    pluginId: params.get('plugin'),
+    tabId: params.get('tab'),
+  }
+}
+
 export function PluginConfigPage() {
   return (
     <RestartProvider>
@@ -800,10 +990,28 @@ export function PluginConfigPage() {
 // 内部组件：实际内容
 function PluginConfigPageContent() {
   const { toast } = useToast()
+  const initialTarget = getInitialPluginConfigTarget()
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPlugin, setSelectedPlugin] = useState<InstalledPlugin | null>(null)
+  const [selectedPluginTab, setSelectedPluginTab] = useState<string | undefined>(initialTarget.tabId ?? undefined)
+
+  const openPluginConfig = (plugin: InstalledPlugin, tabId?: string | null) => {
+    setSelectedPlugin(plugin)
+    setSelectedPluginTab(tabId ?? undefined)
+    const params = new URLSearchParams({ plugin: plugin.id })
+    if (tabId) {
+      params.set('tab', tabId)
+    }
+    window.history.replaceState(null, '', `/plugin-config?${params.toString()}`)
+  }
+
+  const closePluginConfig = () => {
+    setSelectedPlugin(null)
+    setSelectedPluginTab(undefined)
+    window.history.replaceState(null, '', '/plugin-config')
+  }
 
   // 加载插件列表
   const loadPlugins = async () => {
@@ -819,6 +1027,12 @@ function PluginConfigPageContent() {
         return
       }
       setPlugins(installedResult.data)
+      if (!selectedPlugin && initialTarget.pluginId) {
+        const targetPlugin = installedResult.data.find((plugin) => plugin.id === initialTarget.pluginId)
+        if (targetPlugin) {
+          openPluginConfig(targetPlugin, initialTarget.tabId)
+        }
+      }
     } catch (error) {
       toast({
         title: '加载插件列表失败',
@@ -879,7 +1093,8 @@ function PluginConfigPageContent() {
           <div className="p-4 sm:p-6">
             <PluginConfigEditor
               plugin={selectedPlugin}
-              onBack={() => setSelectedPlugin(null)}
+              initialTab={selectedPluginTab}
+              onBack={closePluginConfig}
             />
           </div>
         </ScrollArea>
@@ -964,43 +1179,44 @@ function PluginConfigPageContent() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {uniqueFilteredPlugins.map(plugin => {
                   const statusMeta = getPluginStatusMeta(plugin)
                   return (
                   <div
                     key={plugin.id}
-                    className={`flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors ${isPluginDisabled(plugin) ? 'opacity-70' : ''}`}
+                    className={`flex min-h-32 cursor-pointer flex-col justify-between gap-4 rounded-lg border p-5 transition-colors hover:bg-muted/50 sm:min-h-0 sm:flex-row sm:items-center sm:p-4 ${isPluginDisabled(plugin) ? 'opacity-70' : ''}`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedPlugin(plugin)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPlugin(plugin) } }}
+                    onClick={() => openPluginConfig(plugin)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPluginConfig(plugin) } }}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex min-w-0 items-start gap-3 sm:items-center">
                       <span
-                        className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${statusMeta.dotClassName}`}
+                        className={`mt-4 h-2.5 w-2.5 flex-shrink-0 rounded-full sm:mt-0 ${statusMeta.dotClassName}`}
                         title={statusMeta.label}
                         aria-label={statusMeta.label}
                       />
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Package className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium truncate">
+                      <PluginIcon pluginId={plugin.id} manifest={plugin.manifest} installed className="h-12 w-12 sm:h-10 sm:w-10" />
+                      <div className="min-w-0 flex-1 space-y-2 sm:space-y-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <h3 className="min-w-0 break-words text-sm font-medium leading-snug sm:truncate sm:text-base">
                             {plugin.manifest.name}
                           </h3>
                           <Badge variant="secondary" className="text-xs flex-shrink-0">
                             v{plugin.manifest.version}
                           </Badge>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {getPluginTypeLabel(plugin)}
+                          </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">
+                        <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground sm:truncate sm:leading-normal">
                           {plugin.manifest.description || '暂无描述'}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Button variant="ghost" size="sm">
+                    <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t pt-3 sm:border-t-0 sm:pt-0">
+                      <Button variant="ghost" size="sm" className="min-w-24 sm:min-w-0">
                         <Settings className="h-4 w-4" />
                       </Button>
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
