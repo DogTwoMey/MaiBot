@@ -12,6 +12,8 @@
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/launcher.py" />
     <option name="PARAMETERS" value="start" />
     <option name="EMULATE_TERMINAL" value="true" />
-    <method v="2" />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Build Dashboard" run_configuration_type="ShConfigurationType" />
+    </method>
   </configuration>
 </component>
