@@ -399,7 +399,7 @@ rtk uv run python apisource/manage.py --provider deepseek --tier high --apply
 
 终端会打印 `[apply] <slot> 替换剔除: [...]` 告诉你每个功能位丢掉了哪些旧条目，供核对。
 
-可用 tier：`low / mid / high / extreme / free`（aliyun 五档齐全；deepseek 按模板生成）。
+可用 tier：`low / mid / high / ultra / free`（aliyun 五档齐全；deepseek 按模板生成）。
 
 仓库只内置了 `high` 档的 4 个 PyCharm run config（Aliyun / DeepSeek × Apply / DryRun）。需要其他档位时在 PyCharm 里 **Copy Configuration** 改 `Parameters` 里的 `--tier high` 为目标 tier 即可。
 

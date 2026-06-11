@@ -14,7 +14,16 @@ DEFAULT_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "max_retry": 3,
         "timeout": 100,
         "retry_interval": 8,
-    }
+    },
+    {
+        "name": "BaiLian",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_key": "your-api-key",
+        "auth_type": OpenAICompatibleAuthType.BEARER.value,
+        "max_retry": 2,
+        "timeout": 60,
+        "retry_interval": 10,
+    },
 ]
 
 DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
@@ -68,12 +77,23 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "learner": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0},
     "emoji": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0},
-    "vlm": {"model_list": [], "max_tokens": 4096, "hard_timeout": 240.0},
+    "vlm": {
+        "model_list": ["qwen3-vl-flash"],
+        "max_tokens": 4096,
+        "temperature": 0.3,
+        "slow_threshold": 30.0,
+        "hard_timeout": 240.0,
+    },
     "voice": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0},
-    "embedding": {"model_list": [], "max_tokens": 4096, "hard_timeout": 60.0},
+    "embedding": {
+        "model_list": ["text-embedding-v4"],
+        "max_tokens": 4096,
+        "hard_timeout": 60.0,
+    },
 }
 
 DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
+    # --- DeepSeek 对话模型 ---
     {
         "model_identifier": "deepseek-v4-pro",
         "name": "deepseek-v4-pro-think",
@@ -100,6 +120,24 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
         "price_out": 2.0,
         "visual": False,
         "extra_params": {"thinking": {"type": "disabled"}},
+    },
+    # --- 百炼 VLM 模型 ---
+    {
+        "model_identifier": "qwen3-vl-flash",
+        "name": "qwen3-vl-flash",
+        "api_provider": "BaiLian",
+        "price_in": 0.15,
+        "price_out": 1.5,
+        "visual": True,
+    },
+    # --- 百炼 Embedding 模型 ---
+    {
+        "model_identifier": "text-embedding-v4",
+        "name": "text-embedding-v4",
+        "api_provider": "BaiLian",
+        "price_in": 0.5,
+        "price_out": 0.0,
+        "visual": False,
     },
 ]
 

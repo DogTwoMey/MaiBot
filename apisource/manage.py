@@ -3,7 +3,7 @@
 
 通过 ``--provider <name>`` 把请求分派给 ``apisource/<name>/provider.py``。
 目前支持：
-    - aliyun    → 阿里云百炼（分 5 档：low / mid / high / extreme / free）
+    - aliyun    → 阿里云百炼（分 5 档：low / mid / high / ultra / free）
     - deepseek  → DeepSeek 官方（基于模板，配 v4-flash / v4-pro 等）
 
 典型用法::
@@ -101,8 +101,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--tier",
-        choices=("low", "mid", "high", "extreme", "free"),
-        help="档位预设（具体含义 provider 自定义；不传时走 provider 默认）",
+        choices=("low", "mid", "high", "ultra", "free"),
+        help="档位预设（low/mid/high/ultra；不传时走 provider 默认）",
     )
     parser.add_argument(
         "--apply",

@@ -1,9 +1,7 @@
-"""DeepSeek provider 模块。
+"""DZMM (大嘴猫猫) provider 模块。
 
-不同于 aliyun 的 JSON 自动发现，DeepSeek 从 ``models.toml`` 读取显式模板。
-覆盖 MaiBot 的 chat 相关任务槽（replyer / planner / utils）；VLM / Voice /
-Embedding 留空——DeepSeek 官方暂不提供这三类服务，请配合其他 provider（阿里云
-等）使用。
+第三方 OpenAI 兼容 API，提供对话类模型。作为 DeepSeek 的补充/备选，
+可用于 replyer 等对话任务。
 
 入口函数 ``build(args, *, apisource_dir)`` 返回 ProviderBundle。
 """
@@ -27,7 +25,7 @@ from _common import ProviderBundle  # noqa: E402
 # ---------------------------------------------------------------------------
 
 _TEMPLATE = _PROVIDER_DIR / "models.toml"
-_PROVIDER_NAME = "DeepSeek"
+_PROVIDER_NAME = "DZMM"
 
 
 def _is_managed_provider_name(name: str) -> bool:
@@ -38,12 +36,12 @@ def _is_managed_provider_name(name: str) -> bool:
 
 def _load_template() -> Dict[str, Any]:
     if not _TEMPLATE.exists():
-        raise FileNotFoundError(f"DeepSeek 模板缺失: {_TEMPLATE}")
+        raise FileNotFoundError(f"DZMM 模板缺失: {_TEMPLATE}")
     return tomllib.loads(_TEMPLATE.read_text(encoding="utf-8"))
 
 
 def _build_extra_params_table(raw: dict):
-    """递归地把嵌套 dict 转为 tomlkit table，保证序列化正确。"""
+    """递归地把嵌套 dict 转为 tomlkit table。"""
     from tomlkit import table
 
     tbl = table()
@@ -87,7 +85,7 @@ def _build_providers_aot(template: Dict[str, Any], provider_name: str, api_key: 
     arr = aot()
     t = table()
     t["name"] = provider_name
-    t["base_url"] = cfg.get("base_url", "https://api.deepseek.com/v1")
+    t["base_url"] = cfg.get("base_url", "https://www.gpt4novel.com/api/xiaoshuoai/ext/v1")
     t["api_key"] = api_key
     t["client_type"] = cfg.get("client_type", "openai")
     t["auth_type"] = cfg.get("auth_type", "bearer")
@@ -98,7 +96,7 @@ def _build_providers_aot(template: Dict[str, Any], provider_name: str, api_key: 
     t["reasoning_parse_mode"] = cfg.get("reasoning_parse_mode", "auto")
     t["tool_argument_parse_mode"] = cfg.get("tool_argument_parse_mode", "auto")
     t["max_retry"] = int(cfg.get("max_retry", 2))
-    t["timeout"] = int(cfg.get("timeout", 60))
+    t["timeout"] = int(cfg.get("timeout", 120))
     t["retry_interval"] = int(cfg.get("retry_interval", 10))
     t["default_headers"] = table()
     t["default_query"] = table()
@@ -107,71 +105,26 @@ def _build_providers_aot(template: Dict[str, Any], provider_name: str, api_key: 
 
 
 def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[str]]:
-    """DeepSeek 的 tier 任务槽分配规则。
+    """DZMM 的 tier 任务槽分配规则。
 
-    档位语义：
-        low   → 仅 flash（非思考），成本最低
-        mid   → flash-think + flash，有一定推理能力但价格可控
-        high  → pro-nonthink + flash-think，强通用 + 中推理
-        ultra → pro-think + pro-nonthink，全链路高质量
+    DZMM 仅提供 chat 模型，可作为 replyer 的备选。
+    不覆盖 VLM / Voice / Embedding（保留百炼配置）。
 
-    任务槽分配：
-        replyer / planner → 按 tier 分配（planner 更偏重稳定性，略保守）
-        utils             → 始终用 low 档（成本最低）
-        vlm / voice / embedding → 不写入（保留其它 provider 配置）
+    DZMM 模型在所有档位下都作为 replyer 候选（追加到列表末尾）。
     """
 
-    by_tier: Dict[str, List[str]] = {"low": [], "mid": [], "high": [], "ultra": []}
+    chat_models: List[str] = []
     for m in template.get("models", []) or []:
         name = str(m.get("name") or m.get("model_identifier") or "").strip()
-        if not name:
-            continue
-        tier_name = str(m.get("tier", "mid"))
         category = str(m.get("category", "chat"))
-        if category != "chat":
-            continue
-        by_tier.setdefault(tier_name, []).append(name)
+        if name and category == "chat":
+            chat_models.append(name)
 
-    def chain(*levels: str) -> List[str]:
-        out: List[str] = []
-        seen: set[str] = set()
-        for lvl in levels:
-            for n in by_tier.get(lvl, []):
-                if n not in seen:
-                    seen.add(n)
-                    out.append(n)
-        return out
-
-    if tier == "low":
-        replyer = chain("low")
-        planner = chain("low")
-        utils = chain("low")
-    elif tier == "mid":
-        replyer = chain("mid", "low")
-        planner = chain("low", "mid")
-        utils = chain("low")
-    elif tier == "high":
-        replyer = chain("high", "mid")
-        planner = chain("mid", "low")
-        utils = chain("low")
-    elif tier == "ultra":
-        replyer = chain("ultra", "high")
-        planner = chain("high", "mid")
-        utils = chain("low")
-    elif tier == "free":
-        # DeepSeek 没有免费档，把全部塞进去分摊调用
-        replyer = chain("low", "mid", "high", "ultra")
-        planner = chain("low", "mid")
-        utils = chain("low")
-    else:
-        replyer = chain("mid", "high", "low")
-        planner = chain("mid", "low")
-        utils = chain("low")
-
+    # DZMM 在所有档位下都可作为 replyer 候选
     return {
-        "replyer": replyer,
-        "planner": planner,
-        "utils": utils,
+        "replyer": chat_models,
+        "planner": [],
+        "utils": [],
         "vlm": [],
         "voice": [],
         "embedding": [],
@@ -185,7 +138,6 @@ def build(args, *, apisource_dir: Path) -> ProviderBundle:
     provider_cfg = template.get("provider") or {}
     provider_name = str(provider_cfg.get("name") or _PROVIDER_NAME)
 
-    # api_key：优先回填现有 config，再退到 --api-key，最后 placeholder
     existing_keys = _common.extract_existing_api_keys()
     api_key = existing_keys.get(provider_name) or args.api_key or "<API_KEY_PLACEHOLDER>"
 
@@ -195,9 +147,8 @@ def build(args, *, apisource_dir: Path) -> ProviderBundle:
     tier = args.tier or "mid"
     tier_mapping = _build_tier_mapping(template, tier) if args.tier else {}
 
-    # 简要报告
     total_models = len(template.get("models", []) or [])
-    print(f"DeepSeek 模板模型数: {total_models}")
+    print(f"DZMM 模板模型数: {total_models}")
     print(f"provider={provider_name}  base_url={provider_cfg.get('base_url')}")
     if args.tier:
         print(f"tier={tier}  任务槽分配:")

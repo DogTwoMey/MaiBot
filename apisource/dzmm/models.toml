@@ -1,0 +1,42 @@
+# DZMM (大嘴猫猫 / GPT4Novel) 模型模板
+# 由 apisource/manage.py --provider dzmm 读取，合并进 config/model_config.toml
+#
+# DZMM 作为第三方 OpenAI 兼容 API，提供对话类模型能力。
+# 本 provider 可用于 replyer 等对话任务，作为 DeepSeek 的补充/备选。
+#
+# 维护说明：
+#   - model_identifier 取决于 DZMM 服务端提供的模型名称
+#   - 如果 DZMM 更换了模型名，只需修改此文件中的 model_identifier
+
+[provider]
+name = "DZMM"
+base_url = "https://www.gpt4novel.com/api/xiaoshuoai/ext/v1"
+client_type = "openai"
+auth_type = "bearer"
+auth_header_name = "Authorization"
+auth_header_prefix = "Bearer"
+auth_query_name = "api_key"
+model_list_endpoint = "/models"
+reasoning_parse_mode = "auto"
+tool_argument_parse_mode = "auto"
+max_retry = 2
+timeout = 120
+retry_interval = 10
+
+
+# =============================================================================
+# 模型清单
+# =============================================================================
+
+# DZMM 默认对话模型
+[[models]]
+model_identifier = "gummy-realtime-v1"
+name = "dzmm-chat"
+tier = "mid"
+category = "chat"
+temperature = 1.0
+price_in = 0.0
+price_out = 0.0
+force_stream_mode = false
+
+[models.extra_params]

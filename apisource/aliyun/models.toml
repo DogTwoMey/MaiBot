@@ -1,0 +1,137 @@
+# 阿里云百炼精选模型模板
+# 由 apisource/manage.py --provider aliyun 读取，合并进 config/model_config.toml
+#
+# 本模板仅包含 MaiBot 需要通过百炼调用的 **多模态** 类模型：
+#   - VLM（视觉语言模型）
+#   - Voice（语音识别/全模态）
+#   - Embedding（文本向量化）
+#
+# 对话类任务（replyer / planner / utils）使用 DeepSeek，不在此处配置。
+#
+# 维护原则：
+#   1. 仅使用无日期戳的滚动模型名（如 qwen3-vl-plus 而非 qwen3-vl-plus-2025-12-19）
+#   2. 价格以华北2（北京）中国内地首档为准，单位：元/百万 Token
+#   3. 定期对照 https://help.aliyun.com/zh/model-studio/billing 更新价格
+#
+# 上次校准：2026-06-11，基于阿里云百炼官方定价文档
+
+[provider]
+name = "BaiLian"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+client_type = "openai"
+auth_type = "bearer"
+auth_header_name = "Authorization"
+auth_header_prefix = "Bearer"
+auth_query_name = "api_key"
+model_list_endpoint = "/models"
+reasoning_parse_mode = "auto"
+tool_argument_parse_mode = "auto"
+max_retry = 2
+timeout = 60
+retry_interval = 10
+
+
+# =============================================================================
+# VLM 模型（visual = true）
+# =============================================================================
+
+# 千问VL Plus：高质量视觉理解，支持思考/非思考模式
+[[models]]
+model_identifier = "qwen3-vl-plus"
+name = "qwen3-vl-plus"
+tier = "high"
+category = "vlm"
+price_in = 1.0
+price_out = 10.0
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+
+# 千问VL Flash：轻量快速视觉理解
+[[models]]
+model_identifier = "qwen3-vl-flash"
+name = "qwen3-vl-flash"
+tier = "low"
+category = "vlm"
+price_in = 0.15
+price_out = 1.5
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+
+# 千问VL Max：旧版高配视觉模型，性价比好
+[[models]]
+model_identifier = "qwen-vl-max"
+name = "qwen-vl-max"
+tier = "mid"
+category = "vlm"
+price_in = 1.6
+price_out = 4.0
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+
+# 千问VL Plus (旧版)：旧版轻量视觉模型
+[[models]]
+model_identifier = "qwen-vl-plus"
+name = "qwen-vl-plus"
+tier = "low"
+category = "vlm"
+price_in = 0.8
+price_out = 2.0
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+
+
+# =============================================================================
+# Voice 模型（全模态 / 语音识别）
+# =============================================================================
+
+# 千问 Omni Turbo：低成本全模态，支持语音输入
+[[models]]
+model_identifier = "qwen-omni-turbo"
+name = "qwen-omni-turbo"
+tier = "low"
+category = "voice"
+price_in = 0.4
+price_out = 1.6
+visual = false
+temperature = 0.3
+
+[models.extra_params]
+
+# 千问 3.5 Omni Flash：新一代全模态模型
+[[models]]
+model_identifier = "qwen3.5-omni-flash"
+name = "qwen3.5-omni-flash"
+tier = "mid"
+category = "voice"
+price_in = 2.2
+price_out = 13.3
+visual = false
+temperature = 0.3
+
+[models.extra_params]
+
+
+# =============================================================================
+# Embedding 模型
+# =============================================================================
+
+# 通义文本向量化 v4：最新版，高质量
+[[models]]
+model_identifier = "text-embedding-v4"
+name = "text-embedding-v4"
+tier = "all"
+category = "embedding"
+price_in = 0.5
+price_out = 0.0
+visual = false
+temperature = 0.3
+
+[models.extra_params]

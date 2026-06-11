@@ -2,6 +2,14 @@
 # 由 apisource/manage.py --provider deepseek 读取，合并进 config/model_config.toml
 # api_key 通过 --api-key 传入；也可以直接在 config/model_config.toml 里填好，
 # 脚本会在 apply 时自动回填。
+#
+# ⚠ deepseek-chat / deepseek-reasoner 将于 2026/07/24 弃用，已移除。
+# DeepSeek 官方不提供 VLM / Voice / Embedding，这三个槽位不会被本 provider 写入。
+#
+# 维护说明：
+#   - 仅使用无日期戳的滚动模型名。
+#   - 通过 extra_params.thinking 控制思考模式，而非不同 model_identifier。
+#   - 价格单位：元/百万 Token。
 
 [provider]
 name = "DeepSeek"
@@ -19,57 +27,84 @@ timeout = 60
 retry_interval = 10
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # 模型清单
 #
-# tier 字段：
-#   low / mid / high / extreme  —— manage.py 按 tier 向任务槽派发
-#   free                         —— 显式标记免费模型（DeepSeek 默认无免费档）
+# tier 字段供 manage.py --tier 分发到任务槽：
+#   ultra / high / mid / low
 #
-# 注意：DeepSeek 官方目前不提供 VLM / Voice / Embedding，这三个槽位不会被
-# 本 provider 写入（原配置里其它 provider 的条目会被 merge 保留）。
-# -----------------------------------------------------------------------------
+# category = "chat" 表示适用于对话类任务槽（replyer / planner / utils）。
+# =============================================================================
 
-# 旗舰：DeepSeek V4 Pro —— 顶配通用推理 / 复杂任务首选
+# --- DeepSeek V4 Pro：旗舰通用推理 ---
+
+# 思考模式开启：适合需要深度推理的 replyer
 [[models]]
 model_identifier = "deepseek-v4-pro"
-name = "deepseek-v4-pro"
-tier = "extreme"
+name = "deepseek-v4-pro-think"
+tier = "ultra"
 category = "chat"
 temperature = 1.0
-price_in = 2.0
-price_out = 8.0
+price_in = 12.0
+price_out = 24.0
 force_stream_mode = false
 
-# 快线：DeepSeek V4 Flash —— 响应快、便宜，适合 utils / planner 轻任务
+[models.extra_params]
+reasoning_effort = "high"
+
+[models.extra_params.thinking]
+type = "enabled"
+
+
+# 非思考模式：适合不需要推理链的通用对话
+[[models]]
+model_identifier = "deepseek-v4-pro"
+name = "deepseek-v4-pro-nonthink"
+tier = "high"
+category = "chat"
+temperature = 1.0
+price_in = 12.0
+price_out = 24.0
+force_stream_mode = false
+
+[models.extra_params]
+
+[models.extra_params.thinking]
+type = "disabled"
+
+
+# --- DeepSeek V4 Flash：快速低成本 ---
+
+# Flash 思考模式：中档，价格低但有推理能力
+[[models]]
+model_identifier = "deepseek-v4-flash"
+name = "deepseek-v4-flash-think"
+tier = "mid"
+category = "chat"
+temperature = 1.0
+price_in = 1.0
+price_out = 2.0
+force_stream_mode = false
+
+[models.extra_params]
+reasoning_effort = "high"
+
+[models.extra_params.thinking]
+type = "enabled"
+
+
+# Flash 非思考：最低档，响应快、便宜，适合 utils / planner 轻任务
 [[models]]
 model_identifier = "deepseek-v4-flash"
 name = "deepseek-v4-flash"
 tier = "low"
 category = "chat"
 temperature = 1.0
-price_in = 0.5
+price_in = 1.0
 price_out = 2.0
 force_stream_mode = false
 
-# V3 通用 chat（广泛验证过，作为主力候补）
-[[models]]
-model_identifier = "deepseek-chat"
-name = "deepseek-chat"
-tier = "mid"
-category = "chat"
-temperature = 1.0
-price_in = 2.0
-price_out = 8.0
-force_stream_mode = false
+[models.extra_params]
 
-# Reasoner（推理链式输出）—— 适合需要深度推理的 replyer 备选
-[[models]]
-model_identifier = "deepseek-reasoner"
-name = "deepseek-reasoner"
-tier = "high"
-category = "chat"
-temperature = 0.7
-price_in = 4.0
-price_out = 16.0
-force_stream_mode = true  # reasoner 建议走流式以获得增量思考链
+[models.extra_params.thinking]
+type = "disabled"
