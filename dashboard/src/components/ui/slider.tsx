@@ -7,8 +7,8 @@ const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
 >(({ className, value, defaultValue, ...props }, ref) => {
-  const dashboardSliderStyle = props['data-dashboard-slider']
-  const dashboardValueFormat = props['data-dashboard-slider-value-format']
+  const dashboardSliderStyle = (props as Record<string, unknown>)['data-dashboard-slider']
+  const dashboardValueFormat = (props as Record<string, unknown>)['data-dashboard-slider-value-format']
   const displaysThumbValue = dashboardSliderStyle === 'config'
   const currentValues = Array.isArray(value)
     ? value
