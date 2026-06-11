@@ -2,11 +2,16 @@
 # 由 apisource/manage.py --provider dzmm 读取，合并进 config/model_config.toml
 #
 # DZMM 作为第三方 OpenAI 兼容 API，提供对话类模型能力。
-# 本 provider 可用于 replyer 等对话任务，作为 DeepSeek 的补充/备选。
+# 本 provider 仅用于 replyer 任务，作为 DeepSeek 的补充/备选。
 #
 # 维护说明：
-#   - model_identifier 取决于 DZMM 服务端提供的模型名称
+#   - 可通过 GET /models 查看所有可用模型名
 #   - 如果 DZMM 更换了模型名，只需修改此文件中的 model_identifier
+#
+# 可用模型参考（2026-06-11 查询）：
+#   x-apex-surge-0505[-16k]  x-apex-sigma-0417[-10k/-16k]
+#   x-apex-prism-0408[-16k]  x-apex-flux-0217[-10k/-16k]
+#   x-apex-neo[-10k/-16k]    nalang-v17-2  nalang-xl-16k
 
 [provider]
 name = "DZMM"
@@ -28,9 +33,9 @@ retry_interval = 10
 # 模型清单
 # =============================================================================
 
-# DZMM 默认对话模型
+# Apex Neo 16K：稳定的通用对话模型，16K 上下文窗口
 [[models]]
-model_identifier = "gummy-realtime-v1"
+model_identifier = "x-apex-neo-16k"
 name = "dzmm-chat"
 tier = "mid"
 category = "chat"

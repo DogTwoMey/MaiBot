@@ -387,21 +387,40 @@ pnpm -C d:/Toy/MaiBot/external/napcat-src install
 
 [apisource/manage.py](../../apisource/manage.py) 可把预设的 provider + tier 合并进 `config/model_config.toml`。每次 apply 会自动备份当前 config（带时间戳后缀）。
 
-**合并规则**（重要）：
-- `[[api_providers]]` / `[[models]]`：按 provider 归属合并，不覆盖其它 provider（切 DeepSeek 不会删掉已有的 Aliyun `api_key` 和模型清单）
-- `model_task_config` 各功能位（replyer / planner / utils / ...）：**独占替换**。本 provider 覆盖的 slot 会被**完全替换**为本 provider 的模型，绝不与其它 provider 混用 —— 换完 provider 后该功能位只调本次指定的模型，不会偷偷 fallback 到旧的
-- Provider 不涉及的 slot（如 DeepSeek 不管 voice/embedding/vlm）：**原样保留**，换 chat provider 不会误伤已配好的语音/嵌入
+**推荐用法**：使用 `--provider all` 一次性配置所有 provider：
 
 ```powershell
-rtk uv run python apisource/manage.py --provider aliyun   --tier high --apply
-rtk uv run python apisource/manage.py --provider deepseek --tier high --apply
+# 推荐：统一配置到 high 档（DeepSeek + Aliyun + DZMM）
+python apisource/manage.py --provider all --tier high --apply
+
+# 预览改动
+python apisource/manage.py --provider all --tier high --apply --dry-run
+```
+
+**档位说明**（`--provider all`）：
+
+| 档位 | 对话（DeepSeek） | 多模态（Aliyun） | 补充 replyer（DZMM） |
+|------|-----------------|-----------------|---------------------|
+| low | flash | Aliyun low | dzmm-chat |
+| mid | flash-think + flash | Aliyun low | dzmm-chat |
+| high | pro-nonthink + flash-think | Aliyun high | dzmm-chat |
+| ultra | pro-think + pro-nonthink | Aliyun high | dzmm-chat |
+
+多模态档位映射：low/mid 用 Aliyun low（轻量模型），high/ultra 用 Aliyun high（高质量模型）。
+
+**单独配置某个 provider**（高级用法）：
+
+```powershell
+python apisource/manage.py --provider deepseek --tier high --apply
+python apisource/manage.py --provider aliyun   --tier high --apply
+python apisource/manage.py --provider dzmm     --tier high --apply
 ```
 
 终端会打印 `[apply] <slot> 替换剔除: [...]` 告诉你每个功能位丢掉了哪些旧条目，供核对。
 
-可用 tier：`low / mid / high / ultra / free`（aliyun 五档齐全；deepseek 按模板生成）。
+可用 tier：`low / mid / high / ultra`（`free` 仅限单个 provider 使用）。
 
-仓库只内置了 `high` 档的 4 个 PyCharm run config（Aliyun / DeepSeek × Apply / DryRun）。需要其他档位时在 PyCharm 里 **Copy Configuration** 改 `Parameters` 里的 `--tier high` 为目标 tier 即可。
+仓库只内置了 `high` 档的 PyCharm run config。需要其他档位时在 PyCharm 里 **Copy Configuration** 改 `Parameters` 里的 `--tier high` 为目标 tier 即可。
 
 ---
 
