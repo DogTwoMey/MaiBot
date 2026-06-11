@@ -797,7 +797,7 @@ class ManifestValidator:
         """
         return self.parse_manifest(manifest) is not None
 
-    def parse_manifest(self, manifest: Dict[str, Any]) -> Optional[PluginManifest]:
+    def parse_manifest(self, manifest: Dict[str, Any], source: Optional[str] = None) -> Optional[PluginManifest]:
         """解析并校验 manifest 字典。
 
         Args:
@@ -831,12 +831,12 @@ class ManifestValidator:
             parsed_manifest = PluginManifest.model_validate(normalized_manifest)
         except ValidationError as exc:
             self.errors.extend(self._format_validation_errors(exc))
-            self._log_errors()
+            self._log_errors(source=source)
             return None
 
         self._validate_runtime_compatibility(parsed_manifest)
         if self.errors:
-            self._log_errors()
+            self._log_errors(source=source or parsed_manifest.id)
             return None
 
         return parsed_manifest
@@ -859,9 +859,11 @@ class ManifestValidator:
 
         if not manifest_path.is_file():
             self.errors.append("缺少 _manifest.json")
+            self._log_errors(source=str(plugin_path))
             return None
         if require_entrypoint and not entrypoint_path.is_file():
             self.errors.append("缺少 plugin.py")
+            self._log_errors(source=str(plugin_path))
             return None
 
         try:
@@ -869,15 +871,16 @@ class ManifestValidator:
                 manifest_data = json.load(manifest_file)
         except Exception as exc:
             self.errors.append(f"manifest 解析失败: {exc}")
-            self._log_errors()
+            self._log_errors(source=str(plugin_path))
             return None
 
         if not isinstance(manifest_data, dict):
             self.errors.append("manifest 顶层必须为 JSON 对象")
-            self._log_errors()
+            self._log_errors(source=str(plugin_path))
             return None
 
-        return self.parse_manifest(manifest_data)
+        manifest_id = str(manifest_data.get("id") or plugin_path.name).strip() or plugin_path.name
+        return self.parse_manifest(manifest_data, source=manifest_id)
 
     def iter_plugin_manifests(
         self,
@@ -1113,10 +1116,16 @@ class ManifestValidator:
 
         return cls._requirements_may_overlap(left, right)
 
-    def _log_errors(self) -> None:
+    def _log_errors(self, source: Optional[str] = None) -> None:
         """输出当前累计的 Manifest 校验错误。"""
-        for error_message in self.errors:
-            logger.error(f"Manifest 校验失败: {error_message}")
+        if not self.errors:
+            return
+
+        error_summary = "；".join(self.errors)
+        if source:
+            logger.error(f"Manifest 校验失败 [{source}]: 共 {len(self.errors)} 项，{error_summary}")
+            return
+        logger.error(f"Manifest 校验失败: 共 {len(self.errors)} 项，{error_summary}")
 
     @classmethod
     def _resolve_project_root(cls) -> Path:

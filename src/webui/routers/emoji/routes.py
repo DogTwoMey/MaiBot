@@ -18,6 +18,7 @@ import re
 
 from src.common.database.database import get_db_session
 from src.common.database.database_model import Images, ImageType
+from src.common.utils.image_path import StoredImagePathError, resolve_stored_image_path, serialize_stored_image_path
 from src.webui.core import get_token_manager
 from src.webui.core import verify_auth_token_from_cookie_or_header as verify_auth_token
 
@@ -40,8 +41,6 @@ from .schemas import (
     ThumbnailPreheatResponse,
     emoji_to_response,
 )
-from src.common.utils.path_utils import resolve_stored_path, to_stored_path
-
 from .support import (
     EMOJI_DIR,
     THUMBNAIL_CACHE_DIR,
@@ -124,7 +123,7 @@ def _apply_emoji_format_filter(statement: Any, image_format: Optional[str]) -> A
 
 
 def _save_uploaded_emoji_file(file_content: bytes, emoji_hash: str, image_format: str) -> str:
-    """保存上传的表情包文件并返回完整路径。"""
+    """保存上传的表情包文件并返回数据库存储路径。"""
     os.makedirs(EMOJI_DIR, exist_ok=True)
 
     timestamp = int(datetime.now().timestamp())
@@ -141,7 +140,7 @@ def _save_uploaded_emoji_file(file_content: bytes, emoji_hash: str, image_format
         _ = output_file.write(file_content)
 
     logger.info(f"表情包文件已保存: {full_path}")
-    return full_path
+    return serialize_stored_image_path(full_path)
 
 
 def _delete_emoji_file(full_path: str) -> bool:
@@ -150,7 +149,7 @@ def _delete_emoji_file(full_path: str) -> bool:
         return True
 
     try:
-        file_path = Path(full_path)
+        file_path = resolve_stored_image_path(full_path)
         if not file_path.exists():
             return True
         if not file_path.is_file():
@@ -159,9 +158,21 @@ def _delete_emoji_file(full_path: str) -> bool:
         file_path.unlink()
         logger.info(f"表情包文件已删除: {full_path}")
         return True
+    except StoredImagePathError:
+        logger.warning(f"跳过删除目录外表情包文件: {full_path}")
+        return True
     except Exception as exc:
         logger.error(f"删除表情包文件失败: {full_path}, error={exc}")
         return False
+
+
+def _resolve_existing_emoji_file_path(full_path: str) -> Optional[Path]:
+    """解析表情包文件路径，目录外或文件不存在时返回 None。"""
+    try:
+        file_path = resolve_stored_image_path(full_path)
+    except (OSError, RuntimeError, StoredImagePathError):
+        return None
+    return file_path if file_path.exists() else None
 
 
 def _remove_emoji_from_memory(emoji_hash: str) -> None:
@@ -192,14 +203,17 @@ async def _review_emoji_record_for_registration(
     from src.emoji_system.emoji_manager import emoji_manager
 
     try:
-        target_emoji = MaiEmoji(full_path=emoji.full_path, image_bytes=image_bytes)
+        emoji_path = _resolve_existing_emoji_file_path(emoji.full_path)
+        if emoji_path is None:
+            raise FileNotFoundError(emoji.full_path)
+        target_emoji = MaiEmoji(full_path=emoji_path, image_bytes=image_bytes)
     except Exception as exc:
         logger.warning(f"表情包注册审核失败，无法读取文件: id={emoji.id}, path={emoji.full_path}, error={exc}")
         return False
 
     target_emoji.file_hash = emoji.image_hash
     target_emoji.description = emoji.description or ""
-    target_emoji.image_format = image_format.strip().lower() or Path(emoji.full_path).suffix.lower().lstrip(".")
+    target_emoji.image_format = image_format.strip().lower() or emoji_path.suffix.lower().lstrip(".")
     return await emoji_manager.review_emoji_for_registration(target_emoji)
 
 
@@ -280,8 +294,6 @@ async def get_emoji_list(
                 if is_banned is not None:
                     count_statement = count_statement.where(col(Images.is_banned) == is_banned)
             total = session.exec(count_statement).one()
-            data = [emoji_to_response(emoji) for emoji in emojis]
-
             data = [emoji_to_response(emoji) for emoji in emojis]
 
         return EmojiListResponse(
@@ -680,8 +692,8 @@ async def get_emoji_thumbnail(
 
             if not emoji:
                 raise HTTPException(status_code=404, detail=f"未找到 ID 为 {emoji_id} 的表情包")
-            fs_path = resolve_stored_path(emoji.full_path)
-            if not fs_path.exists():
+            emoji_path = _resolve_existing_emoji_file_path(emoji.full_path)
+            if emoji_path is None:
                 raise HTTPException(status_code=404, detail="表情包文件不存在")
 
             if original:
@@ -693,10 +705,10 @@ async def get_emoji_thumbnail(
                     "webp": "image/webp",
                     "bmp": "image/bmp",
                 }
-                suffix = fs_path.suffix.lower().lstrip(".")
+                suffix = emoji_path.suffix.lower().lstrip(".")
                 media_type = mime_types.get(suffix, "application/octet-stream")
                 return FileResponse(
-                    path=str(fs_path),
+                    path=emoji_path,
                     media_type=media_type,
                     filename=f"{emoji.image_hash}.{suffix}",
                 )
@@ -714,7 +726,7 @@ async def get_emoji_thumbnail(
             with generating_lock:
                 if emoji.image_hash not in generating_thumbnails:
                     generating_thumbnails.add(emoji.image_hash)
-                    get_thumbnail_executor().submit(background_generate_thumbnail, str(fs_path), emoji.image_hash)
+                    get_thumbnail_executor().submit(background_generate_thumbnail, str(emoji_path), emoji.image_hash)
 
             return JSONResponse(
                 status_code=202,
@@ -859,7 +871,7 @@ async def upload_emoji(
                 col(Images.image_type) == ImageType.EMOJI,
             )
             if existing_emoji := session.exec(existing_statement).first():
-                if not os.path.exists(existing_emoji.full_path) or existing_emoji.no_file_flag:
+                if _resolve_existing_emoji_file_path(existing_emoji.full_path) is None or existing_emoji.no_file_flag:
                     existing_emoji.full_path = _save_uploaded_emoji_file(file_content, emoji_hash, img_format)
                     existing_emoji.no_file_flag = False
                 existing_emoji.description = final_description
@@ -879,7 +891,7 @@ async def upload_emoji(
         with get_db_session() as session:
             emoji = Images(
                 image_type=ImageType.EMOJI,
-                full_path=to_stored_path(full_path),
+                full_path=full_path,
                 image_hash=emoji_hash,
                 description=final_description,
                 query_count=0,
@@ -980,7 +992,7 @@ async def batch_upload_emoji(
                         col(Images.image_type) == ImageType.EMOJI,
                     )
                     if existing_emoji := session.exec(existing_statement).first():
-                        if not os.path.exists(existing_emoji.full_path) or existing_emoji.no_file_flag:
+                        if _resolve_existing_emoji_file_path(existing_emoji.full_path) is None or existing_emoji.no_file_flag:
                             existing_emoji.full_path = _save_uploaded_emoji_file(file_content, emoji_hash, img_format)
                             existing_emoji.no_file_flag = False
                         existing_emoji.description = final_description
@@ -1000,7 +1012,7 @@ async def batch_upload_emoji(
                 with get_db_session() as session:
                     emoji = Images(
                         image_type=ImageType.EMOJI,
-                        full_path=to_stored_path(full_path),
+                        full_path=full_path,
                         image_hash=emoji_hash,
                         description=final_description,
                         query_count=0,
@@ -1146,15 +1158,15 @@ async def preheat_thumbnail_cache(
             if cache_path.exists():
                 skipped += 1
                 continue
-            fs_path = resolve_stored_path(full_path)
-            if not fs_path.exists():
+            resolved_full_path = _resolve_existing_emoji_file_path(full_path)
+            if resolved_full_path is None:
                 failed += 1
                 continue
 
             try:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
-                    get_thumbnail_executor(), generate_thumbnail, str(fs_path), image_hash
+                    get_thumbnail_executor(), generate_thumbnail, str(resolved_full_path), image_hash
                 )
                 generated += 1
             except Exception as e:

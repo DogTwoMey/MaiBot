@@ -12,7 +12,7 @@ from rich.traceback import install
 
 from src.common.database.database_model import Images, ImageType
 from src.common.logger import get_logger
-from src.common.utils.path_utils import resolve_stored_path, to_stored_path
+from src.common.utils.image_path import resolve_stored_image_path, serialize_stored_image_path
 
 from . import BaseDatabaseDataModel
 
@@ -26,9 +26,7 @@ class BaseImageDataModel(BaseDatabaseDataModel[Images]):
     def __init__(self, full_path: str | Path, image_bytes: Optional[bytes] = None):
         if not full_path:
             raise ValueError("图片路径不能为空")
-        # 允许传入项目相对路径（例如从 DB 读出来的 "data/emoji/xxx.jpeg"），
-        # 统一按项目根解析成绝对路径，不受调用方 CWD 影响。
-        resolved_path = resolve_stored_path(full_path)
+        resolved_path = Path(full_path).absolute().resolve()
         if resolved_path.is_dir() or not resolved_path.exists():
             raise FileNotFoundError(f"图片路径无效: {full_path}")
 
@@ -43,7 +41,7 @@ class BaseImageDataModel(BaseDatabaseDataModel[Images]):
 
     def _set_full_path(self, full_path: Path) -> None:
         """同步刷新路径、目录和文件名等运行时元数据。"""
-        resolved_path = resolve_stored_path(full_path)
+        resolved_path = full_path.absolute().resolve()
         self.full_path = resolved_path
         self.dir_path = resolved_path.parent.resolve()
         self.file_name = resolved_path.name
@@ -184,7 +182,7 @@ class MaiEmoji(BaseImageDataModel):
         if db_record.no_file_flag:
             raise ValueError(f"数据库记录 {db_record.image_hash} 标记为文件不存在，无法创建 MaiEmoji 对象")
 
-        obj = cls(db_record.full_path)
+        obj = cls(resolve_stored_image_path(db_record.full_path))
         obj.file_hash = db_record.image_hash
         obj._restore_image_format_from_path()
 
@@ -210,7 +208,7 @@ class MaiEmoji(BaseImageDataModel):
         return Images(
             image_hash=self.file_hash,
             description=self.description,
-            full_path=to_stored_path(self.full_path),
+            full_path=serialize_stored_image_path(self.full_path),
             image_type=ImageType.EMOJI,
             query_count=self.query_count,
             last_used_time=self.last_used_time,
@@ -232,9 +230,8 @@ class MaiImage(BaseImageDataModel):
         if db_record.no_file_flag:
             raise ValueError(f"数据库记录 {db_record.image_hash} 标记为文件不存在，无法创建 MaiImage 对象")
 
-        obj = cls(db_record.full_path)
+        obj = cls(resolve_stored_image_path(db_record.full_path))
         obj.file_hash = db_record.image_hash
-        obj._set_full_path(Path(db_record.full_path))
         obj._restore_image_format_from_path()
         obj.description = db_record.description
         obj.vlm_processed = db_record.vlm_processed
@@ -244,7 +241,7 @@ class MaiImage(BaseImageDataModel):
         return Images(
             image_hash=self.file_hash,
             description=self.description,
-            full_path=to_stored_path(self.full_path),
+            full_path=serialize_stored_image_path(self.full_path),
             image_type=ImageType.IMAGE,
             vlm_processed=self.vlm_processed,
         )

@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from 'react'
 
-import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,7 +34,7 @@ type ExpressionRuleType = 'group' | 'private'
 interface ExpressionGroupTarget {
   platform: string
   item_id: string
-  type: ExpressionRuleType
+  rule_type: ExpressionRuleType
 }
 
 interface ExpressionGroupValue {
@@ -45,6 +45,9 @@ interface PlatformAccountRow {
   platform: string
   account: string
 }
+
+const PLATFORM_ACCOUNT_ROW_GRID_CLASS =
+  'grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-[minmax(0,5.5rem)_minmax(0,8.5rem)_2.5rem] md:grid-cols-[minmax(0,6rem)_minmax(0,9.5rem)_2.5rem]'
 
 interface TimelineSegment {
   left: number
@@ -654,18 +657,16 @@ function TalkValueTimelineOverview({
                         )}
                       </div>
                       <div className="grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-2">
-                        <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">value</span>
-                          <span className="font-mono">{item.value.toFixed(2)}</span>
-                        </div>
-                        <Slider
-                          value={[item.value]}
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          onValueChange={(values) => onItemFieldChange(item.index, 'value', values[0])}
-                        />
+                        <div>
+                          <Slider
+                            value={[item.value]}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            onValueChange={(values) => onItemFieldChange(item.index, 'value', values[0])}
+                            data-dashboard-slider="config"
+                            data-dashboard-slider-value-format="fixed-2"
+                          />
                         </div>
                         <Button
                           type="button"
@@ -837,10 +838,7 @@ function TalkValueGroupedRuleEditor({
                     />
                   </div>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <Label className="text-xs font-medium">发言频率</Label>
-                      <span className="font-mono">{item.value.toFixed(2)}</span>
-                    </div>
+                    <Label className="text-xs font-medium">发言频率</Label>
                     <div className="flex items-center gap-2">
                       <Slider
                         value={[item.value]}
@@ -848,6 +846,8 @@ function TalkValueGroupedRuleEditor({
                         max={1}
                         step={0.01}
                         onValueChange={(values) => onItemFieldChange(item.index, 'value', values[0])}
+                        data-dashboard-slider="config"
+                        data-dashboard-slider-value-format="fixed-2"
                       />
                       <Input
                         type="number"
@@ -1093,7 +1093,7 @@ const normalizeExpressionTarget = (value: unknown): ExpressionGroupTarget => {
       typeof source.platform === 'string' ? source.platform.trim() : 'qq',
     item_id:
       typeof source.item_id === 'string' ? source.item_id.trim() : '',
-    type: normalizeExpressionRuleType(source.type ?? source.rule_type),
+    rule_type: normalizeExpressionRuleType(source.rule_type ?? source.type),
   }
 }
 
@@ -1120,13 +1120,13 @@ const normalizeExpressionGroups = (value: unknown): ExpressionGroupValue[] => {
 const createExpressionTarget = (): ExpressionGroupTarget => ({
   platform: 'qq',
   item_id: '',
-  type: 'group',
+  rule_type: 'group',
 })
 
 const formatExpressionTarget = (target: ExpressionGroupTarget): string => {
   const platform = target.platform.trim()
   const itemId = target.item_id.trim()
-  const rule = ruleTypeLabel(target.type)
+  const rule = ruleTypeLabel(target.rule_type)
   if (!platform && !itemId) return `全局 · ${rule}`
   if (!itemId) return `${platform} · ${rule}`
   return `${platform}:${itemId} · ${rule}`
@@ -1324,7 +1324,7 @@ export const ChatPromptsHook = createListItemEditorHook({
 
 export const ExpressionLearningListHook = createListItemEditorHook({
   addLabel: '添加学习规则',
-  helperText: '为不同聊天流单独配置是否使用和学习。platform 或 item_id 可以填 * 作为通配符。',
+  infoText: '可以单独为每个聊天开启学习和使用，留空作为兜底，*作为全部覆盖',
   emptyText: '尚未配置任何学习规则。',
   fieldRows: [
     ['platform', 'item_id', 'type'],
@@ -1374,9 +1374,8 @@ export const BotPlatformsHook: FieldHookComponent = ({ onChange, value }) => {
             每行保存为 platform:account，例如 wx:114514。
           </p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={addRow}>
-          <Plus className="mr-2 h-4 w-4" />
-          添加平台
+        <Button type="button" size="icon" variant="outline" aria-label="添加平台" title="添加平台" onClick={addRow}>
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
 
@@ -1389,11 +1388,12 @@ export const BotPlatformsHook: FieldHookComponent = ({ onChange, value }) => {
           {rows.map((row, rowIndex) => (
             <div
               key={rowIndex}
-              className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-[minmax(7rem,0.6fr)_minmax(10rem,1fr)_auto]"
+              className={PLATFORM_ACCOUNT_ROW_GRID_CLASS}
             >
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">平台</Label>
                 <Input
+                  className="min-w-0"
                   value={row.platform}
                   placeholder="wx"
                   onChange={(event) =>
@@ -1401,10 +1401,10 @@ export const BotPlatformsHook: FieldHookComponent = ({ onChange, value }) => {
                   }
                 />
               </div>
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">账号</Label>
                 <Input
-                  className="font-mono"
+                  className="min-w-0 font-mono"
                   value={row.account}
                   placeholder="114514"
                   onChange={(event) =>
@@ -1412,7 +1412,7 @@ export const BotPlatformsHook: FieldHookComponent = ({ onChange, value }) => {
                   }
                 />
               </div>
-              <div className="flex items-end justify-end">
+              <div className="flex shrink-0 items-end justify-end">
                 <Button
                   type="button"
                   size="icon"
@@ -1470,32 +1470,32 @@ export const BotPlatformAccountsHook: FieldHookComponent = ({
         <div className="space-y-1">
           <Label className="text-[15px] font-semibold leading-6">平台账号</Label>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={addRow}>
-          <Plus className="mr-2 h-4 w-4" />
-          添加平台
+        <Button type="button" size="icon" variant="outline" aria-label="添加平台" title="添加平台" onClick={addRow}>
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <div className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-[minmax(7rem,0.6fr)_minmax(10rem,1fr)_2.5rem]">
-          <div className="space-y-1">
+        <div className={PLATFORM_ACCOUNT_ROW_GRID_CLASS}>
+          <div className="min-w-0 space-y-1">
             <Label className="text-xs">平台</Label>
             <Input
+              className="min-w-0"
               value={primaryPlatform}
               placeholder="qq"
               onChange={(event) => onChange?.(event.target.value)}
             />
           </div>
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
             <Label className="text-xs">账号</Label>
             <Input
-              className="font-mono"
+              className="min-w-0 font-mono"
               value={qqAccount}
               placeholder="2814567326"
               onChange={(event) => onParentChange?.('qq_account', event.target.value)}
             />
           </div>
-          <div className="flex items-end justify-end">
+          <div className="flex shrink-0 items-end justify-end">
             <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
               主
             </span>
@@ -1505,26 +1505,27 @@ export const BotPlatformAccountsHook: FieldHookComponent = ({
         {rows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-[minmax(7rem,0.6fr)_minmax(10rem,1fr)_2.5rem]"
+            className={PLATFORM_ACCOUNT_ROW_GRID_CLASS}
           >
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">平台</Label>
               <Input
+                className="min-w-0"
                 value={row.platform}
                 placeholder="wx"
                 onChange={(event) => updateRow(rowIndex, { platform: event.target.value })}
               />
             </div>
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">账号</Label>
               <Input
-                className="font-mono"
+                className="min-w-0 font-mono"
                 value={row.account}
                 placeholder="114514"
                 onChange={(event) => updateRow(rowIndex, { account: event.target.value })}
               />
             </div>
-            <div className="flex items-end justify-end">
+            <div className="flex shrink-0 items-end justify-end">
               <Button
                 type="button"
                 size="icon"
@@ -1580,18 +1581,55 @@ export const RegexRulesHook = createListItemEditorHook({
   },
 })
 
-export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, value }) => {
+export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, schema, value }) => {
   const groups = normalizeExpressionGroups(value)
   const isJargonGroup = fieldPath?.includes('jargon') ?? false
-  const groupLabel = isJargonGroup ? '黑话互通组' : '表达互通组'
+  const isSharedMemoryGroup = fieldPath?.includes('shared_memory_groups') ?? false
+  const isFocusGroup = fieldPath?.includes('focus_groups') ?? false
+  const displaysAsSection =
+    isSharedMemoryGroup &&
+    Boolean(schema && 'x-display-as-section' in schema && schema['x-display-as-section'])
+  const groupLabel = isSharedMemoryGroup
+    ? '共享记忆组'
+    : isFocusGroup
+      ? 'Focus 互通组'
+      : isJargonGroup
+        ? '黑话互通组'
+        : '表达互通组'
   const learnedContentLabel = isJargonGroup ? '黑话' : '表达方式'
+  const helperText = isSharedMemoryGroup
+    ? '把几个群聊或私聊放进同一组后，麦麦在其中任意一个聊天里回忆长期记忆时，会一起参考同组聊天的记忆；新产生的内容仍记在原来的聊天里。'
+    : isFocusGroup
+      ? '配置后只有同组聊天流共享 Focus，不同组可以分别进入 Focus。'
+    : `每个互通组内的聊天流会共享已学习的${learnedContentLabel}。`
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(() => new Set())
 
   const updateGroups = (nextGroups: ExpressionGroupValue[]) => {
-    onChange?.(nextGroups)
+    onChange?.(
+      nextGroups.map((group) => ({
+        targets: group.targets.map((target) => ({
+          platform: target.platform,
+          item_id: target.item_id,
+          rule_type: target.rule_type,
+        })),
+      }))
+    )
   }
 
   const addGroup = () => {
-    updateGroups([...groups, { targets: [] }])
+    updateGroups([...groups, { targets: [createExpressionTarget()] }])
+  }
+
+  const toggleGroupCollapsed = (groupIndex: number) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(groupIndex)) {
+        next.delete(groupIndex)
+      } else {
+        next.add(groupIndex)
+      }
+      return next
+    })
   }
 
   const removeGroup = (groupIndex: number) => {
@@ -1649,18 +1687,23 @@ export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, 
   }
 
   return (
-    <div className="space-y-3 rounded-lg border bg-card p-4 sm:p-5">
+    <div className={displaysAsSection ? 'space-y-3' : 'space-y-3 rounded-lg border bg-card p-4 sm:p-5'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold">{groupLabel}</h3>
+          {!displaysAsSection && <h3 className="text-base font-semibold">{groupLabel}</h3>}
           <p className="text-sm text-muted-foreground">
-            每个互通组内的聊天流会共享已学习的{learnedContentLabel}。成员会保存为
-            targets 数组结构。
+            {helperText}
           </p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={addGroup}>
-          <Plus className="mr-2 h-4 w-4" />
-          添加{groupLabel}
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          aria-label={`添加${groupLabel}`}
+          title={`添加${groupLabel}`}
+          onClick={addGroup}
+        >
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
 
@@ -1670,119 +1713,142 @@ export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, 
         </div>
       ) : (
         <div className="space-y-2">
-          {groups.map((group, groupIndex) => (
-            <div
-              key={groupIndex}
-              className="space-y-2 rounded-md border bg-muted/20 p-2.5 sm:p-3"
-            >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {groupLabel} {groupIndex + 1}
-                  </span>
-                  <Badge variant="secondary">
-                    {group.targets.length} 个成员
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => addMember(groupIndex)}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    添加成员
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={`删除互通组 ${groupIndex + 1}`}
-                    onClick={() => removeGroup(groupIndex)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+          {groups.map((group, groupIndex) => {
+            const isCollapsed = collapsedGroups.has(groupIndex)
 
-              {group.targets.length === 0 ? (
-                <div className="rounded-md bg-background/70 px-3 py-4 text-sm text-muted-foreground">
-                  这个互通组还没有成员。
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {group.targets.map((member, memberIndex) => (
-                    <div
-                      key={`${groupIndex}-${memberIndex}`}
-                      className="grid items-end gap-2 rounded-md bg-background/80 px-2.5 py-2 md:grid-cols-[minmax(6rem,0.65fr)_minmax(9rem,1fr)_minmax(7rem,0.75fr)_2.25rem]"
+            return (
+              <div
+                key={groupIndex}
+                className="space-y-2 rounded-md border bg-muted/20 p-2.5 sm:p-3"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">
+                      {groupLabel} {groupIndex + 1}
+                    </span>
+                    <Badge variant="secondary">
+                      {group.targets.length} 个成员
+                    </Badge>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      aria-label={`添加${groupLabel} ${groupIndex + 1} 的成员`}
+                      title="添加成员"
+                      onClick={() => addMember(groupIndex)}
                     >
-                      <div className="space-y-0.5">
-                        <Label className="text-[11px] leading-none text-muted-foreground">平台</Label>
-                        <Input
-                          className="h-8"
-                          value={member.platform}
-                          placeholder="qq"
-                          onChange={(event) =>
-                            updateMember(groupIndex, memberIndex, {
-                              platform: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <Label className="text-[11px] leading-none text-muted-foreground">账号 / 群号</Label>
-                        <Input
-                          className="h-8 font-mono"
-                          value={member.item_id}
-                          placeholder="123456"
-                          onChange={(event) =>
-                            updateMember(groupIndex, memberIndex, {
-                              item_id: event.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-0.5">
-                        <Label className="text-[11px] leading-none text-muted-foreground">类型</Label>
-                        <Select
-                          value={member.type}
-                          onValueChange={(nextRuleType) =>
-                            updateMember(groupIndex, memberIndex, {
-                              type: normalizeExpressionRuleType(nextRuleType),
-                            })
-                          }
-                        >
-                          <SelectTrigger className="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="group">群聊</SelectItem>
-                            <SelectItem value="private">私聊</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-end justify-between gap-2 md:justify-end">
-                        <span className="min-w-0 truncate text-xs text-muted-foreground md:hidden">
-                          {formatExpressionTarget(member)}
-                        </span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8"
-                          aria-label={`删除互通组 ${groupIndex + 1} 的成员 ${memberIndex + 1}`}
-                          onClick={() => removeMember(groupIndex, memberIndex)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      aria-label={isCollapsed ? `展开${groupLabel} ${groupIndex + 1}` : `折叠${groupLabel} ${groupIndex + 1}`}
+                      title={isCollapsed ? '展开' : '折叠'}
+                      onClick={() => toggleGroupCollapsed(groupIndex)}
+                    >
+                      {isCollapsed ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      aria-label={`删除${groupLabel} ${groupIndex + 1}`}
+                      title={`删除${groupLabel} ${groupIndex + 1}`}
+                      onClick={() => removeGroup(groupIndex)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
+
+                {!isCollapsed && (group.targets.length === 0 ? (
+                  <div className="rounded-md bg-background/70 px-3 py-4 text-sm text-muted-foreground">
+                    这个{groupLabel}还没有成员。
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {group.targets.map((member, memberIndex) => (
+                      <div
+                        key={`${groupIndex}-${memberIndex}`}
+                        className="grid min-w-0 items-end gap-2 rounded-md bg-background/80 px-2.5 py-2 md:grid-cols-[minmax(0,5.5rem)_minmax(0,8rem)_minmax(0,6.5rem)_2.25rem] lg:grid-cols-[minmax(0,6rem)_minmax(0,9rem)_minmax(0,7rem)_2.25rem]"
+                      >
+                        <div className="min-w-0 space-y-0.5">
+                          <Label className="text-[11px] leading-none text-muted-foreground">平台</Label>
+                          <Input
+                            className="h-8 min-w-0"
+                            value={member.platform}
+                            placeholder="qq"
+                            onChange={(event) =>
+                              updateMember(groupIndex, memberIndex, {
+                                platform: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-0.5">
+                          <Label className="text-[11px] leading-none text-muted-foreground">账号 / 群号</Label>
+                          <Input
+                            className="h-8 min-w-0 font-mono"
+                            value={member.item_id}
+                            placeholder="123456"
+                            onChange={(event) =>
+                              updateMember(groupIndex, memberIndex, {
+                                item_id: event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-0.5">
+                          <Label className="text-[11px] leading-none text-muted-foreground">类型</Label>
+                          <Select
+                            value={member.rule_type}
+                            onValueChange={(nextRuleType) =>
+                              updateMember(groupIndex, memberIndex, {
+                                rule_type: normalizeExpressionRuleType(nextRuleType),
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 min-w-0">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="group">群聊</SelectItem>
+                              <SelectItem value="private">私聊</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-end justify-between gap-2 md:justify-end">
+                          <span className="min-w-0 truncate text-xs text-muted-foreground md:hidden">
+                            {formatExpressionTarget(member)}
+                          </span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            aria-label={`删除${groupLabel} ${groupIndex + 1} 的成员 ${memberIndex + 1}`}
+                            onClick={() => removeMember(groupIndex, memberIndex)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1790,6 +1856,10 @@ export const ExpressionGroupsHook: FieldHookComponent = ({ fieldPath, onChange, 
 }
 
 export const JargonGroupsHook = ExpressionGroupsHook
+
+export const BehaviorFocusGroupsHook = ExpressionGroupsHook
+
+export const AMemorixSharedMemoryGroupsHook = ExpressionGroupsHook
 
 export const MCPRootItemsHook = createJsonFieldHook({
   emptyValue: [],

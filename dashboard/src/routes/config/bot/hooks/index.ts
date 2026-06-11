@@ -12,6 +12,8 @@ export type {
 } from './useAutoSave'
 export {
   AliasNamesHook,
+  AMemorixSharedMemoryGroupsHook,
+  BehaviorFocusGroupsHook,
   BotPlatformsHook,
   BotPlatformAccountsHook,
   ChatPromptsHook,
@@ -28,8 +30,9 @@ export {
   RegexRulesHook,
 } from './complexFieldHooks'
 export { ChatTalkValueRulesVisualHook } from './TalkValueRulesVisualHook'
+export { AMemorixRetrievalChatsHook } from './AMemorixRetrievalChatsHook'
+export { AMemorixRetrievalFilterMirrorHook } from './AMemorixRetrievalFilterMirrorHook'
 export { ChatSectionHook } from './ChatSectionHook'
 export { PersonalitySectionHook } from './PersonalitySectionHook'
 export { DebugSectionHook } from './DebugSectionHook'
-export { ExpressionSectionHook } from './ExpressionSectionHook'
 export { BotInfoSectionHook } from './BotInfoSectionHook'

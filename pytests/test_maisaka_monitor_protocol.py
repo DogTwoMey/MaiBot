@@ -1,26 +1,66 @@
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Callable
 
 import inspect
 
-import pytest
 from rich.panel import Panel
 from rich.text import Text
 
+import pytest
+
 from src.chat.replyer import maisaka_generator as replyer_module
+from src.common.data_models.message_component_data_model import MessageSequence, TextComponent
 from src.common.data_models.reply_generation_data_models import (
     GenerationMetrics,
     LLMCompletionResult,
     ReplyGenerationResult,
+    build_reply_monitor_detail,
 )
 from src.core.tooling import ToolExecutionResult, ToolInvocation
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 from src.maisaka.builtin_tool import reply as reply_tool_module
 from src.maisaka.builtin_tool import send_emoji as send_emoji_tool_module
-from src.maisaka.monitor_events import emit_planner_finalized
+from src.maisaka.context.messages import SessionBackedMessage
+from src.maisaka.monitor.events import emit_planner_finalized
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
 from src.maisaka import runtime as runtime_module
 from src.maisaka.runtime import MaisakaHeartFlowChatting
+
+
+def _build_reply_tool_ctx(chat_history: list[Any]) -> BuiltinToolRuntimeContext:
+    target_message = SimpleNamespace(
+        message_id="msg-1",
+        message_info=SimpleNamespace(
+            user_info=SimpleNamespace(
+                user_cardname="测试用户",
+                user_nickname="测试用户",
+                user_id="user-1",
+            )
+        ),
+    )
+    runtime = SimpleNamespace(
+        find_source_message_by_id=lambda message_id: target_message if message_id == "msg-1" else None,
+        log_prefix="[test]",
+        chat_stream=SimpleNamespace(platform=reply_tool_module.CLI_PLATFORM_NAME),
+        session_id="session-1",
+        _chat_history=chat_history,
+        _clear_force_continue_until_reply=lambda: None,
+        _record_reply_sent=lambda: None,
+        run_sub_agent=None,
+    )
+    engine = SimpleNamespace(_get_runtime_manager=lambda: None)
+    return BuiltinToolRuntimeContext(engine=engine, runtime=runtime)
+
+
+def _build_reply_target_history_message() -> SessionBackedMessage:
+    return SessionBackedMessage(
+        raw_message=MessageSequence([TextComponent("[测试用户] 问一下长记忆")]),
+        visible_text="[测试用户] 问一下长记忆",
+        timestamp=datetime.now(),
+        message_id="msg-1",
+        source_kind="user",
+    )
 
 
 def test_runtime_maps_expression_config_flags_to_correct_fields(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,6 +119,28 @@ async def _call_message_factory(message_factory: Callable[..., Any], client: obj
     if inspect.isawaitable(result):
         return await result
     return result
+
+
+def test_reply_monitor_detail_displays_selected_expression_details() -> None:
+    result = ReplyGenerationResult(
+        selected_expression_ids=[212, 254],
+        selected_expression_details=[
+            {"id": 212, "situation": "有人开玩笑", "style": "轻松吐槽", "count": 1},
+            {"id": 254, "situation": "气氛沉默", "style": "主动接话", "count": 1},
+        ],
+    )
+
+    detail = build_reply_monitor_detail(result)
+    expression_section = next(
+        section
+        for section in detail["extra_sections"]
+        if section["title"] == "已选表达方式"
+    )
+
+    assert expression_section["content"] == (
+        "212：当有人开玩笑时，可以自然地用轻松吐槽这种表达习惯。\n"
+        "254：当气氛沉默时，可以自然地用主动接话这种表达习惯。"
+    )
 
 
 class _FakeLegacyLLMServiceClient:
@@ -313,26 +375,27 @@ def test_legacy_replyer_builds_message_sequence_like_multimodal() -> None:
     legacy_generator = replyer_module.MaisakaReplyGenerator(
         chat_stream=None,
         request_type="test_legacy",
+        load_prompt_func=lambda *args, **kwargs: "legacy prompt",
         enable_visual_message=False,
     )
-    legacy_prompt_loader = replyer_module.load_prompt
-    replyer_module.load_prompt = lambda *args, **kwargs: "legacy prompt"
-
-    try:
-        session_message = replyer_module.SessionBackedMessage(
-            raw_message=SimpleNamespace(),
-            visible_text="[Alice]你好\n[Bob]在吗",
-            timestamp=replyer_module.datetime.now(),
-            source_kind="user",
-        )
-        request_messages = legacy_generator._build_request_messages(
-            chat_history=[session_message],
-            reply_message=None,
-            reply_reason="测试原因",
-            stream_id="session-legacy",
-        )
-    finally:
-        replyer_module.load_prompt = legacy_prompt_loader
+    alice_message = SessionBackedMessage(
+        raw_message=MessageSequence([TextComponent("[Alice]你好")]),
+        visible_text="[Alice]你好",
+        timestamp=datetime.now(),
+        source_kind="user",
+    )
+    bob_message = SessionBackedMessage(
+        raw_message=MessageSequence([TextComponent("[Bob]在吗")]),
+        visible_text="[Bob]在吗",
+        timestamp=datetime.now(),
+        source_kind="user",
+    )
+    request_messages = legacy_generator._build_request_messages(
+        chat_history=[alice_message, bob_message],
+        reply_message=None,
+        reply_reason="测试原因",
+        stream_id="session-legacy",
+    )
 
     assert len(request_messages) == 4
     assert request_messages[0].role.value == "system"
@@ -399,6 +462,58 @@ async def test_reply_tool_puts_monitor_detail_into_metadata(monkeypatch: pytest.
 
     assert result.success is True
     assert result.metadata["monitor_detail"] == fake_monitor_detail
+
+
+@pytest.mark.asyncio
+async def test_reply_tool_drops_legacy_reference_info_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    fake_reply_result = ReplyGenerationResult(
+        success=True,
+        completion=LLMCompletionResult(response_text="测试回复"),
+        metrics=GenerationMetrics(overall_ms=11.5),
+        monitor_detail={},
+    )
+
+    class _FakeReplyer:
+        async def generate_reply_with_context(self, **kwargs: Any) -> tuple[bool, ReplyGenerationResult]:
+            captured.update(kwargs)
+            return True, fake_reply_result
+
+    monkeypatch.setattr(reply_tool_module.replyer_manager, "get_replyer", lambda **kwargs: _FakeReplyer())
+    monkeypatch.setattr(reply_tool_module, "render_cli_message", lambda text: text)
+
+    target_message = SimpleNamespace(
+        message_id="msg-1",
+        message_info=SimpleNamespace(
+            user_info=SimpleNamespace(
+                user_cardname="测试用户",
+                user_nickname="测试用户",
+                user_id="user-1",
+            )
+        ),
+    )
+    runtime = SimpleNamespace(
+        find_source_message_by_id=lambda message_id: target_message if message_id == "msg-1" else None,
+        log_prefix="[test]",
+        chat_stream=SimpleNamespace(platform=reply_tool_module.CLI_PLATFORM_NAME),
+        session_id="session-1",
+        _chat_history=[],
+        _clear_force_continue_until_reply=lambda: None,
+        _record_reply_sent=lambda: None,
+        run_sub_agent=None,
+    )
+    engine = SimpleNamespace(_get_runtime_manager=lambda: None)
+    tool_ctx = BuiltinToolRuntimeContext(engine=engine, runtime=runtime)
+    invocation = ToolInvocation(
+        tool_name="reply",
+        arguments={"msg_id": "msg-1", "reference_info": "已有参考"},
+    )
+
+    result = await reply_tool_module.handle_tool(tool_ctx, invocation)
+
+    assert result.success is True
+    assert "reference_info" not in captured
+    assert "reference_info" not in captured["reply_tool_args"]
 
 
 @pytest.mark.asyncio
