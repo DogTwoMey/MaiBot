@@ -48,7 +48,7 @@ export async function getPluginConfig(pluginId: string): Promise<ApiResponse<Rec
   }
   
   const result = apiResult.data
-  if (!result.success || !result.config) {
+  if (!result.success) {
     return {
       success: false,
       error: result.message || '获取配置失败'
@@ -57,7 +57,7 @@ export async function getPluginConfig(pluginId: string): Promise<ApiResponse<Rec
   
   return {
     success: true,
-    data: result.config
+    data: result.config ?? {}
   }
 }
 
@@ -76,7 +76,7 @@ export async function getPluginConfigRaw(pluginId: string): Promise<ApiResponse<
   }
   
   const result = apiResult.data
-  if (!result.success || !result.config) {
+  if (!result.success) {
     return {
       success: false,
       error: result.message || '获取配置失败'
@@ -85,7 +85,7 @@ export async function getPluginConfigRaw(pluginId: string): Promise<ApiResponse<
   
   return {
     success: true,
-    data: result.config
+    data: result.config ?? ''
   }
 }
 

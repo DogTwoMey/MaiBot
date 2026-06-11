@@ -1187,14 +1187,23 @@ class PluginRunner:
             Dict[str, Any]: 默认配置；插件未声明时返回空字典。
         """
 
-        if not hasattr(instance, "get_default_config"):
-            return {}
-        try:
-            default_config = cast(_ConfigAwarePlugin, instance).get_default_config()
-        except Exception as exc:
-            logger.warning(f"读取插件默认配置失败: {exc}")
-            return {}
-        return default_config if isinstance(default_config, dict) else {}
+        if hasattr(instance, "get_default_config"):
+            try:
+                default_config = cast(_ConfigAwarePlugin, instance).get_default_config()
+            except Exception as exc:
+                logger.warning(f"读取插件默认配置失败: {exc}")
+                return {}
+            if isinstance(default_config, dict) and default_config:
+                return default_config
+
+        # 旧版插件回退：从 LegacyPluginAdapter._legacy.config_schema 提取默认值
+        legacy_plugin = getattr(instance, "_legacy", None)
+        if legacy_plugin is not None:
+            config_schema = getattr(legacy_plugin, "config_schema", None)
+            if isinstance(config_schema, dict) and config_schema:
+                return PluginRunner._extract_defaults_from_legacy_schema(config_schema)
+
+        return {}
 
     @staticmethod
     def _get_plugin_config_schema(meta: PluginMeta) -> Dict[str, Any]:
@@ -1208,20 +1217,160 @@ class PluginRunner:
         """
 
         instance = meta.instance
-        if not hasattr(instance, "get_webui_config_schema"):
+        if hasattr(instance, "get_webui_config_schema"):
+            try:
+                schema = cast(_ConfigAwarePlugin, instance).get_webui_config_schema(
+                    plugin_id=meta.plugin_id,
+                    plugin_name=meta.manifest.name,
+                    plugin_version=meta.version,
+                    plugin_description=meta.manifest.description,
+                    plugin_author=meta.manifest.author.name,
+                )
+            except Exception as exc:
+                logger.warning(f"构造插件配置 Schema 失败: {exc}")
+                schema = None
+            if isinstance(schema, dict) and schema:
+                return schema
+
+        # 旧版插件回退：从 config_schema + config_section_descriptions 构建 WebUI Schema
+        legacy_plugin = getattr(instance, "_legacy", None)
+        if legacy_plugin is not None:
+            config_schema = getattr(legacy_plugin, "config_schema", None)
+            if isinstance(config_schema, dict) and config_schema:
+                section_descriptions = getattr(legacy_plugin, "config_section_descriptions", {})
+                if not isinstance(section_descriptions, dict):
+                    section_descriptions = {}
+                return PluginRunner._build_legacy_webui_schema(
+                    config_schema, section_descriptions, meta
+                )
+
+        return {}
+
+    @staticmethod
+    def _extract_defaults_from_legacy_schema(config_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """从旧版 config_schema 中提取默认配置值。
+
+        旧版 config_schema 格式：
+            { "section_name": { "field_name": ConfigField(...), ... }, ... }
+
+        Returns:
+            Dict[str, Any]: 以 section 为顶层 key 的默认配置字典。
+        """
+
+        defaults: Dict[str, Any] = {}
+        for section_name, section_fields in config_schema.items():
+            if not isinstance(section_fields, dict):
+                continue
+            section_defaults: Dict[str, Any] = {}
+            for field_name, field_def in section_fields.items():
+                if hasattr(field_def, "default"):
+                    section_defaults[field_name] = field_def.default
+            if section_defaults:
+                defaults[section_name] = section_defaults
+        return defaults
+
+    @staticmethod
+    def _build_legacy_webui_schema(
+        config_schema: Dict[str, Any],
+        section_descriptions: Dict[str, str],
+        meta: "PluginMeta",
+    ) -> Dict[str, Any]:
+        """从旧版 config_schema 构建 WebUI Schema。
+
+        Args:
+            config_schema: 旧版 config_schema 字典。
+            section_descriptions: section 描述映射。
+            meta: 插件元数据。
+
+        Returns:
+            Dict[str, Any]: 适配 WebUI 前端渲染的 schema 结构。
+        """
+
+        sections: Dict[str, Any] = {}
+        order = 0
+        for section_name, section_fields in config_schema.items():
+            if not isinstance(section_fields, dict):
+                continue
+            fields_schema: Dict[str, Any] = {}
+            field_order = 0
+            for field_name, field_def in section_fields.items():
+                if not hasattr(field_def, "default"):
+                    continue
+                field_type = getattr(field_def, "type", str)
+                type_name = field_type.__name__ if isinstance(field_type, type) else "str"
+
+                # 推断 ui_type
+                ui_type = "text"
+                if hasattr(field_def, "get_ui_type"):
+                    ui_type = field_def.get_ui_type()
+                elif field_type is bool:
+                    ui_type = "switch"
+                elif field_type in (int, float):
+                    ui_type = "number"
+                elif field_type is list:
+                    ui_type = "list"
+
+                field_entry: Dict[str, Any] = {
+                    "name": field_name,
+                    "type": type_name,
+                    "default": field_def.default,
+                    "description": getattr(field_def, "description", field_name),
+                    "label": getattr(field_def, "label", None) or getattr(field_def, "description", field_name),
+                    "ui_type": ui_type,
+                    "required": getattr(field_def, "required", False),
+                    "hidden": getattr(field_def, "hidden", False),
+                    "disabled": getattr(field_def, "disabled", False),
+                    "order": getattr(field_def, "order", field_order),
+                    "choices": getattr(field_def, "choices", None) or None,
+                    "min": getattr(field_def, "min", None),
+                    "max": getattr(field_def, "max", None),
+                    "step": getattr(field_def, "step", None),
+                    "pattern": getattr(field_def, "pattern", None),
+                    "max_length": getattr(field_def, "max_length", None),
+                    "placeholder": getattr(field_def, "placeholder", None),
+                    "hint": getattr(field_def, "hint", None),
+                    "icon": getattr(field_def, "icon", None),
+                    "example": getattr(field_def, "example", None),
+                    "input_type": getattr(field_def, "input_type", None),
+                    "rows": getattr(field_def, "rows", 3),
+                    "group": getattr(field_def, "group", None),
+                    "depends_on": getattr(field_def, "depends_on", None),
+                    "depends_value": getattr(field_def, "depends_value", None),
+                    "item_type": getattr(field_def, "item_type", None),
+                    "item_fields": getattr(field_def, "item_fields", None),
+                    "min_items": getattr(field_def, "min_items", None),
+                    "max_items": getattr(field_def, "max_items", None),
+                }
+                fields_schema[field_name] = field_entry
+                field_order += 1
+
+            if fields_schema:
+                section_label = section_descriptions.get(section_name, section_name)
+                sections[section_name] = {
+                    "name": section_name,
+                    "title": section_label,
+                    "description": None,
+                    "icon": None,
+                    "collapsed": False,
+                    "order": order,
+                    "fields": fields_schema,
+                }
+                order += 1
+
+        if not sections:
             return {}
-        try:
-            schema = cast(_ConfigAwarePlugin, instance).get_webui_config_schema(
-                plugin_id=meta.plugin_id,
-                plugin_name=meta.manifest.name,
-                plugin_version=meta.version,
-                plugin_description=meta.manifest.description,
-                plugin_author=meta.manifest.author.name,
-            )
-        except Exception as exc:
-            logger.warning(f"构造插件配置 Schema 失败: {exc}")
-            return {}
-        return schema if isinstance(schema, dict) else {}
+
+        return {
+            "plugin_id": meta.plugin_id,
+            "plugin_info": {
+                "name": meta.manifest.name,
+                "version": meta.version,
+                "description": meta.manifest.description,
+                "author": meta.manifest.author.name,
+            },
+            "sections": sections,
+            "layout": {"type": "auto", "tabs": []},
+        }
 
     async def _unregister_plugin(self, plugin_id: str, reason: str) -> None:
         """通知 Host 注销指定插件。

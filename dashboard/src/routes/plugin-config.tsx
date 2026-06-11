@@ -527,14 +527,13 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
           description: rawResult.error,
           variant: 'destructive'
         })
-        return
       }
       
       setSchema(schemaResult.data)
       setConfig(configResult.data)
       setOriginalConfig(JSON.parse(JSON.stringify(configResult.data)))
-      setSourceCode(rawResult.data)
-      setOriginalSourceCode(rawResult.data)
+      setSourceCode(rawResult.success ? rawResult.data : '')
+      setOriginalSourceCode(rawResult.success ? rawResult.data : '')
     } catch (error) {
       toast({
         title: '加载配置失败',
