@@ -1,0 +1,20 @@
+{
+  "_comment": "MaiBot 本地服务配置。在 start-all 时会自动启动这些服务。",
+  "services": [
+    {
+      "name": "searxng",
+      "enabled": true,
+      "type": "docker",
+      "description": "SearXNG 本地搜索引擎（供 hsd221.searxng-search 插件使用）",
+      "container_name": "maibot-searxng",
+      "image": "searxng/searxng:latest",
+      "ports": ["8888:8080"],
+      "environment": {},
+      "volumes": [],
+      "health_check": {
+        "url": "http://localhost:8888",
+        "timeout_sec": 15
+      }
+    }
+  ]
+}
