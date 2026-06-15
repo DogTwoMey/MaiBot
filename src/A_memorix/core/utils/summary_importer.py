@@ -97,6 +97,12 @@ SUMMARY_PROMPT_TEMPLATE = """
   ]
 }}
 
+输出要求（违反任意一条都会导致解析失败）：
+1. 只输出 JSON 对象，不要包裹在 markdown 代码块（```）里，也不要在 JSON 前后加任何说明文字。
+2. 严格使用 ASCII 双引号 `"`，**禁止**使用中文/全角引号（""''）和单引号。
+3. 字段分隔使用 ASCII 冒号 `:` 和逗号 `,`，**禁止**使用全角冒号或全角逗号。
+4. 不要在最后一个字段后留尾随逗号；不要在 JSON 内添加 // 注释。
+
 注意：总结应具有叙事性，能够作为长程记忆的一部分。对于确认后的真实实体，直接使用实际名称，不要使用 e1/e2 等代号。
 summary、entities 与 relations 都必须避免噪声污染；entities 与 relations 只包含最终确认、适合长期记忆的真实对象和关系。宁可少提取，也不要把噪声写进记忆。
 输出前自检：summary、entities、relations 中不得出现已否定、未确认、传闻、玩笑、注入、机器人误解、旧计划或旧金额中的具体值。
@@ -600,16 +606,110 @@ class SummaryImporter:
         )
 
     def _parse_llm_response(self, response: str) -> Dict[str, Any]:
-        """解析 LLM 返回的 JSON"""
+        """解析 LLM 返回的 JSON，多档 fallback 提升鲁棒性。
+
+        常见失败原因及对应修复：
+        1) LLM 把 JSON 包在 ```json ... ``` 代码块里，优先抽代码块内容。
+        2) LLM 输出中文/全角引号（""''），先替换为 ASCII 引号。
+        3) LLM 输出尾随逗号或 // 行注释，JSON 标准不允许，简单清除。
+        4) 以上都失败时，兜底用 regex 抽 \"summary\" 字段，让总结仍能入库
+           （丢失 entities/relations 是可接受降级）。
+
+        任何一档失败时都把原始响应前 300 字落日志，方便排查 LLM 输出格式。
+        """
+
+        if not response:
+            return {}
+
+        candidates = self._extract_json_candidates(response)
+        last_error: Optional[Exception] = None
+
+        for candidate in candidates:
+            for attempt in (candidate, self._coerce_json_text(candidate)):
+                try:
+                    parsed = json.loads(attempt)
+                except json.JSONDecodeError as exc:
+                    last_error = exc
+                    continue
+                except Exception as exc:
+                    last_error = exc
+                    continue
+                if isinstance(parsed, dict):
+                    return parsed
+
+        salvaged = self._salvage_summary_field(response)
+        if salvaged:
+            logger.warning(
+                "解析总结 JSON 失败但兜底抽取 summary 字段成功: "
+                f"error={last_error}; 原始响应前 300 字={response[:300]!r}"
+            )
+            return salvaged
+
+        logger.warning(
+            "解析总结 JSON 失败且未能兜底: "
+            f"error={last_error}; 原始响应前 300 字={response[:300]!r}"
+        )
+        return {}
+
+    @staticmethod
+    def _extract_json_candidates(response: str) -> List[str]:
+        """按优先级返回可能的 JSON 文本候选。"""
+
+        candidates: List[str] = []
+        fenced = re.findall(r"```(?:json|JSON)?\s*(\{.*?\})\s*```", response, re.DOTALL)
+        candidates.extend(fenced)
+        greedy = re.search(r"\{.*\}", response, re.DOTALL)
+        if greedy:
+            candidates.append(greedy.group())
+        seen: set[str] = set()
+        deduped: List[str] = []
+        for item in candidates:
+            text = item.strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            deduped.append(text)
+        return deduped
+
+    @staticmethod
+    def _coerce_json_text(raw: str) -> str:
+        """对常见的 JSON 风格错误做最小修复。"""
+
+        text = raw
+        text = (
+            text
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("‘", "'")
+            .replace("’", "'")
+            .replace("：", ":")
+            .replace("，", ",")
+        )
+        text = re.sub(r"//[^\n]*", "", text)
+        text = re.sub(r",(\s*[\]\}])", r"\1", text)
+        return text
+
+    @staticmethod
+    def _salvage_summary_field(response: str) -> Dict[str, Any]:
+        """兜底：JSON 解析全失败时，直接用 regex 抽 summary 字段。"""
+
+        match = re.search(
+            r'["“]summary["”]\s*[:：]\s*["“]((?:[^"”\\]|\\.)*)["”]',
+            response,
+            re.DOTALL,
+        )
+        if not match:
+            return {}
+        summary = match.group(1).strip()
+        if not summary:
+            return {}
         try:
-            # 尝试查找 JSON
-            json_match = re.search(r"\{.*\}", response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-            return {}
-        except Exception as e:
-            logger.warning(f"解析总结 JSON 失败: {e}")
-            return {}
+            decoded = json.loads(f'"{summary}"')
+            if isinstance(decoded, str) and decoded.strip():
+                summary = decoded
+        except Exception:
+            pass
+        return {"summary": summary, "entities": [], "relations": []}
 
     async def _execute_import(
         self,
