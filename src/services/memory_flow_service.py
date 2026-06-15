@@ -421,6 +421,12 @@ class PersonFactWritebackService:
 class ChatSummaryWritebackState:
     last_trigger_message_count: int = 0
     last_trigger_time: float = 0.0
+    # 以下字段供空闲兜底触发使用；每次收到消息时更新，不参与阈值判定。
+    last_activity_at: float = 0.0
+    pending_user_id: str = ""
+    pending_group_id: str = ""
+    pending_message_time: Optional[float] = None
+    idle_trigger_in_flight: bool = False
 
 
 class ChatSummaryWritebackService:
@@ -463,7 +469,21 @@ class ChatSummaryWritebackService:
     async def _worker_loop(self) -> None:
         try:
             while not self._stopping:
-                message = await self._queue.get()
+                idle_seconds = self._idle_trigger_seconds()
+                try:
+                    if idle_seconds > 0:
+                        message = await asyncio.wait_for(
+                            self._queue.get(),
+                            timeout=float(idle_seconds),
+                        )
+                    else:
+                        message = await self._queue.get()
+                except asyncio.TimeoutError:
+                    try:
+                        await self._run_idle_tick()
+                    except Exception as exc:
+                        logger.warning("聊天摘要空闲兜底扫描失败: %s", exc, exc_info=True)
+                    continue
                 try:
                     await self._handle_message(message)
                 except Exception as exc:
@@ -483,7 +503,9 @@ class ChatSummaryWritebackService:
         if total_message_count <= 0:
             return
 
-        threshold = self._message_threshold(message)
+        user_id = self._extract_session_user_id(message)
+        group_id = self._extract_session_group_id(message)
+
         state = self._states.get(session_id)
         if state is None:
             restored_count = await self._load_last_trigger_message_count(
@@ -495,10 +517,44 @@ class ChatSummaryWritebackService:
                 last_trigger_time=time.time() if restored_count > 0 else 0.0,
             )
             self._states[session_id] = state
+
+        # 无论是否达阈值都记录活跃信息，供空闲兜底触发使用
+        state.last_activity_at = time.time()
+        state.pending_user_id = user_id
+        state.pending_group_id = group_id
+        state.pending_message_time = message_time
+
+        threshold = self._message_threshold(message)
         pending_message_count = max(0, total_message_count - state.last_trigger_message_count)
         if pending_message_count < threshold:
             return
 
+        await self._trigger_writeback(
+            session_id=session_id,
+            state=state,
+            total_message_count=total_message_count,
+            trigger_label="message_threshold",
+            message_time=message_time,
+            user_id=user_id,
+            group_id=group_id,
+        )
+
+    async def _trigger_writeback(
+        self,
+        *,
+        session_id: str,
+        state: ChatSummaryWritebackState,
+        total_message_count: int,
+        trigger_label: str,
+        message_time: Optional[float],
+        user_id: str,
+        group_id: str,
+    ) -> None:
+        """执行一次聊天摘要写回并更新 state 游标。
+
+        由阈值触发（_handle_message）与空闲兜底触发（_run_idle_tick）共用。
+        """
+        pending_message_count = max(0, total_message_count - state.last_trigger_message_count)
         configured_context_length = self._context_length()
         context_length = self._effective_context_length(
             configured_context_length=configured_context_length,
@@ -515,29 +571,97 @@ class ChatSummaryWritebackService:
                 "context_length": context_length,
                 "configured_context_length": configured_context_length,
                 "writeback_source": "memory_flow_service",
-                "trigger": "message_threshold",
+                "trigger": trigger_label,
                 "previous_trigger_message_count": state.last_trigger_message_count,
                 "pending_message_count": pending_message_count,
                 "trigger_message_count": total_message_count,
                 "summary_review_count": 2,
             },
             respect_filter=True,
-            user_id=self._extract_session_user_id(message),
-            group_id=self._extract_session_group_id(message),
+            user_id=user_id,
+            group_id=group_id,
         )
         if not getattr(result, "success", False):
             logger.warning(
-                f"聊天摘要自动写回失败: session_id={session_id} detail={getattr(result, 'detail', '')}",
+                "聊天摘要自动写回失败: session_id=%s trigger=%s detail=%s",
+                session_id,
+                trigger_label,
+                getattr(result, "detail", ""),
             )
             return
 
         state.last_trigger_message_count = total_message_count
         state.last_trigger_time = time.time()
         logger.info(
-            f"聊天摘要自动写回成功: session_id={session_id} trigger=message_threshold "
-            f"total_messages={total_message_count} context_length={context_length} "
-            f"detail={getattr(result, 'detail', '')}",
+            "聊天摘要自动写回成功: session_id=%s trigger=%s total_messages=%s context_length=%s detail=%s",
+            session_id,
+            trigger_label,
+            total_message_count,
+            context_length,
+            getattr(result, "detail", ""),
         )
+
+    async def _run_idle_tick(self) -> None:
+        """扫描所有已知 session，对"静默超过 idle_seconds 且有未摘要消息"的
+        session 触发一次兜底摘要。
+
+        典型场景：私聊里用户只说 2-3 条话就离开（不到 message_threshold），
+        这些消息如果不兜底就永远不会被 SummaryImporter 吸收。
+        """
+        idle_seconds = self._idle_trigger_seconds()
+        if idle_seconds <= 0:
+            return
+        min_pending = self._idle_min_pending_messages()
+        now = time.time()
+
+        for session_id, state in list(self._states.items()):
+            if state.idle_trigger_in_flight:
+                continue
+            if state.last_activity_at <= 0:
+                continue
+            if now - state.last_activity_at < idle_seconds:
+                continue
+            try:
+                total = count_messages(session_id=session_id)
+            except Exception as exc:
+                logger.warning(
+                    "空闲兜底扫描获取消息计数失败: session_id=%s error=%s",
+                    session_id,
+                    exc,
+                )
+                continue
+            if total <= 0:
+                continue
+            pending = total - state.last_trigger_message_count
+            if pending < min_pending:
+                continue
+
+            state.idle_trigger_in_flight = True
+            try:
+                logger.info(
+                    "聊天摘要空闲兜底触发: session_id=%s idle=%.1fs pending_messages=%s",
+                    session_id,
+                    now - state.last_activity_at,
+                    pending,
+                )
+                await self._trigger_writeback(
+                    session_id=session_id,
+                    state=state,
+                    total_message_count=total,
+                    trigger_label="idle_timeout",
+                    message_time=state.pending_message_time,
+                    user_id=state.pending_user_id,
+                    group_id=state.pending_group_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "空闲兜底写回失败: session_id=%s error=%s",
+                    session_id,
+                    exc,
+                    exc_info=True,
+                )
+            finally:
+                state.idle_trigger_in_flight = False
 
     async def _load_last_trigger_message_count(self, *, session_id: str, total_message_count: int) -> int:
         """从已落库的聊天摘要恢复触发游标，避免服务重启后重复摘要。"""
@@ -652,6 +776,26 @@ class ChatSummaryWritebackService:
     @staticmethod
     def _context_length() -> int:
         return max(1, int(global_config.a_memorix.integration.chat_summary_writeback_context_length))
+
+    @staticmethod
+    def _idle_trigger_seconds() -> int:
+        """空闲兜底触发时长；0 表示禁用。"""
+        raw = getattr(global_config.a_memorix.integration, "chat_summary_writeback_idle_trigger_seconds", 180)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return 180
+        return max(0, value)
+
+    @staticmethod
+    def _idle_min_pending_messages() -> int:
+        """空闲兜底触发的最少未摘要消息数。"""
+        raw = getattr(global_config.a_memorix.integration, "chat_summary_writeback_idle_min_pending", 2)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return 2
+        return max(1, value)
 
     @staticmethod
     def _count_messages_until_trigger(*, session_id: str, message_time: float | None) -> int:

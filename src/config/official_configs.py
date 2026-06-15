@@ -1343,6 +1343,28 @@ class AMemorixIntegrationConfig(ConfigBase):
     )
     """自动写回聊天摘要时，从聊天流中回看的消息条数"""
 
+    chat_summary_writeback_idle_trigger_seconds: int = Field(
+        default=180,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+            "x-icon": "timer",
+            "advanced": True,
+        },
+    )
+    """聊天摘要空闲兜底触发时长（秒）。当某聊天流收到过消息但静默超过该时长且仍有未摘要消息时，即使未达到 message_threshold 也会强制触发一次摘要。0 表示禁用空闲兜底"""
+
+    chat_summary_writeback_idle_min_pending: int = Field(
+        default=2,
+        ge=1,
+        json_schema_extra={
+            "x-widget": "input",
+            "x-icon": "list-minus",
+            "advanced": True,
+        },
+    )
+    """空闲兜底触发的最少未摘要消息数。避免因 1 条无意义寒暄就触发 LLM 摘要调用"""
+
     feedback_correction_enabled: bool = Field(
         default=False,
         json_schema_extra={
