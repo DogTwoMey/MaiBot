@@ -483,7 +483,7 @@ class ChatSummaryWritebackService:
         if total_message_count <= 0:
             return
 
-        threshold = self._message_threshold()
+        threshold = self._message_threshold(message)
         state = self._states.get(session_id)
         if state is None:
             restored_count = await self._load_last_trigger_message_count(
@@ -635,8 +635,18 @@ class ChatSummaryWritebackService:
             return float(raw_timestamp)
         return None
 
-    @staticmethod
-    def _message_threshold() -> int:
+    @classmethod
+    def _message_threshold(cls, message: Any = None) -> int:
+        """根据消息所在聊天类型选择写回阈值。
+
+        私聊节奏短、消息数本身就少，使用较低阈值（默认 4）确保私聊里
+        提到的事实能尽快被 SummaryImporter 抽取并入库。群聊沿用较高阈值。
+        """
+        if message is not None and not cls._extract_session_group_id(message):
+            return max(
+                1,
+                int(getattr(global_config.a_memorix.integration, "chat_summary_writeback_private_threshold", 4) or 4),
+            )
         return max(1, int(global_config.a_memorix.integration.chat_summary_writeback_message_threshold))
 
     @staticmethod

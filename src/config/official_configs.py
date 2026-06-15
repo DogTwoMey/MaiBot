@@ -1318,7 +1318,18 @@ class AMemorixIntegrationConfig(ConfigBase):
             "advanced": True,
         },
     )
-    """自动写回聊天摘要的消息窗口阈值"""
+    """自动写回聊天摘要的消息窗口阈值（群聊）"""
+
+    chat_summary_writeback_private_threshold: int = Field(
+        default=4,
+        ge=1,
+        json_schema_extra={
+            "x-widget": "input",
+            "x-icon": "user",
+            "advanced": True,
+        },
+    )
+    """自动写回聊天摘要的消息窗口阈值（私聊）。私聊节奏短、对话少，使用更低阈值以确保私聊里出现的事实能尽快进入长期记忆"""
 
     chat_summary_writeback_context_length: int = Field(
         default=36,
