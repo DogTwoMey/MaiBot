@@ -51,7 +51,13 @@ export interface InstalledPlugin {
   enabled?: boolean
   disabled?: boolean
   loaded?: boolean
-  load_status?: 'success' | 'failed' | 'inactive' | 'disabled' | 'unknown'
+  load_status?: 'success' | 'failed' | 'inactive' | 'disabled' | 'unknown' | 'loading'
+  circuit_status?: {
+    state: 'open' | 'half_open'
+    remaining_sec: number
+    cooldown_level: number
+    half_open_inflight: boolean
+  } | null
 }
 /**
  * 旧版本插件格式(直接包含 version 字段)
@@ -74,6 +80,12 @@ export interface PluginLoadProgress {
   plugin_id?: string
   total_plugins: number
   loaded_plugins: number
+  mirror_id?: string
+  mirror_name?: string
+  mirror_index?: number
+  total_mirrors?: number
+  attempt?: number
+  max_attempts?: number
 }
 
 /**

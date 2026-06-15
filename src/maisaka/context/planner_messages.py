@@ -25,6 +25,8 @@ def build_planner_prefix(
     chat_id: Optional[str] = None,
     quote_ids: Optional[Sequence[str]] = None,
     include_message_id: bool = True,
+    include_chat_id: bool = False,
+    is_self_message: bool = False,
 ) -> str:
     """构造 Maisaka 规划器使用的统一消息前缀。
 
@@ -34,8 +36,11 @@ def build_planner_prefix(
         group_card: 群昵称。
         message_id: 消息 ID。
         user_id: 发送者 QQ 号；唯一稳定身份锚点，昵称和群名片都可被随时修改。
+        chat_id: 聊天流 ID。
         quote_ids: 被引用消息 ID 列表。
         include_message_id: 是否输出 `msg_id` 段。
+        include_chat_id: 是否输出 `chat_id` 段。
+        is_self_message: 是否显式标注这条消息是 bot 自己发送的。
 
     Returns:
         str: 拼接完成的规划器前缀。
@@ -45,9 +50,10 @@ def build_planner_prefix(
     if include_message_id:
         message_attrs.append(f'msg_id="{escape(message_id or "", quote=True)}"')
 
-    normalized_chat_id = str(chat_id or "").strip()
-    if normalized_chat_id:
-        message_attrs.append(f'chat_id="{escape(normalized_chat_id, quote=True)}"')
+    if include_chat_id:
+        normalized_chat_id = str(chat_id or "").strip()
+        if normalized_chat_id:
+            message_attrs.append(f'chat_id="{escape(normalized_chat_id, quote=True)}"')
 
     normalized_quote = _format_quote_ids(quote_ids)
     if normalized_quote:
@@ -67,6 +73,8 @@ def build_planner_prefix(
     normalized_group_card = group_card.strip()
     if normalized_group_card:
         message_attrs.append(f'group_card="{escape(normalized_group_card, quote=True)}"')
+    if is_self_message:
+        message_attrs.append('is_self_message="true"')
     return f"<message {' '.join(message_attrs)}>\n"
 
 
@@ -104,11 +112,18 @@ def extract_quote_ids_from_message_sequence(message_sequence: MessageSequence) -
     return quote_ids
 
 
-def build_planner_user_prefix_from_session_message(message: SessionMessage) -> str:
+def build_planner_user_prefix_from_session_message(
+    message: SessionMessage,
+    *,
+    include_chat_id: bool = False,
+    is_self_message: bool = False,
+) -> str:
     """根据真实会话消息构造规划器前缀。
 
     Args:
         message: 原始会话消息。
+        include_chat_id: 是否输出 `chat_id` 段。
+        is_self_message: 是否显式标注这条消息是 bot 自己发送的。
 
     Returns:
         str: 规划器前缀字符串。
@@ -125,6 +140,8 @@ def build_planner_user_prefix_from_session_message(message: SessionMessage) -> s
         chat_id=message.session_id,
         quote_ids=extract_quote_ids_from_message_sequence(message.raw_message),
         include_message_id=not message.is_notify and bool(message.message_id),
+        include_chat_id=include_chat_id,
+        is_self_message=is_self_message,
     )
 
 
@@ -139,6 +156,8 @@ def build_session_backed_text_message(
     chat_id: Optional[str] = None,
     quote_ids: Optional[Sequence[str]] = None,
     include_message_id: bool = True,
+    include_chat_id: bool = False,
+    is_self_message: bool = False,
 ) -> SessionBackedMessage:
     """构造带规划器前缀的纯文本历史消息。
 
@@ -149,8 +168,11 @@ def build_session_backed_text_message(
         source_kind: 上下文来源类型。
         group_card: 群昵称。
         message_id: 消息 ID。
+        chat_id: 聊天流 ID。
         quote_ids: 被引用消息 ID 列表。
         include_message_id: 是否输出 `msg_id` 段。
+        include_chat_id: 是否输出 `chat_id` 段。
+        is_self_message: 是否显式标注这条消息是 bot 自己发送的。
 
     Returns:
         SessionBackedMessage: 可直接写入历史的上下文消息。
@@ -164,6 +186,8 @@ def build_session_backed_text_message(
         chat_id=chat_id,
         quote_ids=quote_ids,
         include_message_id=include_message_id,
+        include_chat_id=include_chat_id,
+        is_self_message=is_self_message,
     )
     return SessionBackedMessage(
         raw_message=MessageSequence([TextComponent(f"{planner_prefix}{text}")]),

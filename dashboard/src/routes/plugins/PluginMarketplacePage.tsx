@@ -43,17 +43,53 @@ import { getPluginType, PLUGIN_TYPE_OPTIONS } from './types'
 
 const PLUGIN_MARKET_COMPATIBLE_ONLY_KEY = 'plugins-market-compatible-only'
 
-// 主导出组件：包装 RestartProvider
-export function PluginsPage() {
+const resolvePluginStats = (
+  plugin: PluginInfo,
+  statsSummary: Record<string, PluginStatsData>
+): PluginStatsData | undefined => {
+  const statsIds = [
+    plugin.manifest?.id,
+  ].filter((id): id is string => Boolean(id))
+
+  return statsIds.map(id => statsSummary[id]).find(Boolean)
+}
+
+const buildPluginStatsMap = (
+  pluginList: PluginInfo[],
+  statsSummary: Record<string, PluginStatsData>
+): Record<string, PluginStatsData> => {
+  const statsMap: Record<string, PluginStatsData> = {}
+
+  for (const plugin of pluginList) {
+    const stats = resolvePluginStats(plugin, statsSummary)
+    if (!stats) {
+      continue
+    }
+
+    const statsIds = [
+      plugin.manifest?.id,
+      stats.plugin_id,
+    ].filter((id): id is string => Boolean(id))
+
+    for (const statsId of statsIds) {
+      statsMap[statsId] = stats
+    }
+  }
+
+  return statsMap
+}
+
+// 插件市场页：只展示市场索引、安装状态和版本信息
+export function PluginMarketplacePage() {
   return (
     <RestartProvider>
-      <PluginsPageContent />
+      <PluginMarketplacePageContent />
     </RestartProvider>
   )
 }
 
 // 内部组件：实际内容
-function PluginsPageContent() {
+function PluginMarketplacePageContent() {
   const navigate = useNavigate()
   const [restartNoticeVisible, setRestartNoticeVisible] = useState(
     () => localStorage.getItem('plugins-restart-notice-dismissed') !== 'true'
@@ -87,59 +123,27 @@ function PluginsPageContent() {
     setRestartNoticeVisible(false)
   }
 
-  const resolvePluginStats = (
-    plugin: PluginInfo,
-    statsSummary: Record<string, PluginStatsData>
-  ): PluginStatsData | undefined => {
-    const statsIds = [
-      plugin.manifest?.id,
-    ].filter((id): id is string => Boolean(id))
-
-    return statsIds.map(id => statsSummary[id]).find(Boolean)
-  }
-
-  const buildPluginStatsMap = (
-    pluginList: PluginInfo[],
-    statsSummary: Record<string, PluginStatsData>
-  ): Record<string, PluginStatsData> => {
-    const statsMap: Record<string, PluginStatsData> = {}
-
-    for (const plugin of pluginList) {
-      const stats = resolvePluginStats(plugin, statsSummary)
-      if (!stats) {
-        continue
-      }
-
-      const statsIds = [
-        plugin.manifest?.id,
-        stats.plugin_id,
-      ].filter((id): id is string => Boolean(id))
-
-      for (const statsId of statsIds) {
-        statsMap[statsId] = stats
-      }
-    }
-
-    return statsMap
-  }
-
   const mergeInstalledPluginInfo = (
     marketPlugins: PluginInfo[],
     installed: InstalledPlugin[]
   ): PluginInfo[] => {
     const mergedData = marketPlugins.map(plugin => {
-      const isInstalled = checkPluginInstalled(plugin.id, installed)
-      const installedVersion = getInstalledPluginVersion(plugin.id, installed)
+      const installedPlugin = installed.find(item => item.id === plugin.id || item.manifest?.id === plugin.id)
+      const isInstalled = Boolean(installedPlugin) || checkPluginInstalled(plugin.id, installed)
+      const installedVersion = installedPlugin?.manifest?.version ?? getInstalledPluginVersion(plugin.id, installed)
 
       return {
         ...plugin,
         installed: isInstalled,
-        installed_version: installedVersion
+        installed_version: installedVersion,
       }
     })
 
     for (const installedPlugin of installed) {
-      const existsInMarket = mergedData.some(p => p.id === installedPlugin.id)
+      const installedManifestId = installedPlugin.manifest?.id
+      const existsInMarket = mergedData.some(
+        p => p.id === installedPlugin.id || p.id === installedManifestId || p.manifest?.id === installedPlugin.id
+      )
       if (!existsInMarket && installedPlugin.manifest) {
         const urls = installedPlugin.manifest.urls as PluginInfo['manifest']['urls'] | undefined
         // 添加本地安装但不在市场的插件
@@ -245,71 +249,42 @@ function PluginsPageContent() {
             setLoading(true)
           }
           setError(null)
-          const [
-            statusResult,
-            versionResult,
-            apiResult,
-            installedResult,
-          ] = await Promise.all([
+          const [gitStatus, maimaiVersion, marketResult, installed] = await Promise.all([
             checkGitStatus(),
             getMaimaiVersion(),
-            fetchPluginList(),
+            // 市场清单失败需保留原有「setError + toast + 中断」行为，故就地收敛为判别结果，避免 Promise.all 整体 reject
+            fetchPluginList()
+              .then((data) => ({ ok: true as const, data }))
+              .catch((err) => ({ ok: false as const, error: err instanceof Error ? err.message : '加载失败' })),
             getInstalledPlugins(),
           ])
           if (isUnmounted) {
             return
           }
 
-          if (!statusResult.success) {
+          setGitStatus(gitStatus)
+          if (!gitStatus.installed) {
             toast({
-              title: 'Git 状态检查失败',
-              description: statusResult.error,
+              title: 'Git 未安装',
+              description: gitStatus.error || '请先安装 Git 才能使用插件安装功能',
               variant: 'destructive',
             })
-            setGitStatus({ installed: false, error: statusResult.error })
-          } else {
-            setGitStatus(statusResult.data)
-
-            if (!statusResult.data.installed) {
-              toast({
-                title: 'Git 未安装',
-                description: statusResult.data.error || '请先安装 Git 才能使用插件安装功能',
-                variant: 'destructive',
-              })
-            }
           }
 
-          if (!versionResult.success) {
-            toast({
-              title: '版本获取失败',
-              description: versionResult.error,
-              variant: 'destructive',
-            })
-          } else {
-            setMaimaiVersion(versionResult.data)
-          }
+          setMaimaiVersion(maimaiVersion)
 
-          if (!apiResult.success) {
-            setError(apiResult.error)
+          if (!marketResult.ok) {
+            setError(marketResult.error)
             toast({
               title: '加载失败',
-              description: apiResult.error,
+              description: marketResult.error,
               variant: 'destructive',
             })
             return
           }
 
-          if (!installedResult.success) {
-            toast({
-              title: '获取已安装插件失败',
-              description: installedResult.error,
-              variant: 'destructive',
-            })
-          }
-
-          const installed = installedResult.success ? installedResult.data : []
           setInstalledPlugins(installed)
-          const mergedData = mergeInstalledPluginInfo(apiResult.data, installed)
+          const mergedData = mergeInstalledPluginInfo(marketResult.data, installed)
 
           if (cachedStatsSummary) {
             setPluginStats(buildPluginStatsMap(mergedData, cachedStatsSummary))
@@ -586,31 +561,12 @@ function PluginsPageContent() {
         loaded_plugins: 0,
       })
 
-      const installResult = await installPlugin(
+      await installPlugin(
         installingPlugin.id,
         installingPlugin.manifest.repository_url || installingPlugin.manifest.urls?.repository || '',
         branch
       )
-      
-      if (!installResult.success) {
-        setLoadProgress({
-          operation: 'install',
-          stage: 'error',
-          progress: 0,
-          message: installResult.error || '安装失败',
-          error: installResult.error || '安装失败',
-          plugin_id: installingPlugin.id,
-          total_plugins: 1,
-          loaded_plugins: 0,
-        })
-        toast({
-          title: '安装失败',
-          description: installResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      
+
       // 记录下载统计
       if (installingPlugin.manifest.id) {
         recordPluginDownload(installingPlugin.manifest.id).catch(err => {
@@ -633,20 +589,11 @@ function PluginsPageContent() {
       })
       
       // 重新加载已安装插件列表
-      const installedResult = await getInstalledPlugins({ forceRefresh: true })
-      if (!installedResult.success) {
-        toast({
-          title: '获取已安装插件失败',
-          description: installedResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      const installed = installedResult.data
+      const installed = await getInstalledPlugins({ forceRefresh: true })
       setInstalledPlugins(installed)
-      
+
       // 重新合并已安装信息到插件列表
-      setPlugins(prevPlugins => 
+      setPlugins(prevPlugins =>
         prevPlugins.map(p => {
           if (p.id === installingPlugin.id) {
             const isInstalled = checkPluginInstalled(p.id, installed)
@@ -684,37 +631,19 @@ function PluginsPageContent() {
   // 卸载插件处理
   const handleUninstall = async (plugin: PluginInfo) => {
     try {
-      const uninstallResult = await uninstallPlugin(plugin.id)
-      
-      if (!uninstallResult.success) {
-        toast({
-          title: '卸载失败',
-          description: uninstallResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      
+      await uninstallPlugin(plugin.id)
+
       toast({
         title: '卸载成功',
         description: `${plugin.manifest.name} 已成功卸载`,
       })
-      
+
       // 重新加载已安装插件列表
-      const installedResult = await getInstalledPlugins({ forceRefresh: true })
-      if (!installedResult.success) {
-        toast({
-          title: '获取已安装插件失败',
-          description: installedResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      const installed = installedResult.data
+      const installed = await getInstalledPlugins({ forceRefresh: true })
       setInstalledPlugins(installed)
-      
+
       // 重新合并已安装信息到插件列表
-      setPlugins(prevPlugins => 
+      setPlugins(prevPlugins =>
         prevPlugins.map(p => {
           if (p.id === plugin.id) {
             const isInstalled = checkPluginInstalled(p.id, installed)
@@ -765,36 +694,18 @@ function PluginsPageContent() {
         plugin.manifest.repository_url || plugin.manifest.urls?.repository || '',
         'main'
       )
-      
-      if (!updateResult.success) {
-        toast({
-          title: '更新失败',
-          description: updateResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      
+
       toast({
         title: '更新成功',
-        description: `${plugin.manifest.name} 已从 ${updateResult.data.old_version} 更新到 ${updateResult.data.new_version}`,
+        description: `${plugin.manifest.name} 已从 ${updateResult.old_version} 更新到 ${updateResult.new_version}`,
       })
-      
+
       // 重新加载已安装插件列表
-      const installedResult = await getInstalledPlugins({ forceRefresh: true })
-      if (!installedResult.success) {
-        toast({
-          title: '获取已安装插件失败',
-          description: installedResult.error,
-          variant: 'destructive',
-        })
-        return
-      }
-      const installed = installedResult.data
+      const installed = await getInstalledPlugins({ forceRefresh: true })
       setInstalledPlugins(installed)
-      
+
       // 重新合并已安装信息到插件列表
-      setPlugins(prevPlugins => 
+      setPlugins(prevPlugins =>
         prevPlugins.map(p => {
           if (p.id === plugin.id) {
             const isInstalled = checkPluginInstalled(p.id, installed)
