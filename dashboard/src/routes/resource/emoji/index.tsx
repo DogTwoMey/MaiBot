@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Search, Trash2, Upload, X } from 'lucide-react'
+import { useState } from 'react'
+
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { DashboardTabBar, DashboardTabTrigger } from '@/components/ui/dashboard-tabs'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,7 +39,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs } from '@/components/ui/tabs'
 
+import { useDataList } from '@/hooks/useDataList'
 import { useToast } from '@/hooks/use-toast'
 import {
   banEmoji,
@@ -56,24 +60,19 @@ import {
 } from './EmojiDialogs'
 import { EmojiList } from './EmojiList'
 
+// 表情包筛选项：状态 / 格式 / 排序字段 / 排序方向
+interface EmojiFilters {
+  status: EmojiStatus | 'all'
+  format: string
+  sortBy: string
+  sortOrder: 'desc' | 'asc'
+}
+
 export function EmojiManagementPage() {
-  const [emojiList, setEmojiList] = useState<Emoji[]>([])
-  const [stats, setStats] = useState<EmojiStats | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [pageSize, setPageSize] = useState(20)
-  const [statusFilter, setStatusFilter] = useState<EmojiStatus | 'all'>('adopted')
-  const [formatFilter, setFormatFilter] = useState<string>('all')
-  const [searchInput, setSearchInput] = useState('')
-  const [searchKeyword, setSearchKeyword] = useState('')
-  const [sortBy, setSortBy] = useState<string>('usage_count')
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
   const [selectedEmoji, setSelectedEmoji] = useState<Emoji | null>(null)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
   const [jumpToPage, setJumpToPage] = useState('')
   const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>(
@@ -83,68 +82,40 @@ export function EmojiManagementPage() {
 
   const { toast } = useToast()
 
-  // 加载表情包列表
-  const loadEmojiList = useCallback(async () => {
-    try {
-      setLoading(true)
-      const response = await getEmojiList({
+  // 表情包列表：分页/搜索/筛选/排序/多选统一由 useDataList 承载，
+  // 翻页/改参自动重置页码并清空选中，搜索内建 300ms 防抖
+  const list = useDataList<Emoji, EmojiFilters, number>({
+    domain: 'emoji',
+    getId: (emoji) => emoji.id,
+    initialFilters: { status: 'adopted', format: 'all', sortBy: 'usage_count', sortOrder: 'desc' },
+    searchDebounceMs: 300,
+    queryFn: async ({ page, pageSize, search, filters }) => {
+      const result = await getEmojiList({
         page,
         page_size: pageSize,
-        status: statusFilter === 'all' ? undefined : statusFilter,
-        format: formatFilter === 'all' ? undefined : formatFilter,
-        search: searchKeyword || undefined,
-        sort_by: sortBy,
-        sort_order: sortOrder,
+        status: filters.status === 'all' ? undefined : filters.status,
+        format: filters.format === 'all' ? undefined : filters.format,
+        search: search.trim() || undefined,
+        sort_by: filters.sortBy,
+        sort_order: filters.sortOrder,
       })
-      setEmojiList(response.data)
-      setTotal(response.total)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : '加载表情包列表失败'
-      toast({
-        title: '错误',
-        description: message,
-        variant: 'destructive',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [
-    page,
-    pageSize,
-    statusFilter,
-    formatFilter,
-    searchKeyword,
-    sortBy,
-    sortOrder,
-    toast,
-  ])
+      return { items: result.data, total: result.total }
+    },
+  })
+  const emojiList = list.items
+  const total = list.total
+  const loading = list.isPending
+  const page = list.page
+  const pageSize = list.pageSize
+  // 命中提示用的已去空搜索词（与防抖后驱动查询的值一致）
+  const searchKeyword = list.searchInput.trim()
 
-  // 加载统计数据
-  const loadStats = async () => {
-    try {
-      const response = await getEmojiStats()
-      setStats(response.data)
-    } catch (error) {
-      console.error('加载统计数据失败:', error)
-    }
-  }
-
-  useEffect(() => {
-    loadEmojiList()
-  }, [loadEmojiList])
-
-  useEffect(() => {
-    loadStats()
-  }, [])
-
-  useEffect(() => {
-    const debounceTimer = window.setTimeout(() => {
-      setSearchKeyword(searchInput.trim())
-    }, 300)
-
-    return () => window.clearTimeout(debounceTimer)
-  }, [searchInput])
+  // 统计数据：失败时保持 null，状态切换 Tabs 自动隐藏，不打断页面
+  const statsQuery = useQuery({
+    queryKey: ['emoji', 'stats'],
+    queryFn: getEmojiStats,
+  })
+  const stats: EmojiStats | null = statsQuery.data?.data ?? null
 
   // 查看详情
   const handleViewDetail = async (emoji: Emoji) => {
@@ -164,114 +135,93 @@ export function EmojiManagementPage() {
     setDeleteDialogOpen(true)
   }
 
-  // 确认删除
-  const confirmDelete = async () => {
-    if (!selectedEmoji) return
-
-    try {
-      await deleteEmoji(selectedEmoji.id)
+  // 确认删除（失败由全局 mutation 错误 toast 呈现）
+  const deleteMutation = useMutation({
+    mutationFn: (emoji: Emoji) => deleteEmoji(emoji.id),
+    meta: { errorTitle: '错误' },
+    onSuccess: () => {
       toast({
         title: '成功',
         description: '表情包已删除',
       })
       setDeleteDialogOpen(false)
       setSelectedEmoji(null)
-      loadEmojiList()
-      loadStats()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '删除失败'
-      toast({
-        title: '错误',
-        description: message,
-        variant: 'destructive',
-      })
-    }
+      list.invalidate()
+    },
+  })
+
+  // 确认删除
+  const confirmDelete = () => {
+    if (!selectedEmoji) return
+    deleteMutation.mutate(selectedEmoji)
   }
 
-  // 快速注册
-  const handleRegister = async (emoji: Emoji) => {
-    try {
-      await registerEmoji(emoji.id)
+  // 快速注册（失败由全局 mutation 错误 toast 呈现）
+  const registerMutation = useMutation({
+    mutationFn: (emoji: Emoji) => registerEmoji(emoji.id),
+    meta: { errorTitle: '错误' },
+    onSuccess: () => {
       toast({
         title: '成功',
         description: '表情包已注册',
       })
-      loadEmojiList()
-      loadStats()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '注册失败'
-      toast({
-        title: '错误',
-        description: message,
-        variant: 'destructive',
-      })
-    }
+      list.invalidate()
+    },
+  })
+
+  // 快速注册
+  const handleRegister = (emoji: Emoji) => {
+    registerMutation.mutate(emoji)
   }
 
-  // 快速封禁
-  const handleBan = async (emoji: Emoji) => {
-    try {
-      await banEmoji(emoji.id)
+  // 快速封禁（失败由全局 mutation 错误 toast 呈现）
+  const banMutation = useMutation({
+    mutationFn: (emoji: Emoji) => banEmoji(emoji.id),
+    meta: { errorTitle: '错误' },
+    onSuccess: () => {
       toast({
         title: '成功',
         description: '表情包已封禁',
       })
-      loadEmojiList()
-      loadStats()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '封禁失败'
-      toast({
-        title: '错误',
-        description: message,
-        variant: 'destructive',
-      })
-    }
+      list.invalidate()
+    },
+  })
+
+  // 快速封禁
+  const handleBan = (emoji: Emoji) => {
+    banMutation.mutate(emoji)
   }
 
-  // 切换选择
-  const toggleSelect = (id: number) => {
-    const newSelected = new Set(selectedIds)
-    if (newSelected.has(id)) {
-      newSelected.delete(id)
-    } else {
-      newSelected.add(id)
-    }
-    setSelectedIds(newSelected)
-  }
-
-  // 批量删除
-  const handleBatchDelete = async () => {
-    try {
-      const result = await batchDeleteEmojis(Array.from(selectedIds))
+  // 批量删除（失败由全局 mutation 错误 toast 呈现）
+  const batchDeleteMutation = useMutation({
+    mutationFn: (emojiIds: number[]) => batchDeleteEmojis(emojiIds),
+    meta: { errorTitle: '批量删除失败' },
+    onSuccess: (result) => {
       toast({
         title: '批量删除完成',
         description: result.message,
       })
-      setSelectedIds(new Set())
+      list.clearSelection()
       setBatchDeleteDialogOpen(false)
-      loadEmojiList()
-      loadStats()
-    } catch (error) {
-      toast({
-        title: '批量删除失败',
-        description:
-          error instanceof Error ? error.message : '批量删除失败',
-        variant: 'destructive',
-      })
-    }
+      list.invalidate()
+    },
+  })
+
+  // 批量删除
+  const handleBatchDelete = () => {
+    batchDeleteMutation.mutate(Array.from(list.selectedIds))
   }
 
   // 页面跳转
   const handleJumpToPage = () => {
     const targetPage = parseInt(jumpToPage)
-    const totalPages = Math.ceil(total / pageSize)
-    if (targetPage >= 1 && targetPage <= totalPages) {
-      setPage(targetPage)
+    if (targetPage >= 1 && targetPage <= list.totalPages) {
+      list.goToPage(targetPage)
       setJumpToPage('')
     } else {
       toast({
         title: '无效的页码',
-        description: `请输入1-${totalPages}之间的页码`,
+        description: `请输入1-${list.totalPages}之间的页码`,
         variant: 'destructive',
       })
     }
@@ -280,80 +230,58 @@ export function EmojiManagementPage() {
   // 获取格式选项
   const formatOptions = stats?.formats ? Object.keys(stats.formats) : []
 
-  const handleSearchInputChange = (value: string) => {
-    setSearchInput(value)
-    setPage(1)
-    setSelectedIds(new Set())
-  }
-
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-4 sm:p-6">
       <ScrollArea className="flex-1">
         <div className="space-y-4 sm:space-y-6 pr-4">
-          {/* 统计卡片 */}
+          {/* 状态切换 */}
           {stats && (
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="p-3">
-                  <CardDescription className="text-xs">认识</CardDescription>
-                  <CardTitle className="text-xl leading-none text-sky-600">
-                    {stats.known}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-              <Card>
-                <CardHeader className="p-3">
-                  <CardDescription className="text-xs">不认识</CardDescription>
-                  <CardTitle className="text-xl leading-none text-gray-600">
-                    {stats.unknown}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-              <Card>
-                <CardHeader className="p-3">
-                  <CardDescription className="text-xs">
-                    据为己用
-                  </CardDescription>
-                  <CardTitle className="text-xl leading-none text-green-600">
-                    {stats.adopted}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-              <Card>
-                <CardHeader className="p-3">
-                  <CardDescription className="text-xs">丢弃</CardDescription>
-                  <CardTitle className="text-xl leading-none text-red-600">
-                    {stats.discarded}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-            </div>
+            <Tabs
+              value={list.filters.status === 'all' ? 'adopted' : list.filters.status}
+              onValueChange={(value) => list.setFilter('status', value as EmojiStatus)}
+            >
+              <DashboardTabBar variant="grid" className="h-10 grid-cols-2 sm:grid-cols-4">
+                {[
+                  { value: 'known' as const, label: '认识', count: stats.known, className: 'text-sky-600' },
+                  { value: 'unknown' as const, label: '不认识', count: stats.unknown, className: 'text-gray-600' },
+                  { value: 'adopted' as const, label: '据为己用', count: stats.adopted, className: 'text-green-600' },
+                  { value: 'discarded' as const, label: '丢弃', count: stats.discarded, className: 'text-red-600' },
+                ].map((item) => (
+                  <DashboardTabTrigger key={item.value} value={item.value} className="h-10 gap-2">
+                    <span>{item.label}</span>
+                    <span className={`font-semibold leading-none ${item.className}`}>
+                      {item.count}
+                    </span>
+                  </DashboardTabTrigger>
+                ))}
+              </DashboardTabBar>
+            </Tabs>
           )}
 
           {/* 筛选和排序 */}
           <Card>
             <CardContent className="space-y-4 pt-6">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="emoji-search">搜索 tag</Label>
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="emoji-search"
-                      value={searchInput}
+                      value={list.searchInput}
                       onChange={(event) =>
-                        handleSearchInputChange(event.target.value)
+                        list.setSearchInput(event.target.value)
                       }
                       placeholder="搜索 tag、描述或哈希..."
                       className="pr-9 pl-8"
                     />
-                    {searchInput && (
+                    {list.searchInput && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         className="absolute right-1 top-1 h-7 w-7"
-                        onClick={() => handleSearchInputChange('')}
+                        onClick={() => list.setSearchInput('')}
                         aria-label="清空搜索"
                       >
                         <X className="h-4 w-4" />
@@ -365,12 +293,11 @@ export function EmojiManagementPage() {
                 <div className="space-y-2">
                   <Label>排序方式</Label>
                   <Select
-                    value={`${sortBy}-${sortOrder}`}
+                    value={`${list.filters.sortBy}-${list.filters.sortOrder}`}
                     onValueChange={(value) => {
                       const [newSortBy, newSortOrder] = value.split('-')
-                      setSortBy(newSortBy)
-                      setSortOrder(newSortOrder as 'desc' | 'asc')
-                      setPage(1)
+                      list.setFilter('sortBy', newSortBy)
+                      list.setFilter('sortOrder', newSortOrder as 'desc' | 'asc')
                     }}
                   >
                     <SelectTrigger>
@@ -406,35 +333,10 @@ export function EmojiManagementPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>表情包状态</Label>
-                  <Select
-                    value={statusFilter}
-                    onValueChange={(value) => {
-                      setStatusFilter(value as EmojiStatus | 'all')
-                      setPage(1)
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部</SelectItem>
-                      <SelectItem value="known">认识</SelectItem>
-                      <SelectItem value="unknown">不认识</SelectItem>
-                      <SelectItem value="adopted">据为己用</SelectItem>
-                      <SelectItem value="discarded">丢弃</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
                   <Label>格式</Label>
                   <Select
-                    value={formatFilter}
-                    onValueChange={(value) => {
-                      setFormatFilter(value)
-                      setPage(1)
-                    }}
+                    value={list.filters.format}
+                    onValueChange={(value) => list.setFilter('format', value)}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -453,43 +355,47 @@ export function EmojiManagementPage() {
 
               <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
-                  {selectedIds.size > 0 && (
+                  {list.selectedCount > 0 && (
                     <span className="text-sm text-muted-foreground">
-                      已选择 {selectedIds.size} 个表情包
+                      已选择 {list.selectedCount} 个表情包
                     </span>
                   )}
-                  {/* 卡片尺寸切换 */}
                   <div className="flex items-center gap-2">
-                    <Label className="text-sm whitespace-nowrap">
-                      卡片大小
-                    </Label>
-                    <Select
-                      value={cardSize}
-                      onValueChange={(
-                        value: 'small' | 'medium' | 'large'
-                      ) => setCardSize(value)}
-                    >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="small">小</SelectItem>
-                        <SelectItem value="medium">中</SelectItem>
-                        <SelectItem value="large">大</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex h-9 items-center gap-1 border-2 px-1.5">
+                      {[
+                        { value: 'small' as const, label: '小', sizeClassName: 'h-3 w-3' },
+                        { value: 'medium' as const, label: '中', sizeClassName: 'h-4 w-4' },
+                        { value: 'large' as const, label: '大', sizeClassName: 'h-5 w-5' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setCardSize(option.value)}
+                          className={`flex h-7 w-7 items-center justify-center transition-colors ${
+                            cardSize === option.value
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                          aria-label={`${option.label}卡片`}
+                          title={`${option.label}卡片`}
+                        >
+                          <span className={`${option.sizeClassName} bg-current`} />
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <Button
                     variant="outline"
-                    size="sm"
-                    onClick={loadEmojiList}
-                    disabled={loading}
+                    size="icon"
+                    onClick={() => list.refetch()}
+                    disabled={list.isFetching}
+                    aria-label="刷新"
+                    title="刷新"
                   >
                     <RefreshCw
-                      className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`}
+                      className={`h-4 w-4 ${list.isFetching ? 'animate-spin' : ''}`}
                     />
-                    刷新
                   </Button>
 
                   <Button
@@ -497,16 +403,16 @@ export function EmojiManagementPage() {
                     onClick={() => setUploadDialogOpen(true)}
                     className="gap-2"
                   >
-                    <Upload className="h-4 w-4" />
-                    上传表情包
+                    <Plus className="h-4 w-4" />
+                    新增
                   </Button>
 
-                  {selectedIds.size > 0 && (
+                  {list.selectedCount > 0 && (
                     <>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSelectedIds(new Set())}
+                        onClick={() => list.clearSelection()}
                       >
                         取消选择
                       </Button>
@@ -531,11 +437,7 @@ export function EmojiManagementPage() {
                   </Label>
                   <Select
                     value={pageSize.toString()}
-                    onValueChange={(value) => {
-                      setPageSize(parseInt(value))
-                      setPage(1)
-                      setSelectedIds(new Set())
-                    }}
+                    onValueChange={(value) => list.setPageSize(parseInt(value))}
                   >
                     <SelectTrigger id="emoji-page-size" className="w-20">
                       <SelectValue />
@@ -562,25 +464,34 @@ export function EmojiManagementPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <EmojiList
-                emojiList={emojiList}
-                loading={loading}
-                total={total}
-                page={page}
-                pageSize={pageSize}
-                selectedIds={selectedIds}
-                cardSize={cardSize}
-                jumpToPage={jumpToPage}
-                onPageChange={setPage}
-                onJumpToPage={handleJumpToPage}
-                onJumpToPageChange={setJumpToPage}
-                onToggleSelect={toggleSelect}
-                onEdit={handleEdit}
-                onViewDetail={handleViewDetail}
-                onRegister={handleRegister}
-                onBan={handleBan}
-                onDelete={handleDelete}
-              />
+              {list.isError ? (
+                <div className="text-center py-12 space-y-2">
+                  <p className="text-sm text-destructive">{list.error?.message}</p>
+                  <Button variant="outline" size="sm" onClick={() => list.refetch()}>
+                    重试
+                  </Button>
+                </div>
+              ) : (
+                <EmojiList
+                  emojiList={emojiList}
+                  loading={loading}
+                  total={total}
+                  page={page}
+                  pageSize={pageSize}
+                  selectedIds={list.selectedIds}
+                  cardSize={cardSize}
+                  jumpToPage={jumpToPage}
+                  onPageChange={list.goToPage}
+                  onJumpToPage={handleJumpToPage}
+                  onJumpToPageChange={setJumpToPage}
+                  onToggleSelect={list.toggle}
+                  onEdit={handleEdit}
+                  onViewDetail={handleViewDetail}
+                  onRegister={handleRegister}
+                  onBan={handleBan}
+                  onDelete={handleDelete}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -596,20 +507,14 @@ export function EmojiManagementPage() {
             emoji={selectedEmoji}
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
-            onSuccess={() => {
-              loadEmojiList()
-              loadStats()
-            }}
+            onSuccess={() => list.invalidate()}
           />
 
           {/* 上传对话框 */}
           <EmojiUploadDialog
             open={uploadDialogOpen}
             onOpenChange={setUploadDialogOpen}
-            onSuccess={() => {
-              loadEmojiList()
-              loadStats()
-            }}
+            onSuccess={() => list.invalidate()}
           />
         </div>
       </ScrollArea>
@@ -623,7 +528,7 @@ export function EmojiManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认批量删除</AlertDialogTitle>
             <AlertDialogDescription>
-              你确定要删除选中的 {selectedIds.size}{' '}
+              你确定要删除选中的 {list.selectedCount}{' '}
               个表情包吗?此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>

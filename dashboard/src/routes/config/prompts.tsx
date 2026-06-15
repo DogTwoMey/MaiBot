@@ -89,20 +89,15 @@ export function PromptManagementPage() {
     try {
       setLoadingCatalog(true)
       const result = await getPromptCatalog()
-      if (!result.success) {
-        toast({ title: '加载 Prompt 目录失败', description: result.error, variant: 'destructive' })
-        return
-      }
-
-      setCatalog(result.data)
-      const nextLanguage = language && result.data.languages.includes(language)
+      setCatalog(result)
+      const nextLanguage = language && result.languages.includes(language)
         ? language
-        : result.data.languages.includes('zh-CN')
+        : result.languages.includes('zh-CN')
           ? 'zh-CN'
-        : result.data.languages[0] ?? ''
+        : result.languages[0] ?? ''
       setLanguage(nextLanguage)
 
-      const nextFiles = nextLanguage ? result.data.files[nextLanguage] ?? [] : []
+      const nextFiles = nextLanguage ? result.files[nextLanguage] ?? [] : []
       const nextBasicFiles = nextFiles.filter((file) => !file.advanced)
       setFilename((current) =>
         nextFiles.some((file) => file.name === current) ? current : nextBasicFiles[0]?.name ?? nextFiles[0]?.name ?? ''
@@ -135,12 +130,8 @@ export function PromptManagementPage() {
         setLoadingFile(true)
         const result = await getPromptFile(language, filename)
         if (cancelled) return
-        if (!result.success) {
-          toast({ title: '读取 Prompt 失败', description: result.error, variant: 'destructive' })
-          return
-        }
-        setContent(result.data.content)
-        setSavedContent(result.data.content)
+        setContent(result.content)
+        setSavedContent(result.content)
       } catch (error) {
         if (!cancelled) {
           toast({
@@ -176,13 +167,8 @@ export function PromptManagementPage() {
     try {
       setSaving(true)
       const result = await updatePromptFile(language, filename, content)
-      if (!result.success) {
-        toast({ title: '保存 Prompt 失败', description: result.error, variant: 'destructive' })
-        return
-      }
-
-      setContent(result.data.content)
-      setSavedContent(result.data.content)
+      setContent(result.content)
+      setSavedContent(result.content)
       toast({ title: 'Prompt 已保存', description: `${language}/${filename}` })
       void loadCatalog()
     } catch (error) {
@@ -203,13 +189,7 @@ export function PromptManagementPage() {
       setLoadingDefaultPrompt(true)
       setDefaultPromptOpen(true)
       const result = await getDefaultPromptFile(language, filename)
-      if (!result.success) {
-        toast({ title: '读取默认 Prompt 失败', description: result.error, variant: 'destructive' })
-        setDefaultPromptOpen(false)
-        return
-      }
-
-      setDefaultPromptContent(result.data.content)
+      setDefaultPromptContent(result.content)
     } catch (error) {
       toast({
         title: '读取默认 Prompt 失败',
@@ -228,13 +208,8 @@ export function PromptManagementPage() {
     try {
       setResetting(true)
       const result = await resetPromptFile(language, filename)
-      if (!result.success) {
-        toast({ title: '恢复默认 Prompt 失败', description: result.error, variant: 'destructive' })
-        return
-      }
-
-      setContent(result.data.content)
-      setSavedContent(result.data.content)
+      setContent(result.content)
+      setSavedContent(result.content)
       toast({ title: '已恢复默认 Prompt', description: `${language}/${filename}` })
       void loadCatalog()
     } catch (error) {
@@ -301,7 +276,9 @@ export function PromptManagementPage() {
         <Card className="flex max-h-52 min-h-0 flex-col overflow-hidden sm:max-h-none">
           <CardHeader className="shrink-0 p-3 pb-2 sm:p-6 sm:pb-3">
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="shrink-0">{filteredFiles.length}</Badge>
+              <div className="flex h-10 shrink-0 items-center px-1 text-4xl font-bold leading-none text-foreground sm:h-9">
+                {filteredFiles.length}
+              </div>
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input

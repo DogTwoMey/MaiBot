@@ -17,7 +17,6 @@ from src.llm_models.payload_content.message import Message, MessageBuilder, Role
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.services.llm_service import LLMServiceClient
 
-from .behavior_pattern_consolidator import behavior_pattern_consolidator
 from .behavior_pattern_maintenance import behavior_pattern_maintenance
 from .behavior_pattern_store import (
     ACTOR_GROUP_COLLECTIVE,
@@ -43,18 +42,22 @@ behavior_learn_model = LLMServiceClient(task_name="learner", request_type="behav
 behavior_scene_model = LLMServiceClient(task_name="learner", request_type="behavior.scene_analyzer")
 behavior_feedback_model = LLMServiceClient(task_name="learner", request_type="behavior.feedback")
 
-BEHAVIOR_REFERENCE_ID_PATTERN = re.compile(r'<behavior_pattern_reference\s+id=["\']?(\d+)["\']?', re.IGNORECASE)
+BEHAVIOR_REFERENCE_ID_PATTERN = re.compile(r"\bbehavior_id\s*[：:]\s*(\d+)\b", re.IGNORECASE)
 FEEDBACK_STATUS_SUCCESS = "success"
+FEEDBACK_STATUS_PARTIAL_SUCCESS = "partial_success"
 FEEDBACK_STATUS_FAILED = "failed"
 FEEDBACK_STATUS_NEUTRAL = "neutral"
-ALLOWED_FEEDBACK_STATUSES = {FEEDBACK_STATUS_SUCCESS, FEEDBACK_STATUS_FAILED, FEEDBACK_STATUS_NEUTRAL}
-
+ALLOWED_FEEDBACK_STATUSES = {
+    FEEDBACK_STATUS_SUCCESS,
+    FEEDBACK_STATUS_PARTIAL_SUCCESS,
+    FEEDBACK_STATUS_FAILED,
+    FEEDBACK_STATUS_NEUTRAL,
+}
 
 @dataclass(frozen=True)
 class BehaviorCandidate:
     """从聊天历史中抽取出的场景-行为-结果候选。"""
 
-    trigger: str
     action: str
     outcome: str
     source_ids: list[str]
@@ -98,7 +101,6 @@ class BehaviorReferenceCandidate:
     """裁切上下文中出现过的行为参考路径。"""
 
     behavior_id: int
-    trigger: str
     action: str
     outcome: str
     actor_type: str
@@ -239,6 +241,8 @@ def _coerce_feedback_status(raw_value: Any) -> str:
         return normalized_value
     if normalized_value in {"succeeded", "completed", "positive"}:
         return FEEDBACK_STATUS_SUCCESS
+    if normalized_value in {"partial", "partially_successful", "weak_success"}:
+        return FEEDBACK_STATUS_PARTIAL_SUCCESS
     if normalized_value in {"blocked", "abandoned", "negative", "failure"}:
         return FEEDBACK_STATUS_FAILED
     return FEEDBACK_STATUS_NEUTRAL
@@ -250,11 +254,19 @@ def _coerce_score_delta(raw_value: Any, *, status: str) -> float:
     except (TypeError, ValueError):
         if status == FEEDBACK_STATUS_SUCCESS:
             score_delta = 0.6
+        elif status == FEEDBACK_STATUS_PARTIAL_SUCCESS:
+            score_delta = 0.25
         elif status == FEEDBACK_STATUS_FAILED:
             score_delta = -0.6
         else:
             score_delta = 0.0
-    return max(-1.5, min(1.5, score_delta))
+    if status == FEEDBACK_STATUS_SUCCESS:
+        return max(0.1, min(1.0, abs(score_delta)))
+    if status == FEEDBACK_STATUS_PARTIAL_SUCCESS:
+        return max(0.05, min(0.35, abs(score_delta)))
+    if status == FEEDBACK_STATUS_FAILED:
+        return -max(0.1, min(1.0, abs(score_delta)))
+    return 0.0
 
 
 def _compact_log_text(text: str, *, max_length: int = 1200) -> str:
@@ -268,9 +280,6 @@ def _compact_log_text(text: str, *, max_length: int = 1200) -> str:
 
 def _parse_behavior_item(
     raw_item: Any,
-    *,
-    scene_start: str,
-    scene_start_by_segment_id: Optional[dict[str, str]] = None,
 ) -> Optional[BehaviorCandidate]:
     if not isinstance(raw_item, dict):
         return None
@@ -281,17 +290,13 @@ def _parse_behavior_item(
     segment_id = str(raw_item.get("segment_id") or raw_item.get("scene_id") or "").strip()
     actor_type = _coerce_actor_type(raw_item.get("actor_type"))
     learning_type = _coerce_learning_type(raw_item.get("learning_type"))
-    trigger = scene_start.strip()
-    if segment_id and scene_start_by_segment_id:
-        trigger = scene_start_by_segment_id.get(segment_id, trigger).strip()
-    if not trigger or not action or not outcome or not actor_type or not learning_type:
+    if not action or not outcome or not actor_type or not learning_type:
         return None
     if actor_type == ACTOR_MAIBOT_SELF and learning_type != LEARNING_SELF_REFLECTION:
         return None
     if actor_type != ACTOR_MAIBOT_SELF and learning_type != LEARNING_OBSERVED:
         return None
     return BehaviorCandidate(
-        trigger=trigger,
         action=action,
         outcome=outcome,
         source_ids=source_ids,
@@ -305,7 +310,6 @@ def parse_behavior_response_with_diagnostics(
     response: str,
     *,
     scene_start: str,
-    scene_start_by_segment_id: Optional[dict[str, str]] = None,
 ) -> BehaviorParseResult:
     """解析行为学习模型返回的 JSON，并保留诊断信息供日志输出。"""
 
@@ -348,11 +352,7 @@ def parse_behavior_response_with_diagnostics(
     candidates: list[BehaviorCandidate] = []
     invalid_item_count = 0
     for raw_item in parsed_response:
-        candidate = _parse_behavior_item(
-            raw_item,
-            scene_start=normalized_scene_start,
-            scene_start_by_segment_id=scene_start_by_segment_id,
-        )
+        candidate = _parse_behavior_item(raw_item)
         if candidate is not None:
             candidates.append(candidate)
         else:
@@ -419,7 +419,13 @@ def parse_behavior_feedback_response(response: str) -> list[BehaviorFeedbackCand
         reason = str(raw_item.get("reason") or "").strip()
         outcome = str(raw_item.get("outcome") or "").strip()
         source_ids = _coerce_source_ids(raw_item.get("source_ids"))
-        if not adopted or status == FEEDBACK_STATUS_NEUTRAL or abs(score_delta) <= 0.0001 or not reason:
+        if (
+            not adopted
+            or status == FEEDBACK_STATUS_NEUTRAL
+            or abs(score_delta) <= 0.0001
+            or not reason
+            or not source_ids
+        ):
             continue
 
         used_behavior_ids.add(behavior_id)
@@ -435,6 +441,33 @@ def parse_behavior_feedback_response(response: str) -> list[BehaviorFeedbackCand
             )
         )
     return feedback_items
+
+
+def _validate_behavior_feedback_evidence(
+    feedback_item: BehaviorFeedbackCandidate,
+    feedback_context: BehaviorFeedbackContext,
+) -> tuple[bool, str, list[str]]:
+    item_by_id = {
+        item.item_id: item
+        for item in feedback_context.timeline_items
+        if item.item_type == "chat_message" and item.item_id
+    }
+    valid_source_ids: list[str] = []
+    cited_items: list[BehaviorFeedbackContextItem] = []
+    for source_id in feedback_item.source_ids:
+        item = item_by_id.get(source_id)
+        if item is None:
+            continue
+        valid_source_ids.append(source_id)
+        cited_items.append(item)
+    if not valid_source_ids:
+        return False, "invalid_source_ids", []
+
+    has_self_adoption_evidence = any(item.speaker == "SELF" for item in cited_items)
+    if not has_self_adoption_evidence:
+        return False, "missing_self_adoption_evidence", valid_source_ids
+
+    return True, "", valid_source_ids
 
 
 class BehaviorLearner:
@@ -576,7 +609,6 @@ class BehaviorLearner:
             references.append(
                 BehaviorReferenceCandidate(
                     behavior_id=behavior_id,
-                    trigger=str(payload.get("trigger") or "").strip(),
                     action=str(payload.get("action") or "").strip(),
                     outcome=str(payload.get("outcome") or "").strip(),
                     actor_type=str(payload.get("actor_type") or "").strip(),
@@ -597,60 +629,83 @@ class BehaviorLearner:
         )
 
     @staticmethod
-    def _format_feedback_references_for_prompt(references: Sequence[BehaviorReferenceCandidate]) -> str:
-        """把行为参考路径压成反馈模型可校验的 JSON。"""
+    def _format_feedback_references_for_system_prompt(references: Sequence[BehaviorReferenceCandidate]) -> str:
+        """把选择的行为参考路径格式化成 system prompt 中的可读文本。"""
 
-        return json.dumps(
-            [
-                {
-                    "behavior_id": reference.behavior_id,
-                    "trigger": reference.trigger,
-                    "action": reference.action,
-                    "expected_outcome": reference.outcome,
-                    "actor_type": reference.actor_type,
-                    "learning_type": reference.learning_type,
-                    "session_id": reference.session_id,
-                }
-                for reference in references
-            ],
-            ensure_ascii=False,
-            indent=2,
-        )
+        formatted_references: list[str] = []
+        for index, reference in enumerate(references, start=1):
+            formatted_references.append(
+                "\n".join(
+                    [
+                        f"路径 {index}",
+                        f"- behavior_id: {reference.behavior_id}",
+                        f"- actor_type: {reference.actor_type or 'unknown'}",
+                        f"- learning_type: {reference.learning_type or 'unknown'}",
+                        f"- session_id: {reference.session_id or 'unknown'}",
+                        f"- 采用行为: {reference.action or '[空]'}",
+                        f"- 预期结果: {reference.outcome or '[空]'}",
+                    ]
+                )
+            )
+        return "\n\n".join(formatted_references)
 
     @staticmethod
-    def _format_feedback_timeline_for_prompt(timeline_items: Sequence[BehaviorFeedbackContextItem]) -> str:
-        """把裁切上下文时间线压成反馈模型可引用的 JSON。"""
+    def _format_feedback_timeline_message(item: BehaviorFeedbackContextItem) -> str:
+        """把裁切上下文时间线中的单项格式化成独立消息。"""
 
-        return json.dumps(
+        return "\n".join(
             [
-                {
-                    "item_id": item.item_id,
-                    "type": item.item_type,
-                    "speaker": item.speaker,
-                    "source": item.source,
-                    "text": _compact_log_text(item.text, max_length=900),
-                }
-                for item in timeline_items
-            ],
-            ensure_ascii=False,
-            indent=2,
+                "[timeline_item]",
+                f"[item_id:{item.item_id}]",
+                f"[type:{item.item_type}]",
+                f"[speaker:{item.speaker or 'unknown'}]",
+                f"[source:{item.source or 'unknown'}]",
+                "[content]",
+                _compact_log_text(item.text, max_length=900) or "[空]",
+            ]
         )
+
+    def _build_behavior_feedback_messages(self, feedback_context: BehaviorFeedbackContext) -> list[Message]:
+        """构造行为路径反馈使用的多 message 请求。"""
+
+        prompt = load_prompt(
+            "evaluate_behavior_feedback",
+            bot_name=global_config.bot.nickname,
+            behavior_references=self._format_feedback_references_for_system_prompt(feedback_context.references),
+        )
+        feedback_messages = [
+            MessageBuilder()
+            .set_role(RoleType.System)
+            .add_text_content(
+                f"{prompt}\n\n"
+                "注意：候选行为路径已经在本 system prompt 中列出。"
+                "后续聊天时间线会在后续多条 user message 中给出；每条时间线消息包含 item_id，"
+                "source_ids 必须引用时间线消息中的 item_id。"
+            )
+            .build(),
+            MessageBuilder().set_role(RoleType.User).add_text_content("以下是后续聊天时间线。").build()
+        ]
+        for item in feedback_context.timeline_items:
+            feedback_messages.append(
+                MessageBuilder()
+                .set_role(RoleType.User)
+                .add_text_content(self._format_feedback_timeline_message(item))
+                .build()
+            )
+
+        feedback_messages.append(
+            MessageBuilder()
+            .set_role(RoleType.User)
+            .add_text_content("请根据以上行为参考和后续聊天时间线输出反馈 JSON。")
+            .build()
+        )
+        return feedback_messages
 
     async def _evaluate_behavior_feedback(self, feedback_context: BehaviorFeedbackContext) -> bool:
         """评估裁切上下文中历史行为路径参考的采用与结果，并写回反馈。"""
 
         reference_by_id = {reference.behavior_id: reference for reference in feedback_context.references}
-
-        prompt = load_prompt(
-            "evaluate_behavior_feedback",
-            bot_name=global_config.bot.nickname,
-            behavior_references=self._format_feedback_references_for_prompt(feedback_context.references),
-            feedback_timeline=self._format_feedback_timeline_for_prompt(feedback_context.timeline_items),
-        )
-        feedback_messages = [
-            MessageBuilder().set_role(RoleType.System).add_text_content(prompt).build(),
-            MessageBuilder().set_role(RoleType.User).add_text_content("请根据以上行为参考和后续聊天时间线输出反馈 JSON。").build(),
-        ]
+        feedback_messages = self._build_behavior_feedback_messages(feedback_context)
 
         try:
             generation_result = await behavior_feedback_model.generate_response_with_messages(
@@ -680,6 +735,13 @@ class BehaviorLearner:
             if reference is None:
                 skipped_reasons["unknown_behavior_id"] += 1
                 continue
+            evidence_valid, invalid_reason, valid_source_ids = _validate_behavior_feedback_evidence(
+                feedback_item,
+                feedback_context,
+            )
+            if not evidence_valid:
+                skipped_reasons[invalid_reason] += 1
+                continue
 
             feedback_path = apply_behavior_feedback(
                 pattern_id=feedback_item.behavior_id,
@@ -688,6 +750,7 @@ class BehaviorLearner:
                 reason=feedback_item.reason,
                 outcome=feedback_item.outcome,
                 session_id=reference.session_id or self.session_id,
+                source_ids=valid_source_ids,
             )
             if feedback_path is None:
                 skipped_reasons["write_failed"] += 1
@@ -696,7 +759,7 @@ class BehaviorLearner:
             logger.info(
                 f"行为路径反馈已写入: behavior_id={feedback_item.behavior_id} "
                 f"status={feedback_item.status} score_delta={feedback_item.score_delta} "
-                f"source_ids={feedback_item.source_ids}"
+                f"source_ids={valid_source_ids}"
             )
 
         logger.info(
@@ -824,7 +887,6 @@ class BehaviorLearner:
         parse_result = parse_behavior_response_with_diagnostics(
             response,
             scene_start=scene_start,
-            scene_start_by_segment_id=scene_start_by_segment_id,
         )
         self._log_parse_diagnostics(
             learning_session_id=learning_session_id,
@@ -860,7 +922,6 @@ class BehaviorLearner:
                 f"learning_type={candidate.learning_type} source_ids={candidate.source_ids}"
             )
             path = upsert_behavior_pattern(
-                trigger=candidate_scene_start,
                 action=candidate.action,
                 outcome=candidate.outcome,
                 source_ids=candidate.source_ids,
@@ -907,14 +968,6 @@ class BehaviorLearner:
                     f"衰减={maintenance_result.decayed_count} "
                     f"禁用={maintenance_result.disabled_count} "
                     f"合并={maintenance_result.merged_count}"
-                )
-
-            consolidation_result = await behavior_pattern_consolidator.consolidate_after_learning(learning_session_id)
-            if consolidation_result.changed:
-                logger.info(
-                    f"{learning_session_id} 行为表现语义整合完成: "
-                    f"建议={consolidation_result.suggestion_count} "
-                    f"合并={consolidation_result.merged_count}"
                 )
 
         return wrote_pattern
@@ -1332,11 +1385,11 @@ class BehaviorLearner:
         filtered_candidates: list[BehaviorCandidate] = []
         skipped_reasons: Counter[str] = Counter()
         for candidate in candidates:
-            if "SELF" in candidate.trigger or "SELF" in candidate.action or "SELF" in candidate.outcome:
+            if "SELF" in candidate.action or "SELF" in candidate.outcome:
                 skipped_reasons["contains_self_literal"] += 1
                 logger.info(
                     f"跳过包含 SELF 字面量的行为表现："
-                    f"trigger={candidate.trigger}, action={candidate.action}, outcome={candidate.outcome}"
+                    f"action={candidate.action}, outcome={candidate.outcome}"
                 )
                 continue
 
@@ -1372,7 +1425,6 @@ class BehaviorLearner:
 
             filtered_candidates.append(
                 BehaviorCandidate(
-                    trigger=candidate.trigger.strip(),
                     action=candidate.action.strip(),
                     outcome=candidate.outcome.strip(),
                     source_ids=valid_source_ids,

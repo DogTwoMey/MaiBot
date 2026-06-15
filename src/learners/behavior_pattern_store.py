@@ -7,19 +7,17 @@ import json
 
 from src.common.database.database import get_db_session
 from src.common.database.database_model import (
-    BehaviorActionNode,
+    BehaviorAction,
     BehaviorExperiencePath,
-    BehaviorOutcomeNode,
-    BehaviorSceneCluster,
+    BehaviorOutcome,
 )
 from src.common.logger import get_logger
 
 from .behavior_scenario import BehaviorScenarioProfile
-from .behavior_scene_graph_store import (
-    _load_cluster_distribution,
+from .behavior_scene_cluster_store import (
+    _load_tag_cluster_lookup,
     apply_behavior_scene_feedback,
-    format_scene_cluster_distribution,
-    link_behavior_experience_to_scene_graph,
+    build_profile_tag_distribution,
     mark_behavior_scene_links_selected,
     upsert_behavior_graph_refs,
 )
@@ -40,6 +38,7 @@ MIN_BEHAVIOR_SCORE = -6.0
 MAX_BEHAVIOR_SCORE = 8.0
 NEGATIVE_FEEDBACK_STATUSES = {"failed", "blocked", "abandoned"}
 POSITIVE_FEEDBACK_STATUSES = {"success", "succeeded", "completed"}
+PARTIAL_POSITIVE_FEEDBACK_STATUSES = {"partial_success"}
 
 
 def _load_json_list(raw_value: Any) -> list[Any]:
@@ -97,15 +96,14 @@ def _coerce_learning_type(learning_type: str, *, actor_type: str) -> str:
 
 def _build_evidence_item(
     *,
-    trigger: str,
     action: str,
     outcome: str,
     source_ids: Sequence[str],
     actor_type: str,
     learning_type: str,
+    profile_tag_distribution: Sequence[dict[str, Any]] = (),
 ) -> dict[str, Any]:
-    return {
-        "trigger": trigger,
+    evidence_item = {
         "action": action,
         "outcome": outcome,
         "source_ids": _normalize_source_ids(source_ids),
@@ -113,38 +111,76 @@ def _build_evidence_item(
         "learning_type": learning_type,
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
+    if profile_tag_distribution:
+        evidence_item["profile_tag_distribution"] = list(profile_tag_distribution)
+    return evidence_item
+
+
+def _merge_profile_tag_distribution_from_evidence(evidence_list: Any) -> list[dict[str, float | str]]:
+    tag_totals: dict[str, float] = {}
+    distribution_count = 0
+    for evidence_item in _load_json_list(evidence_list):
+        if not isinstance(evidence_item, dict):
+            continue
+        raw_distribution = evidence_item.get("profile_tag_distribution")
+        if not isinstance(raw_distribution, list):
+            continue
+        local_tags: dict[str, float] = {}
+        for item in raw_distribution:
+            if not isinstance(item, dict):
+                continue
+            tag = str(item.get("tag") or "").strip()
+            if not tag:
+                continue
+            try:
+                probability = float(item.get("probability") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if probability > 0:
+                local_tags[tag] = local_tags.get(tag, 0.0) + probability
+        if not local_tags:
+            continue
+        distribution_count += 1
+        for tag, probability in local_tags.items():
+            tag_totals[tag] = tag_totals.get(tag, 0.0) + probability
+    if distribution_count <= 0:
+        return []
+    averaged_tags = {tag: probability / float(distribution_count) for tag, probability in tag_totals.items()}
+    total_probability = sum(averaged_tags.values())
+    if total_probability <= 0:
+        return []
+    return [
+        {
+            "tag": tag,
+            "probability": round(probability / total_probability, 6),
+        }
+        for tag, probability in sorted(averaged_tags.items())
+    ]
 
 
 def _path_texts_from_session(
     session: Session,
     path: BehaviorExperiencePath,
-) -> tuple[str, str, str]:
-    scene_cluster = session.get(BehaviorSceneCluster, path.scene_cluster_id)
-    action_node = session.get(BehaviorActionNode, path.action_node_id)
-    outcome_node = session.get(BehaviorOutcomeNode, path.outcome_node_id)
-    trigger = (
-        format_scene_cluster_distribution(_load_cluster_distribution(scene_cluster.tag_distribution))
-        if scene_cluster is not None
-        else ""
-    )
-    action = action_node.action if action_node is not None else ""
-    outcome = outcome_node.outcome if outcome_node is not None else ""
-    return trigger, action, outcome
+) -> tuple[str, str]:
+    action = session.get(BehaviorAction, path.action_id)
+    outcome = session.get(BehaviorOutcome, path.outcome_id)
+    action_text = action.action if action is not None else ""
+    outcome_text = outcome.outcome if outcome is not None else ""
+    return action_text, outcome_text
 
 
 def _path_to_dict_from_session(
     session: Session,
     path: BehaviorExperiencePath,
 ) -> dict[str, Any]:
-    trigger, action, outcome = _path_texts_from_session(session, path)
+    action, outcome = _path_texts_from_session(session, path)
     return {
         "id": path.id,
-        "trigger": trigger,
         "action": action,
         "outcome": outcome,
         "scene_cluster_id": path.scene_cluster_id,
-        "action_node_id": path.action_node_id,
-        "outcome_node_id": path.outcome_node_id,
+        "action_id": path.action_id,
+        "outcome_id": path.outcome_id,
         "actor_type": path.actor_type,
         "learning_type": path.learning_type,
         "count": path.count,
@@ -154,6 +190,7 @@ def _path_to_dict_from_session(
         "score": path.score,
         "enabled": path.enabled,
         "session_id": path.session_id,
+        "profile_tag_distribution": _merge_profile_tag_distribution_from_evidence(path.evidence_list),
         "last_active_time": path.last_active_time.isoformat() if path.last_active_time else "",
         "last_feedback_time": path.last_feedback_time.isoformat() if path.last_feedback_time else "",
     }
@@ -163,7 +200,6 @@ def behavior_experience_to_dict(path: BehaviorExperiencePath) -> dict[str, Any]:
     if path.id is None:
         return {
             "id": None,
-            "trigger": "",
             "action": "",
             "outcome": "",
             "actor_type": path.actor_type,
@@ -175,6 +211,7 @@ def behavior_experience_to_dict(path: BehaviorExperiencePath) -> dict[str, Any]:
             "score": path.score,
             "enabled": path.enabled,
             "session_id": path.session_id,
+            "profile_tag_distribution": [],
             "last_active_time": path.last_active_time.isoformat() if path.last_active_time else "",
             "last_feedback_time": path.last_feedback_time.isoformat() if path.last_feedback_time else "",
         }
@@ -192,7 +229,6 @@ def behavior_experience_to_dict(path: BehaviorExperiencePath) -> dict[str, Any]:
 
 def upsert_behavior_experience(
     *,
-    trigger: str,
     action: str,
     outcome: str,
     source_ids: Sequence[str],
@@ -202,28 +238,17 @@ def upsert_behavior_experience(
     actor_type: str = ACTOR_OTHER_USER,
     learning_type: str = LEARNING_OBSERVED,
 ) -> Optional[BehaviorExperiencePath]:
-    normalized_trigger = _normalize_text(trigger, max_length=180)
     normalized_action = _normalize_text(action, max_length=240)
     normalized_outcome = _normalize_text(outcome, max_length=240)
     normalized_source_ids = _normalize_source_ids(source_ids)
     normalized_actor_type = _coerce_actor_type(actor_type)
     normalized_learning_type = _coerce_learning_type(learning_type, actor_type=normalized_actor_type)
-    if not normalized_trigger or not normalized_action or not normalized_outcome:
+    if not normalized_action or not normalized_outcome:
         logger.warning(
             "跳过写入行为经验路径：归一化后字段为空 "
-            f"trigger={normalized_trigger!r} action={normalized_action!r} outcome={normalized_outcome!r}"
+            f"action={normalized_action!r} outcome={normalized_outcome!r}"
         )
         return None
-
-    now = datetime.now()
-    evidence_item = _build_evidence_item(
-        trigger=normalized_trigger,
-        action=normalized_action,
-        outcome=normalized_outcome,
-        source_ids=normalized_source_ids,
-        actor_type=normalized_actor_type,
-        learning_type=normalized_learning_type,
-    )
 
     try:
         with get_db_session() as session:
@@ -237,17 +262,31 @@ def upsert_behavior_experience(
             )
             if graph_refs is None:
                 logger.warning(
-                    "跳过写入行为经验路径：场景图引用生成失败 "
+                    "跳过写入行为经验路径：场景簇引用生成失败 "
                     f"session_id={session_id} action={normalized_action} outcome={normalized_outcome}"
                 )
                 return None
+
+            profile_tag_distribution = build_profile_tag_distribution(
+                scenario_profile,
+                tag_lookup=_load_tag_cluster_lookup(session),
+            )
+            now = datetime.now()
+            evidence_item = _build_evidence_item(
+                action=normalized_action,
+                outcome=normalized_outcome,
+                source_ids=normalized_source_ids,
+                actor_type=normalized_actor_type,
+                learning_type=normalized_learning_type,
+                profile_tag_distribution=profile_tag_distribution,
+            )
 
             statement = (
                 select(BehaviorExperiencePath)
                 .where(BehaviorExperiencePath.session_id == session_id)
                 .where(BehaviorExperiencePath.scene_cluster_id == graph_refs.scene_cluster_id)
-                .where(BehaviorExperiencePath.action_node_id == graph_refs.action_node_id)
-                .where(BehaviorExperiencePath.outcome_node_id == graph_refs.outcome_node_id)
+                .where(BehaviorExperiencePath.action_id == graph_refs.action_id)
+                .where(BehaviorExperiencePath.outcome_id == graph_refs.outcome_id)
                 .where(BehaviorExperiencePath.actor_type == normalized_actor_type)
                 .where(BehaviorExperiencePath.learning_type == normalized_learning_type)
             )
@@ -256,8 +295,8 @@ def upsert_behavior_experience(
                 path = BehaviorExperiencePath(
                     session_id=session_id,
                     scene_cluster_id=graph_refs.scene_cluster_id,
-                    action_node_id=graph_refs.action_node_id,
-                    outcome_node_id=graph_refs.outcome_node_id,
+                    action_id=graph_refs.action_id,
+                    outcome_id=graph_refs.outcome_id,
                     actor_type=normalized_actor_type,
                     learning_type=normalized_learning_type,
                     evidence_list=_dump_json_list([evidence_item]),
@@ -283,20 +322,12 @@ def upsert_behavior_experience(
             session.add(path)
             session.flush()
             session.refresh(path)
-            if path.id is not None:
-                link_behavior_experience_to_scene_graph(
-                    session=session,
-                    experience_path_id=path.id,
-                    session_id=session_id,
-                    refs=graph_refs,
-                )
             session.expunge(path)
             return path
     except Exception as exc:
         logger.exception(
             "写入行为经验路径失败: "
-            f"session_id={session_id} trigger={normalized_trigger} "
-            f"action={normalized_action} outcome={normalized_outcome} "
+            f"session_id={session_id} action={normalized_action} outcome={normalized_outcome} "
             f"source_ids={normalized_source_ids} error={exc}"
         )
         return None
@@ -377,10 +408,12 @@ def apply_behavior_feedback(
     reason: str,
     outcome: str,
     session_id: str,
+    source_ids: Sequence[str] = (),
 ) -> Optional[BehaviorExperiencePath]:
     normalized_status = str(status or "").strip().lower()
     normalized_reason = _normalize_text(reason, max_length=300)
     normalized_outcome = _normalize_text(outcome, max_length=240)
+    normalized_source_ids = _normalize_source_ids(source_ids)
     now = datetime.now()
 
     try:
@@ -397,6 +430,7 @@ def apply_behavior_feedback(
                     "reason": normalized_reason,
                     "outcome": normalized_outcome,
                     "session_id": session_id,
+                    "source_ids": normalized_source_ids,
                     "created_at": now.isoformat(timespec="seconds"),
                 }
             )
@@ -406,6 +440,8 @@ def apply_behavior_feedback(
             path.update_time = now
             if normalized_status in POSITIVE_FEEDBACK_STATUSES:
                 path.success_count += 1
+            elif normalized_status in PARTIAL_POSITIVE_FEEDBACK_STATUSES:
+                pass
             elif normalized_status in NEGATIVE_FEEDBACK_STATUSES:
                 path.failure_count += 1
             if path.score <= MIN_BEHAVIOR_SCORE and path.failure_count >= 3:

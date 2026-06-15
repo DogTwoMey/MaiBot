@@ -1,5 +1,4 @@
-import { useBlocker } from '@tanstack/react-router'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +17,6 @@ import { ListFieldEditor } from '@/components/ListFieldEditor'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CodeEditor } from '@/components/CodeEditor'
 import { useTheme } from '@/components/use-theme'
-import { parse as parseToml } from 'smol-toml'
 import {
   Select,
   SelectContent,
@@ -37,6 +35,7 @@ import {
 import {
   Settings,
   AlertCircle,
+  AlertTriangle,
   Package,
   ArrowUp,
   RefreshCw,
@@ -56,32 +55,20 @@ import {
   Layout,
   Trash2,
 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
 import { RestartProvider, useRestart } from '@/lib/restart-context'
 import { RestartOverlay } from '@/components/restart-overlay'
-import {
-  fetchPluginList,
-  getInstalledPlugins,
-  getPluginConfigSchema,
-  getPluginConfig,
-  getPluginConfigRaw,
-  updatePluginConfig,
-  updatePluginConfigRaw,
-  resetPluginConfig,
-  togglePlugin,
-  uninstallPlugin,
-  updatePlugin,
-  type InstalledPlugin,
-  type PluginLoadProgress,
-  type PluginConfigSchema,
-  type ConfigFieldSchema,
-  type ConfigSectionSchema,
-  type ItemFieldDefinition,
+import type {
+  InstalledPlugin,
+  ConfigFieldSchema,
+  ConfigSectionSchema,
+  ItemFieldDefinition,
 } from '@/lib/plugin-api'
-import type { PluginInfo } from '@/types/plugin'
-import { pluginProgressClient } from '@/lib/plugin-progress-client'
 import { PluginIcon } from './plugins/PluginIcon'
 import { getPluginTypeLabel } from './plugins/types'
+import { getNestedRecord } from './plugin-config/utils'
+import { usePluginList } from './plugin-config/hooks/usePluginList'
+import { usePluginLifecycle } from './plugin-config/hooks/usePluginLifecycle'
+import { usePluginConfigEditor } from './plugin-config/hooks/usePluginConfigEditor'
 
 // 字段渲染组件
 interface FieldRendererProps {
@@ -156,56 +143,6 @@ function localizeItemFields(
       },
     ])
   )
-}
-
-function getNestedRecord(config: Record<string, unknown>, path?: string): Record<string, unknown> | undefined {
-  if (!path) {
-    return undefined
-  }
-  const parts = path.split('.').filter(Boolean)
-  let current: unknown = config
-
-  for (const part of parts) {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) {
-      return undefined
-    }
-    current = (current as Record<string, unknown>)[part]
-  }
-
-  if (!current || typeof current !== 'object' || Array.isArray(current)) {
-    return undefined
-  }
-
-  return current as Record<string, unknown>
-}
-
-function setNestedField(
-  config: Record<string, unknown>,
-  path: string,
-  fieldName: string,
-  value: unknown,
-): Record<string, unknown> {
-  const parts = path.split('.').filter(Boolean)
-  const nextConfig: Record<string, unknown> = { ...config }
-  let currentTarget = nextConfig
-  let currentSource: Record<string, unknown> | undefined = config
-
-  for (const part of parts) {
-    const sourceValue: unknown = currentSource?.[part]
-    const nextValue =
-      sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)
-        ? { ...(sourceValue as Record<string, unknown>) }
-        : {}
-    currentTarget[part] = nextValue
-    currentTarget = nextValue
-    currentSource =
-      sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)
-        ? (sourceValue as Record<string, unknown>)
-        : undefined
-  }
-
-  currentTarget[fieldName] = value
-  return nextConfig
 }
 
 function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
@@ -412,7 +349,7 @@ function SectionRenderer({ sectionName, section, config, onChange }: SectionRend
   const sectionConfig = getNestedRecord(config, resolvedSectionName)
   const title = resolveLocalizedText(section.title, language, sectionName, section.i18n, 'title')
   const description = resolveLocalizedText(section.description, language, '', section.i18n, 'description')
-  
+
   // 按 order 排序字段
   const sortedFields = Object.entries(section.fields)
     .filter(([, field]) => !field.hidden)
@@ -469,236 +406,38 @@ interface PluginConfigEditorProps {
 }
 
 function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorProps) {
-  const { toast } = useToast()
   const { triggerRestart, isRestarting } = useRestart()
   const { i18n } = useTranslation()
   const language = i18n.resolvedLanguage || i18n.language || 'zh'
-  const [editMode, setEditMode] = useState<'visual' | 'source'>('visual')
-  const [schema, setSchema] = useState<PluginConfigSchema | null>(null)
-  const [activeConfigTab, setActiveConfigTab] = useState<string | undefined>(initialTab)
-  const [config, setConfig] = useState<Record<string, unknown>>({})
-  const [originalConfig, setOriginalConfig] = useState<Record<string, unknown>>({})
-  const [sourceCode, setSourceCode] = useState('')
-  const [originalSourceCode, setOriginalSourceCode] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
-  const [hasTomlError, setHasTomlError] = useState(false)
-  const [resetDialogOpen, setResetDialogOpen] = useState(false)
-  const [internalLeavePromptOpen, setInternalLeavePromptOpen] = useState(false)
 
-  const navigationBlocker = useBlocker({
-    shouldBlockFn: () => hasChanges,
-    enableBeforeUnload: hasChanges,
-    withResolver: true,
-  })
-
-  // 加载配置
-  const loadConfig = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [schemaResult, configResult, rawResult] = await Promise.all([
-        getPluginConfigSchema(plugin.id),
-        getPluginConfig(plugin.id),
-        getPluginConfigRaw(plugin.id)
-      ])
-      
-      if (!schemaResult.success) {
-        toast({
-          title: '加载配置架构失败',
-          description: schemaResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      
-      if (!configResult.success) {
-        toast({
-          title: '加载配置数据失败',
-          description: configResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      
-      if (!rawResult.success) {
-        toast({
-          title: '加载原始配置失败',
-          description: rawResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      
-      setSchema(schemaResult.data)
-      setConfig(configResult.data)
-      setOriginalConfig(JSON.parse(JSON.stringify(configResult.data)))
-      setSourceCode(rawResult.data)
-      setOriginalSourceCode(rawResult.data)
-    } catch (error) {
-      toast({
-        title: '加载配置失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-    } finally {
-      setLoading(false)
-    }
-  }, [plugin.id, toast])
-
-  useEffect(() => {
-    loadConfig()
-  }, [loadConfig])
-
-  // 检测配置变化
-  useEffect(() => {
-    if (editMode === 'visual') {
-      setHasChanges(JSON.stringify(config) !== JSON.stringify(originalConfig))
-    } else {
-      setHasChanges(sourceCode !== originalSourceCode)
-    }
-  }, [config, originalConfig, sourceCode, originalSourceCode, editMode])
-
-  // 处理字段变化
-  const handleFieldChange = (sectionName: string, fieldName: string, value: unknown) => {
-    setConfig(prev => setNestedField(prev, sectionName, fieldName, value))
-  }
-
-  // 保存配置
-  const handleSave = async (): Promise<boolean> => {
-    setSaving(true)
-    try {
-      if (editMode === 'source') {
-        // 源代码模式：先验证 TOML 格式
-        try {
-          parseToml(sourceCode)
-        } catch (error) {
-          setHasTomlError(true)
-          toast({
-            title: 'TOML 格式错误',
-            description: error instanceof Error ? error.message : '无法解析 TOML 配置，请检查语法',
-            variant: 'destructive'
-          })
-          setSaving(false)
-          return false
-        }
-        
-        // 格式正确，保存原始配置
-        await updatePluginConfigRaw(plugin.id, sourceCode)
-        setOriginalSourceCode(sourceCode)
-        setHasTomlError(false)
-      } else {
-        // 可视化模式
-        await updatePluginConfig(plugin.id, config)
-        setOriginalConfig(JSON.parse(JSON.stringify(config)))
-      }
-      
-      toast({
-        title: '配置已保存',
-        description: '更改将在插件重新加载后生效'
-      })
-      return true
-    } catch (error) {
-      toast({
-        title: '保存失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-      return false
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleBack = () => {
-    if (!hasChanges) {
-      onBack()
-      return
-    }
-    setInternalLeavePromptOpen(true)
-  }
-
-  const closeLeavePrompt = () => {
-    if (navigationBlocker.status === 'blocked') {
-      navigationBlocker.reset?.()
-    }
-    setInternalLeavePromptOpen(false)
-  }
-
-  const leaveWithoutSaving = () => {
-    if (internalLeavePromptOpen) {
-      setInternalLeavePromptOpen(false)
-      onBack()
-      return
-    }
-    navigationBlocker.proceed?.()
-  }
-
-  const saveAndLeave = async () => {
-    const saved = await handleSave()
-    if (!saved) {
-      return
-    }
-    if (internalLeavePromptOpen) {
-      setInternalLeavePromptOpen(false)
-      onBack()
-      return
-    }
-    navigationBlocker.proceed?.()
-  }
-
-  // 重置配置
-  const handleReset = async () => {
-    try {
-      const resetResult = await resetPluginConfig(plugin.id)
-      if (!resetResult.success) {
-        toast({
-          title: '重置失败',
-          description: resetResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      toast({
-        title: '配置已重置',
-        description: '下次加载插件时将使用默认配置'
-      })
-      setResetDialogOpen(false)
-      loadConfig()
-    } catch (error) {
-      toast({
-        title: '重置失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-    }
-  }
-
-  // 切换启用状态
-  const handleToggle = async () => {
-    try {
-      const toggleResult = await togglePlugin(plugin.id)
-      if (!toggleResult.success) {
-        toast({
-          title: '切换失败',
-          description: toggleResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      toast({
-        title: toggleResult.data.message,
-        description: toggleResult.data.note
-      })
-      loadConfig()
-    } catch (error) {
-      toast({
-        title: '切换状态失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-    }
-  }
+  const {
+    editMode,
+    setEditMode,
+    pluginPageTab,
+    setPluginPageTab,
+    activeConfigTab,
+    handleConfigTabChange,
+    schema,
+    config,
+    sourceCode,
+    handleSourceCodeChange,
+    handleFieldChange,
+    loading,
+    saving,
+    hasChanges,
+    hasTomlError,
+    handleSave,
+    handleReset,
+    handleToggle,
+    resetDialogOpen,
+    setResetDialogOpen,
+    navigationBlocker,
+    internalLeavePromptOpen,
+    handleBack,
+    closeLeavePrompt,
+    leaveWithoutSaving,
+    saveAndLeave,
+  } = usePluginConfigEditor({ plugin, onBack, initialTab })
 
   if (loading) {
     return (
@@ -729,12 +468,6 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
     ? activeConfigTab
     : schemaTabs[0]?.id
 
-  const handleConfigTabChange = (nextTab: string) => {
-    setActiveConfigTab(nextTab)
-    const params = new URLSearchParams({ plugin: plugin.id, tab: nextTab })
-    window.history.replaceState(null, '', `/plugin-config?${params.toString()}`)
-  }
-
   // 获取当前启用状态
   const isEnabled = (config.plugin as Record<string, unknown>)?.enabled !== false
   const pluginName = resolveLocalizedText(
@@ -744,6 +477,23 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
     schema.plugin_info.i18n,
     'name',
   )
+  const manifestUrls = plugin.manifest.urls as {
+    repository?: string
+    homepage?: string
+    documentation?: string
+    issues?: string
+  } | undefined
+  const pluginHomepageUrl = plugin.manifest.homepage_url || manifestUrls?.homepage
+  const pluginRepositoryUrl = plugin.manifest.repository_url || manifestUrls?.repository
+  const pluginDetailItems = [
+    { label: '插件 ID', value: plugin.manifest.id || plugin.id },
+    { label: '版本', value: schema.plugin_info.version || plugin.manifest.version },
+    { label: '类型', value: getPluginTypeLabel(plugin) },
+    { label: '作者', value: plugin.manifest.author?.name },
+    { label: '许可证', value: plugin.manifest.license },
+    { label: '最低麦麦版本', value: plugin.manifest.host_application?.min_version },
+    { label: '安装路径', value: plugin.path },
+  ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.trim().length > 0)
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -754,7 +504,7 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold" data-plugin-config-title>
+            <h1 className="text-xl font-bold sm:text-2xl" data-plugin-config-title>
               {pluginName}
             </h1>
             <div className="flex items-center gap-2 mt-1">
@@ -839,88 +589,133 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
         </Card>
       )}
 
-      {/* 源代码模式 */}
-      {editMode === 'source' && (
-        <div className="space-y-4">
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>源代码模式（高级功能）：</strong>直接编辑 TOML 配置文件。保存时会验证格式，只有格式正确才能保存。
-              {hasTomlError && (
-                <span className="text-destructive font-semibold ml-2">⚠️ 上次保存失败，请检查 TOML 格式</span>
-              )}
-            </AlertDescription>
-          </Alert>
-          
-            <CodeEditor
-              value={sourceCode}
-              onChange={(value) => {
-                setSourceCode(value)
-                if (hasTomlError) {
-                  setHasTomlError(false)
-                }
-              }}
-              language="toml"
-              height="calc(100vh - 350px)"
-              minHeight="500px"
-              placeholder="TOML 配置内容"
-            />
-        </div>
-      )}
+      <Tabs value={pluginPageTab} onValueChange={(value) => setPluginPageTab(value as 'settings' | 'details')}>
+        <TabsList>
+          <TabsTrigger value="settings">设置</TabsTrigger>
+          <TabsTrigger value="details">详情</TabsTrigger>
+        </TabsList>
+        <TabsContent value="settings" className="mt-4">
+          {/* 源代码模式 */}
+          {editMode === 'source' && (
+            <div className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>源代码模式（高级功能）：</strong>直接编辑 TOML 配置文件。保存时会验证格式，只有格式正确才能保存。
+                  {hasTomlError && (
+                    <span className="text-destructive font-semibold ml-2">⚠️ 上次保存失败，请检查 TOML 格式</span>
+                  )}
+                </AlertDescription>
+              </Alert>
 
-      {/* 可视化模式 */}
-      {editMode === 'visual' && (
-      <>
-      {/* 配置区域 */}
-      {schema.layout.type === 'tabs' && schemaTabs.length > 0 ? (
-        // 标签页布局
-        <Tabs value={selectedConfigTab} onValueChange={handleConfigTabChange}>
-          <TabsList>
-            {schemaTabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id}>
-                {resolveLocalizedText(tab.title, language, tab.id, tab.i18n, 'title')}
-                {tab.badge && (
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {tab.badge}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {schemaTabs.map(tab => (
-            <TabsContent key={tab.id} value={tab.id} className="space-y-4 mt-4">
-              {tab.sections.map(sectionName => {
-                const section = schema.sections[sectionName]
-                if (!section) return null
-                return (
-                  <SectionRenderer
-                    key={sectionName}
-                    sectionName={sectionName}
-                    section={section}
-                    config={config}
-                    onChange={handleFieldChange}
-                  />
-                )
-              })}
-            </TabsContent>
-          ))}
-        </Tabs>
-      ) : (
-        // 自动布局
-        <div className="space-y-4">
-          {sortedSections.map(([sectionName, section]) => (
-            <SectionRenderer
-              key={sectionName}
-              sectionName={sectionName}
-              section={section}
-              config={config}
-              onChange={handleFieldChange}
-            />
-          ))}
-        </div>
-      )}
-      </>
-      )}
+              <CodeEditor
+                value={sourceCode}
+                onChange={handleSourceCodeChange}
+                language="toml"
+                height="calc(100vh - 350px)"
+                minHeight="500px"
+                placeholder="TOML 配置内容"
+              />
+            </div>
+          )}
+
+          {/* 可视化模式 */}
+          {editMode === 'visual' && (
+          <>
+          {/* 配置区域 */}
+          {schema.layout.type === 'tabs' && schemaTabs.length > 0 ? (
+            // 标签页布局
+            <Tabs value={selectedConfigTab} onValueChange={handleConfigTabChange}>
+              <TabsList>
+                {schemaTabs.map(tab => (
+                  <TabsTrigger key={tab.id} value={tab.id}>
+                    {resolveLocalizedText(tab.title, language, tab.id, tab.i18n, 'title')}
+                    {tab.badge && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {tab.badge}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {schemaTabs.map(tab => (
+                <TabsContent key={tab.id} value={tab.id} className="space-y-4 mt-4">
+                  {tab.sections.map(sectionName => {
+                    const section = schema.sections[sectionName]
+                    if (!section) return null
+                    return (
+                      <SectionRenderer
+                        key={sectionName}
+                        sectionName={sectionName}
+                        section={section}
+                        config={config}
+                        onChange={handleFieldChange}
+                      />
+                    )
+                  })}
+                </TabsContent>
+              ))}
+            </Tabs>
+          ) : (
+            // 自动布局
+            <div className="space-y-4">
+              {sortedSections.map(([sectionName, section]) => (
+                <SectionRenderer
+                  key={sectionName}
+                  sectionName={sectionName}
+                  section={section}
+                  config={config}
+                  onChange={handleFieldChange}
+                />
+              ))}
+            </div>
+          )}
+          </>
+          )}
+        </TabsContent>
+        <TabsContent value="details" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>插件详情</CardTitle>
+              <CardDescription>{plugin.manifest.description || '暂无描述'}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {pluginDetailItems.map((item) => (
+                  <div key={item.label} className="min-w-0 rounded-md border bg-muted/20 px-3 py-2">
+                    <div className="text-xs font-medium text-muted-foreground">{item.label}</div>
+                    <div className="mt-1 break-words text-sm">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              {(pluginHomepageUrl || pluginRepositoryUrl || manifestUrls?.documentation || manifestUrls?.issues) && (
+                <div className="flex flex-wrap gap-2">
+                  {pluginHomepageUrl && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={pluginHomepageUrl} target="_blank" rel="noreferrer">主页</a>
+                    </Button>
+                  )}
+                  {pluginRepositoryUrl && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={pluginRepositoryUrl} target="_blank" rel="noreferrer">仓库</a>
+                    </Button>
+                  )}
+                  {manifestUrls?.documentation && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={manifestUrls.documentation} target="_blank" rel="noreferrer">文档</a>
+                    </Button>
+                  )}
+                  {manifestUrls?.issues && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={manifestUrls.issues} target="_blank" rel="noreferrer">问题反馈</a>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog
         open={internalLeavePromptOpen || navigationBlocker.status === 'blocked'}
@@ -976,33 +771,6 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
 }
 
 // 主页面组件 - 包装 RestartProvider
-function getInitialPluginConfigTarget(): { pluginId: string | null; tabId: string | null } {
-  if (typeof window === 'undefined') {
-    return { pluginId: null, tabId: null }
-  }
-
-  const params = new URLSearchParams(window.location.search)
-  return {
-    pluginId: params.get('plugin'),
-    tabId: params.get('tab'),
-  }
-}
-
-function comparePluginVersions(currentVersion: string, latestVersion: string): number {
-  const currentParts = currentVersion.trim().split('.').map(part => Number.parseInt(part, 10) || 0)
-  const latestParts = latestVersion.trim().split('.').map(part => Number.parseInt(part, 10) || 0)
-  const maxLength = Math.max(currentParts.length, latestParts.length)
-
-  for (let index = 0; index < maxLength; index++) {
-    const currentPart = currentParts[index] || 0
-    const latestPart = latestParts[index] || 0
-    if (latestPart > currentPart) return 1
-    if (latestPart < currentPart) return -1
-  }
-
-  return 0
-}
-
 export function PluginConfigPage() {
   return (
     <RestartProvider>
@@ -1013,450 +781,70 @@ export function PluginConfigPage() {
 
 // 内部组件：实际内容
 function PluginConfigPageContent() {
-  const { toast } = useToast()
   const { themeConfig } = useTheme()
-  const initialTarget = getInitialPluginConfigTarget()
-  const [plugins, setPlugins] = useState<InstalledPlugin[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showUpdateOnly, setShowUpdateOnly] = useState(false)
-  const [selectedPlugin, setSelectedPlugin] = useState<InstalledPlugin | null>(null)
-  const [selectedPluginTab, setSelectedPluginTab] = useState<string | undefined>(initialTarget.tabId ?? undefined)
-  const [actingPluginId, setActingPluginId] = useState<string | null>(null)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingPlugin, setDeletingPlugin] = useState<InstalledPlugin | null>(null)
-  const [deleteProgress, setDeleteProgress] = useState<PluginLoadProgress | null>(null)
-  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
-  const [updatingPlugin, setUpdatingPlugin] = useState<InstalledPlugin | null>(null)
-  const [updateProgress, setUpdateProgress] = useState<PluginLoadProgress | null>(null)
-  const [marketPluginsById, setMarketPluginsById] = useState<Record<string, PluginInfo>>({})
-  const [checkingUpdates, setCheckingUpdates] = useState(false)
 
-  const openPluginConfig = (plugin: InstalledPlugin, tabId?: string | null) => {
-    setSelectedPlugin(plugin)
-    setSelectedPluginTab(tabId ?? undefined)
-    const params = new URLSearchParams({ plugin: plugin.id })
-    if (tabId) {
-      params.set('tab', tabId)
-    }
-    window.history.replaceState(null, '', `/plugin-config?${params.toString()}`)
-  }
+  const {
+    plugins,
+    loading,
+    selectedPlugin,
+    selectedPluginTab,
+    openPluginConfig,
+    closePluginConfig,
+    loadPlugins,
+    searchQuery,
+    setSearchQuery,
+    showUpdateOnly,
+    setShowUpdateOnly,
+    visiblePlugins,
+    actingPluginId,
+    setActingPluginId,
+    performTogglePlugin,
+    checkingUpdates,
+    getPluginUpdateState,
+    getPluginRepositoryUrl,
+    isPluginDisabled,
+    getPluginStatusBarClassName,
+    getPluginStatusLabel,
+    getPluginStatusMeta,
+    installedCount,
+    disabledCount,
+    loadingCount,
+    circuitOpenCount,
+    loadFailedCount,
+    enabledCount,
+    loadSuccessCount,
+    loadSuccessPercent,
+    loadFailedPercent,
+    loadingPercent,
+    circuitPercent,
+    showsCircuitSummary,
+    modernLoadSummaryLabel,
+    futureRetroPluginSummaryLabel,
+  } = usePluginList()
 
-  const closePluginConfig = () => {
-    setSelectedPlugin(null)
-    setSelectedPluginTab(undefined)
-    window.history.replaceState(null, '', '/plugin-config')
-  }
-
-  // 加载插件列表
-  const loadPlugins = async () => {
-    setLoading(true)
-    try {
-      const installedResult = await getInstalledPlugins()
-      if (!installedResult.success) {
-        toast({
-          title: '加载插件列表失败',
-          description: installedResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-      setPlugins(installedResult.data)
-      if (!selectedPlugin && initialTarget.pluginId) {
-        const targetPlugin = installedResult.data.find((plugin) => plugin.id === initialTarget.pluginId)
-        if (targetPlugin) {
-          openPluginConfig(targetPlugin, initialTarget.tabId)
-        }
-      }
-    } catch (error) {
-      toast({
-        title: '加载插件列表失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const checkPluginUpdates = async () => {
-    setCheckingUpdates(true)
-    try {
-      const marketResult = await fetchPluginList()
-      if (!marketResult.success) {
-        console.warn('加载插件市场版本信息失败:', marketResult.error)
-        setMarketPluginsById({})
-        return
-      }
-
-      const nextMarketPluginsById: Record<string, PluginInfo> = {}
-      for (const marketPlugin of marketResult.data) {
-        nextMarketPluginsById[marketPlugin.id] = marketPlugin
-        if (marketPlugin.manifest.id) {
-          nextMarketPluginsById[marketPlugin.manifest.id] = marketPlugin
-        }
-      }
-      setMarketPluginsById(nextMarketPluginsById)
-    } catch (error) {
-      console.warn('加载插件市场版本信息失败:', error)
-      setMarketPluginsById({})
-    } finally {
-      setCheckingUpdates(false)
-    }
-  }
-
-  useEffect(() => {
-    loadPlugins()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!loading) {
-      void checkPluginUpdates()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading])
-
-  useEffect(() => {
-    let unsubscribe: (() => Promise<void>) | null = null
-    let disposed = false
-
-    void pluginProgressClient.subscribe((progress) => {
-      if (disposed) {
-        return
-      }
-      if (progress.operation === 'uninstall' && deletingPlugin && progress.plugin_id === deletingPlugin.id) {
-        setDeleteProgress(progress)
-      }
-      if (progress.operation === 'update' && updatingPlugin && progress.plugin_id === updatingPlugin.id) {
-        setUpdateProgress(progress)
-      }
-    }).then((cleanup) => {
-      if (disposed) {
-        void cleanup()
-        return
-      }
-      unsubscribe = cleanup
-    })
-
-    return () => {
-      disposed = true
-      if (unsubscribe) {
-        void unsubscribe()
-      }
-    }
-  }, [deletingPlugin, updatingPlugin])
-
-  // 过滤插件
-  const filteredPlugins = plugins.filter(plugin => {
-    const query = searchQuery.toLowerCase()
-    return (
-      plugin.id.toLowerCase().includes(query) ||
-      plugin.manifest.name.toLowerCase().includes(query) ||
-      plugin.manifest.description?.toLowerCase().includes(query)
-    )
+  const {
+    deleteDialogOpen,
+    setDeleteDialogOpen,
+    deletingPlugin,
+    deleteProgress,
+    openDeletePluginDialog,
+    closeDeletePluginDialog,
+    handleConfirmDeletePlugin,
+    updateDialogOpen,
+    setUpdateDialogOpen,
+    updatingPlugin,
+    updateProgress,
+    openUpdatePluginDialog,
+    closeUpdatePluginDialog,
+    handleConfirmUpdatePlugin,
+  } = usePluginLifecycle({
+    getPluginRepositoryUrl,
+    onChanged: loadPlugins,
+    setActingPluginId,
   })
-  
-  // 去重：如果有重复的 plugin.id，只保留第一个
-  const uniqueFilteredPlugins = filteredPlugins.filter((plugin, index, self) =>
-    index === self.findIndex((p) => p.id === plugin.id)
-  )
 
-  // 统计数据
-  const isPluginDisabled = (plugin: InstalledPlugin) => plugin.disabled === true || plugin.enabled === false
-  const isPluginLoadSuccess = (plugin: InstalledPlugin) => !isPluginDisabled(plugin) && (
-    plugin.load_status === 'success' || plugin.loaded === true
-  )
-  const isPluginLoadFailed = (plugin: InstalledPlugin) => !isPluginDisabled(plugin) && !isPluginLoadSuccess(plugin)
-  const installedCount = plugins.length
-  const disabledCount = plugins.filter(isPluginDisabled).length
-  const loadSuccessCount = plugins.filter(isPluginLoadSuccess).length
-  const loadFailedCount = plugins.filter(isPluginLoadFailed).length
-  const enabledCount = loadSuccessCount
-  const loadTotalCount = loadSuccessCount + loadFailedCount
-  const loadSuccessPercent = loadTotalCount > 0 ? (loadSuccessCount / loadTotalCount) * 100 : 0
-  const loadFailedPercent = loadTotalCount > 0 ? (loadFailedCount / loadTotalCount) * 100 : 0
   const isModernDashboardStyle = themeConfig.dashboardStyle === 'modern'
   const isFutureRetroDashboardStyle = themeConfig.dashboardStyle === 'future-retro'
-  const getPluginStatusBarClassName = (plugin: InstalledPlugin) => {
-    if (isPluginDisabled(plugin)) {
-      return 'bg-muted-foreground/45'
-    }
-    if (isPluginLoadFailed(plugin)) {
-      return 'bg-red-500'
-    }
-    return 'bg-emerald-500'
-  }
-  const getPluginStatusLabel = (plugin: InstalledPlugin) => {
-    if (isPluginDisabled(plugin)) {
-      return '已禁用'
-    }
-    if (isPluginLoadFailed(plugin)) {
-      return '启动失败'
-    }
-    return '已启用'
-  }
-  const getPluginStatusMeta = (plugin: InstalledPlugin) => {
-    if (isPluginDisabled(plugin)) {
-      return { dotClassName: 'bg-muted-foreground/45', label: '已禁用' }
-    }
-    if (isPluginLoadSuccess(plugin)) {
-      return { dotClassName: 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.16)]', label: '加载成功' }
-    }
-    return { dotClassName: 'bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.16)]', label: '加载失败' }
-  }
-  const getPluginRepositoryUrl = (plugin: InstalledPlugin): string | undefined => {
-    const marketPlugin = marketPluginsById[plugin.id] || (plugin.manifest.id ? marketPluginsById[plugin.manifest.id] : undefined)
-    const urls = plugin.manifest.urls as { repository?: string } | undefined
-    return plugin.manifest.repository_url || urls?.repository || marketPlugin?.manifest.repository_url || marketPlugin?.manifest.urls?.repository
-  }
-  const getPluginUpdateState = (plugin: InstalledPlugin): { canUpdate: boolean; hasUpdate: boolean; title?: string } => {
-    if (checkingUpdates) {
-      return { canUpdate: false, hasUpdate: false, title: '正在检查更新' }
-    }
-
-    const marketPlugin = marketPluginsById[plugin.id] || (plugin.manifest.id ? marketPluginsById[plugin.manifest.id] : undefined)
-    if (!marketPlugin) {
-      return { canUpdate: false, hasUpdate: false, title: '插件市场中没有找到该插件，无法判断新版本' }
-    }
-
-    if (!getPluginRepositoryUrl(plugin)) {
-      return { canUpdate: false, hasUpdate: false, title: '插件清单中没有仓库地址，无法更新/升级' }
-    }
-
-    const currentVersion = plugin.manifest.version
-    const latestVersion = marketPlugin.manifest.version
-    if (comparePluginVersions(currentVersion, latestVersion) <= 0) {
-      return { canUpdate: false, hasUpdate: false, title: '当前已是最新版本' }
-    }
-
-    return { canUpdate: true, hasUpdate: true, title: `发现新版本 v${latestVersion}` }
-  }
-  const visiblePlugins = showUpdateOnly
-    ? uniqueFilteredPlugins.filter((plugin) => getPluginUpdateState(plugin).hasUpdate)
-    : uniqueFilteredPlugins
-
-  const stopPluginActionEvent = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-
-  const handleTogglePlugin = async (plugin: InstalledPlugin, event: React.MouseEvent<HTMLButtonElement>) => {
-    stopPluginActionEvent(event)
-    setActingPluginId(plugin.id)
-    try {
-      const toggleResult = await togglePlugin(plugin.id)
-      if (!toggleResult.success) {
-        toast({
-          title: '切换插件状态失败',
-          description: toggleResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-
-      toast({
-        title: toggleResult.data.enabled ? '插件已启动' : '插件已关闭',
-        description: toggleResult.data.message || `${plugin.manifest.name} 状态已更新`
-      })
-      await loadPlugins()
-    } catch (error) {
-      toast({
-        title: '切换插件状态失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive'
-      })
-    } finally {
-      setActingPluginId(null)
-    }
-  }
-
-  const openUpdatePluginDialog = (plugin: InstalledPlugin, event: React.MouseEvent<HTMLButtonElement>) => {
-    stopPluginActionEvent(event)
-    setUpdatingPlugin(plugin)
-    setUpdateProgress(null)
-    setUpdateDialogOpen(true)
-  }
-
-  const closeUpdatePluginDialog = () => {
-    if (updateProgress?.stage === 'loading') {
-      return
-    }
-    setUpdateDialogOpen(false)
-    setUpdatingPlugin(null)
-    setUpdateProgress(null)
-  }
-
-  const handleConfirmUpdatePlugin = async () => {
-    if (!updatingPlugin) return
-
-    const repositoryUrl = getPluginRepositoryUrl(updatingPlugin)
-    if (!repositoryUrl) {
-      setUpdateProgress({
-        operation: 'update',
-        stage: 'error',
-        progress: 0,
-        message: '插件清单中没有仓库地址，无法更新/升级',
-        error: '插件清单中没有仓库地址，无法更新/升级',
-        plugin_id: updatingPlugin.id,
-        total_plugins: 1,
-        loaded_plugins: 0,
-      })
-      return
-    }
-
-    setActingPluginId(updatingPlugin.id)
-    setUpdateProgress({
-      operation: 'update',
-      stage: 'loading',
-      progress: 0,
-      message: `正在准备更新 ${updatingPlugin.manifest.name}`,
-      plugin_id: updatingPlugin.id,
-      total_plugins: 1,
-      loaded_plugins: 0,
-    })
-    try {
-      const updateResult = await updatePlugin(updatingPlugin.id, repositoryUrl, 'main')
-      if (!updateResult.success) {
-        setUpdateProgress({
-          operation: 'update',
-          stage: 'error',
-          progress: 0,
-          message: updateResult.error || '更新插件失败',
-          error: updateResult.error || '更新插件失败',
-          plugin_id: updatingPlugin.id,
-          total_plugins: 1,
-          loaded_plugins: 0,
-        })
-        toast({
-          title: '更新插件失败',
-          description: updateResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-
-      toast({
-        title: '更新插件成功',
-        description: `${updatingPlugin.manifest.name} 已完成更新/升级`
-      })
-      setUpdateProgress({
-        operation: 'update',
-        stage: 'success',
-        progress: 100,
-        message: `${updatingPlugin.manifest.name} 已完成更新/升级`,
-        plugin_id: updatingPlugin.id,
-        total_plugins: 1,
-        loaded_plugins: 1,
-      })
-      await loadPlugins()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误'
-      setUpdateProgress({
-        operation: 'update',
-        stage: 'error',
-        progress: 0,
-        message: errorMessage,
-        error: errorMessage,
-        plugin_id: updatingPlugin.id,
-        total_plugins: 1,
-        loaded_plugins: 0,
-      })
-      toast({
-        title: '更新插件失败',
-        description: errorMessage,
-        variant: 'destructive'
-      })
-    } finally {
-      setActingPluginId(null)
-    }
-  }
-
-  const openDeletePluginDialog = (plugin: InstalledPlugin, event: React.MouseEvent<HTMLButtonElement>) => {
-    stopPluginActionEvent(event)
-    setDeletingPlugin(plugin)
-    setDeleteProgress(null)
-    setDeleteDialogOpen(true)
-  }
-
-  const closeDeletePluginDialog = () => {
-    if (deleteProgress?.stage === 'loading') {
-      return
-    }
-    setDeleteDialogOpen(false)
-    setDeletingPlugin(null)
-    setDeleteProgress(null)
-  }
-
-  const handleConfirmDeletePlugin = async () => {
-    if (!deletingPlugin) return
-
-    setActingPluginId(deletingPlugin.id)
-    setDeleteProgress({
-      operation: 'uninstall',
-      stage: 'loading',
-      progress: 0,
-      message: `正在准备删除 ${deletingPlugin.manifest.name}`,
-      plugin_id: deletingPlugin.id,
-      total_plugins: 1,
-      loaded_plugins: 0,
-    })
-    try {
-      const uninstallResult = await uninstallPlugin(deletingPlugin.id)
-      if (!uninstallResult.success) {
-        setDeleteProgress({
-          operation: 'uninstall',
-          stage: 'error',
-          progress: 0,
-          message: uninstallResult.error || '删除插件失败',
-          error: uninstallResult.error || '删除插件失败',
-          plugin_id: deletingPlugin.id,
-          total_plugins: 1,
-          loaded_plugins: 0,
-        })
-        toast({
-          title: '删除插件失败',
-          description: uninstallResult.error,
-          variant: 'destructive'
-        })
-        return
-      }
-
-      toast({
-        title: '删除插件成功',
-        description: `${deletingPlugin.manifest.name} 已删除`
-      })
-      setDeleteProgress({
-        operation: 'uninstall',
-        stage: 'success',
-        progress: 100,
-        message: `${deletingPlugin.manifest.name} 已删除`,
-        plugin_id: deletingPlugin.id,
-        total_plugins: 1,
-        loaded_plugins: 1,
-      })
-      await loadPlugins()
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误'
-      setDeleteProgress({
-        operation: 'uninstall',
-        stage: 'error',
-        progress: 0,
-        message: errorMessage,
-        error: errorMessage,
-        plugin_id: deletingPlugin.id,
-        total_plugins: 1,
-        loaded_plugins: 0,
-      })
-      toast({
-        title: '删除插件失败',
-        description: errorMessage,
-        variant: 'destructive'
-      })
-    } finally {
-      setActingPluginId(null)
-    }
-  }
 
   // 如果选中了插件，显示配置编辑器
   if (selectedPlugin) {
@@ -1479,8 +867,8 @@ function PluginConfigPageContent() {
   return (
     <ScrollArea className="h-full">
       <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-0 flex-1 basis-72">
+        <div className="flex flex-nowrap items-center gap-2 sm:gap-3">
+          <div className="relative min-w-0 flex-1 basis-0 sm:basis-72">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="搜索插件..."
@@ -1491,7 +879,7 @@ function PluginConfigPageContent() {
           </div>
           <div
             data-dashboard-input="true"
-            className="border-input flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border bg-transparent px-3 py-1 text-sm font-medium shadow-sm transition-colors"
+            className="border-input flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border bg-transparent px-2 py-1 text-sm font-medium shadow-sm transition-colors sm:gap-2 sm:px-3"
           >
             <Label htmlFor="show-update-only" className="cursor-pointer text-sm font-medium">
               有更新
@@ -1506,6 +894,7 @@ function PluginConfigPageContent() {
           <Button
             variant="outline"
             size="icon"
+            className="shrink-0"
             onClick={loadPlugins}
             aria-label="刷新"
             title="刷新"
@@ -1525,15 +914,23 @@ function PluginConfigPageContent() {
                 </span>
                 <span>已启用 <strong className="text-emerald-600">{enabledCount}</strong> 个</span>
                 <span>已禁用 <strong className="text-muted-foreground">{disabledCount}</strong> 个</span>
+                <span>加载中 <strong className="text-sky-600">{loadingCount}</strong> 个</span>
+                {showsCircuitSummary && (
+                  <span>熔断中 <strong className="text-orange-600">{circuitOpenCount}</strong> 个</span>
+                )}
               </div>
               <div
                 className="flex items-center gap-3 border-t pt-3 text-sm"
-                aria-label={`加载成功 ${loadSuccessCount} 个，加载失败 ${loadFailedCount} 个`}
+                aria-label={modernLoadSummaryLabel}
               >
-                <span className="sr-only">加载成功 {loadSuccessCount} 个，加载失败 {loadFailedCount} 个</span>
+                <span className="sr-only">
+                  {modernLoadSummaryLabel}
+                </span>
                 <strong className="w-8 text-right text-emerald-600">{loadSuccessCount}</strong>
                 <div className="flex h-3 min-w-28 flex-1 overflow-hidden bg-muted" aria-hidden="true">
                   <div className="bg-emerald-500" style={{ width: `${loadSuccessPercent}%` }} />
+                  <div className="bg-sky-500" style={{ width: `${loadingPercent}%` }} />
+                  <div className="bg-orange-500" style={{ width: `${circuitPercent}%` }} />
                   <div className="bg-red-500" style={{ width: `${loadFailedPercent}%` }} />
                 </div>
                 <strong className="w-8 text-red-600">{loadFailedCount}</strong>
@@ -1544,10 +941,10 @@ function PluginConfigPageContent() {
           <div className="space-y-3">
             <div
               className="space-y-2"
-              aria-label={`已安装 ${installedCount} 个插件，已启用 ${enabledCount} 个，已禁用 ${disabledCount} 个，启动失败 ${loadFailedCount} 个`}
+              aria-label={futureRetroPluginSummaryLabel}
             >
               <span className="sr-only">
-                已启用 {enabledCount} 个，已禁用 {disabledCount} 个，启动失败 {loadFailedCount} 个
+                {futureRetroPluginSummaryLabel}
               </span>
               <div className="flex h-3 w-full overflow-hidden bg-muted" aria-hidden="true">
                 {plugins.length > 0 ? (
@@ -1577,6 +974,16 @@ function PluginConfigPageContent() {
                   禁用 <strong className="text-muted-foreground">{disabledCount}</strong> 个
                 </span>
                 <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-sky-500" />
+                  加载中 <strong className="text-sky-600">{loadingCount}</strong> 个
+                </span>
+                {showsCircuitSummary && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-orange-500" />
+                    熔断中 <strong className="text-orange-600">{circuitOpenCount}</strong> 个
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-red-500" />
                   启动失败 <strong className="text-red-600">{loadFailedCount}</strong> 个
                 </span>
@@ -1603,7 +1010,7 @@ function PluginConfigPageContent() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y divide-border/80">
             {visiblePlugins.map(plugin => {
               const statusMeta = getPluginStatusMeta(plugin)
               const pluginActing = actingPluginId === plugin.id
@@ -1612,9 +1019,10 @@ function PluginConfigPageContent() {
               return (
               <div
                 key={plugin.id}
-                className={`relative flex min-h-32 cursor-pointer flex-col justify-between gap-4 p-5 transition-colors hover:bg-muted/50 sm:min-h-0 sm:flex-row sm:items-center sm:p-4 ${
-                  isFutureRetroDashboardStyle ? 'border-[3px] border-[#0b5a66]' : 'rounded-lg border'
-                } ${isPluginDisabled(plugin) ? 'opacity-70' : ''}`}
+                data-plugin-list-item="true"
+                className={`relative flex cursor-pointer flex-col justify-between gap-2 py-2.5 transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-muted/55 hover:shadow-md focus-visible:-translate-y-0.5 focus-visible:bg-muted/55 focus-visible:outline-none focus-visible:shadow-md sm:min-h-0 sm:flex-row sm:items-center sm:gap-3 sm:px-2 sm:py-3 ${
+                  isPluginDisabled(plugin) ? 'opacity-70' : ''
+                }`}
                 role="button"
                 tabIndex={0}
                 onClick={() => openPluginConfig(plugin)}
@@ -1628,41 +1036,62 @@ function PluginConfigPageContent() {
                     title={statusMeta.label}
                     aria-label={statusMeta.label}
                   />
-                  <PluginIcon pluginId={plugin.id} manifest={plugin.manifest} installed className="h-12 w-12 sm:h-10 sm:w-10" />
+                  <div className="flex w-12 flex-shrink-0 flex-col items-center gap-1 sm:w-10">
+                    <PluginIcon pluginId={plugin.id} manifest={plugin.manifest} installed className="h-12 w-12 sm:h-10 sm:w-10" />
+                    <span className="text-muted-foreground text-[0.65rem] leading-none">
+                      v{plugin.manifest.version}
+                    </span>
+                  </div>
                   <div className="min-w-0 flex-1 space-y-2 sm:space-y-1">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <h3 className="min-w-0 break-words text-sm font-medium leading-snug sm:truncate sm:text-base">
                         {plugin.manifest.name}
                       </h3>
-                      <Badge variant="secondary" className="text-xs flex-shrink-0">
-                        v{plugin.manifest.version}
-                      </Badge>
                       <Badge variant="outline" className="text-xs flex-shrink-0">
                         {getPluginTypeLabel(plugin)}
                       </Badge>
+                      {statusMeta.showsBadge !== false && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs flex-shrink-0 gap-1 ${statusMeta.badgeClassName ?? ''}`}
+                        >
+                          {statusMeta.icon === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+                          {statusMeta.icon === 'warning' && <AlertCircle className="h-3 w-3" />}
+                          {statusMeta.icon === 'circuit' && <AlertTriangle className="h-3 w-3" />}
+                          {statusMeta.label}
+                        </Badge>
+                      )}
                     </div>
                     <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground sm:truncate sm:leading-normal">
                       {plugin.manifest.description || '暂无描述'}
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 border-t pt-3 sm:flex sm:flex-shrink-0 sm:items-center sm:justify-end sm:border-t-0 sm:pt-0">
-                  <Button variant="ghost" size="sm" className="min-w-24 sm:min-w-0">
+                <div className="flex items-center justify-end gap-2 border-t pt-2 sm:flex-shrink-0 sm:border-t-0 sm:pt-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    title="配置"
+                    aria-label="配置"
+                    onClick={() => openPluginConfig(plugin)}
+                  >
                     <Settings className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pluginActing}
-                    onClick={(event) => handleTogglePlugin(plugin, event)}
+                  <div
+                    className="flex h-9 w-9 items-center justify-center"
+                    title={pluginDisabled ? '启动插件' : '关闭插件'}
                   >
-                    {pluginActing ? (
-                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Power className="mr-1 h-4 w-4" />
-                    )}
-                    {pluginDisabled ? '启动' : '关闭'}
-                  </Button>
+                    {pluginActing && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      data-plugin-list-switch="true"
+                      checked={!pluginDisabled}
+                      disabled={pluginActing}
+                      aria-label={pluginDisabled ? '启动插件' : '关闭插件'}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={() => void performTogglePlugin(plugin)}
+                    />
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"

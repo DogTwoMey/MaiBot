@@ -86,4 +86,6 @@ PyCharm 用户：[`.run/`](.run/) 下有预置 Run Configurations（Start All / 
 
 本仓库沿袭上游 **GPL-3.0**。使用前请阅读 upstream 的 [`EULA.md`](EULA.md) 与 [`PRIVACY.md`](PRIVACY.md)。
 
+![Alt](depends-data/repository-metrics.svg "麦麦仓库状态")
+
 > 上游原则：本项目完全开源且免费。如果有人向你出售本软件、隐瞒其开源性质或倒卖作为"商品"，均违反协议。
