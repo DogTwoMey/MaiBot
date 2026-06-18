@@ -222,7 +222,6 @@ class MainSystem:
                 emoji_manager.periodic_emoji_maintenance(),
                 periodic_image_cache_cleanup(),
                 self.app.run(),
-                self.server.run(),
             ]
             image_path_maintenance_needed = await asyncio.to_thread(should_schedule_image_path_maintenance_background)
             if image_path_maintenance_needed:

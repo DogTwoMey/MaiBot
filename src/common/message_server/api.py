@@ -26,10 +26,11 @@ def get_global_api() -> MessageServer:  # sourcery skip: extract-method
         maim_message_config = global_config.maim_message
 
         # 设置基本参数 (Legacy Server Mode)
+        # 不传入外部 app，让 maim_message 自己创建 FastAPI 并启动 uvicorn，
+        # 避免 Python 3.14 下外部 app 的 WebSocket 路由注册兼容问题。
         kwargs = {
             "host": maim_message_config.ws_server_host,
             "port": maim_message_config.ws_server_port,
-            "app": get_global_server().get_app(),
             "custom_logger": get_logger("maim_message"),
             "enable_custom_uvicorn_logger": False,
         }
