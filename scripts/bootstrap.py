@@ -87,7 +87,12 @@ def step_uv_sync() -> None:
         if not (sub / "pyproject.toml").exists():
             print(f"[bootstrap] {rel}: no pyproject.toml — skip uv sync")
             continue
-        run([uv, "sync"], cwd=sub)
+        rc = run([uv, "sync"], cwd=sub, check=False)
+        if rc != 0:
+            print(f"[bootstrap] WARNING: uv sync failed for {rel} (exit {rc}).")
+            print(f"[bootstrap]   This is usually caused by a stale .pyd lock.")
+            print(f"[bootstrap]   You can fix it later: cd {rel} && uv sync")
+            print(f"[bootstrap]   Continuing with remaining steps...")
 
 
 def step_launcher_toml() -> None:

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   用于迁移的一站式备份脚本，打包所有不在版本控制下的配置、数据与产物。
 
@@ -107,19 +107,7 @@ if ($NoNapcatRuntime -or -not (Test-Path $napcatRoot)) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Refuse if any SQLite DB is locked
-function Test-FileLocked {
-    param([string]$Path)
-    if (-not (Test-Path $Path)) { return $false }
-    try {
-        $fs = [System.IO.File]::Open($Path, 'Open', 'Read', 'None')
-        $fs.Close()
-        return $false
-    } catch {
-        return $true
-    }
-}
-
+# 3. Check if any SQLite DB is locked (warn but don't block)
 $dbsToCheck = @()
 $dbsToCheck += @{ Path = 'data\MaiBot.db'; Owner = 'bot.py' }
 if ($includeAdapter) {
@@ -127,10 +115,20 @@ if ($includeAdapter) {
 }
 
 foreach ($db in $dbsToCheck) {
-    if (Test-FileLocked $db.Path) {
-        Write-Host "[backup] ERROR: $($db.Path) is locked by another process." -ForegroundColor Red
-        Write-Host "        Stop $($db.Owner) first (rtk uv run python scripts/launcher.py stop), then retry." -ForegroundColor Yellow
-        exit 1
+    if (-not (Test-Path $db.Path)) { continue }
+    $procs = Get-Process | Where-Object {
+        try { $_.Modules | Where-Object { $_.FileName -like '*sqlite*' } } catch {}
+    }
+    $handleCheck = $false
+    try {
+        $fs = [System.IO.File]::Open($db.Path, 'Open', 'ReadWrite', 'Read')
+        $fs.Close()
+    } catch {
+        $handleCheck = $true
+    }
+    if ($handleCheck) {
+        Write-Host "[backup] WARNING: $($db.Path) may be locked. Consider stopping $($db.Owner) first." -ForegroundColor Yellow
+        Write-Host "         Proceeding anyway (backup may contain incomplete transactions)." -ForegroundColor DarkYellow
     }
 }
 
@@ -164,45 +162,39 @@ Write-Host "[backup] Output: $Output" -ForegroundColor Cyan
 # 6. Build include/exclude lists
 $includePaths = @('config', 'data')
 
-# launcher.toml — 统一启动器配置（QQ 号、端口等）
 if (Test-Path 'scripts/launcher.toml') {
     $includePaths += 'scripts/launcher.toml'
 }
 
-# MaiBot 第三方插件（代码 + 各插件 config.toml + data/）
 if ((-not $NoPlugins) -and (Test-Path 'plugins')) {
     $includePaths += 'plugins'
 }
 
-# .env 环境变量文件
 if (Test-Path '.env') {
     $includePaths += '.env'
 }
 
-# 合规确认标记
 foreach ($marker in @('eula.confirmed', 'privacy.confirmed')) {
     if (Test-Path $marker) { $includePaths += $marker }
 }
 
-# apisource 生成的产物（模型注册表、API 探测缓存等）
+# apisource generated artifacts
 foreach ($providerDir in (Get-ChildItem -Path 'apisource' -Directory -ErrorAction SilentlyContinue)) {
     $outputDir = Join-Path $providerDir.FullName 'output'
     if (Test-Path $outputDir) {
         $includePaths += ($outputDir | Resolve-Path -Relative) -replace '\\','/'
     }
-    # aliyun 的 response_cn_*.json 缓存
     $responseFiles = Get-ChildItem -Path $providerDir.FullName -Filter 'response_cn_*.json' -ErrorAction SilentlyContinue
     foreach ($f in $responseFiles) {
         $includePaths += ($f.FullName | Resolve-Path -Relative) -replace '\\','/'
     }
-    # price.md 等手动维护的辅助文件
     $priceMd = Join-Path $providerDir.FullName 'price.md'
     if (Test-Path $priceMd) {
         $includePaths += ($priceMd | Resolve-Path -Relative) -replace '\\','/'
     }
 }
 
-# Adapter 用户态
+# Adapter user state
 if ($includeAdapter) {
     if (Test-Path "$adapterRoot/config.toml") { $includePaths += "$adapterRoot/config.toml" }
     if (Test-Path "$adapterRoot/data")        { $includePaths += "$adapterRoot/data" }
@@ -211,7 +203,7 @@ if ($includeAdapter) {
     }
 }
 
-# NapCat 运行时用户态
+# NapCat runtime user state
 if ($includeNapcat) {
     if (Test-Path "$napcatRoot/config")                  { $includePaths += "$napcatRoot/config" }
     if ((-not $NoNapcatPlugins) -and (Test-Path "$napcatRoot/plugins")) { $includePaths += "$napcatRoot/plugins" }
@@ -219,17 +211,14 @@ if ($includeNapcat) {
     if ($IncludeLogs          -and (Test-Path "$napcatRoot/logs"))    { $includePaths += "$napcatRoot/logs" }
 }
 
-# 前端构建产物
 if ($IncludeDist -and (Test-Path 'dashboard/dist')) {
     $includePaths += 'dashboard/dist'
 }
 
-# 私有文档子模块
 if ($IncludePrivateDocs -and (Test-Path 'docs/private')) {
     $includePaths += 'docs/private'
 }
 
-# 日志
 if ($IncludeLogs -and (Test-Path 'logs')) {
     $includePaths += 'logs'
 }
@@ -276,12 +265,12 @@ if ($LASTEXITCODE -ne 0) {
 $sizeMB = [math]::Round((Get-Item $Output).Length / 1MB, 2)
 $itemCount = $includePaths.Count
 Write-Host ""
-Write-Host "[backup] 完成！$Output ($sizeMB MB, $itemCount 个路径)" -ForegroundColor Green
+Write-Host "[backup] Done! $Output ($sizeMB MB, $itemCount paths)" -ForegroundColor Green
 Write-Host ""
-Write-Host "迁移恢复步骤：" -ForegroundColor Cyan
-Write-Host "  1. git clone --recurse-submodules <your-fork-url>" -ForegroundColor Gray
-Write-Host "  2. cd MaiBot" -ForegroundColor Gray
-Write-Host "  3. tar -xzf maibot-workspace-XXX.tar.gz" -ForegroundColor Gray
-Write-Host "  4. uv sync                              # 重建 Python 虚拟环境" -ForegroundColor Gray
-Write-Host "  5. cd dashboard && npm install && npm run build && cd .." -ForegroundColor Gray
-Write-Host "  6. uv run python bot.py                 # 或使用 JetBrains 启动配置" -ForegroundColor Gray
+Write-Host 'Restore steps:' -ForegroundColor Cyan
+Write-Host '  1. git clone --recurse-submodules <your-fork-url>' -ForegroundColor Gray
+Write-Host '  2. cd MaiBot' -ForegroundColor Gray
+Write-Host '  3. tar -xzf maibot-workspace-XXX.tar.gz' -ForegroundColor Gray
+Write-Host '  4. uv run python scripts/bootstrap.py --build-napcat' -ForegroundColor Gray
+Write-Host '  5. cd dashboard && npm install && npm run build && cd ..' -ForegroundColor Gray
+Write-Host '  6. uv run python scripts/launcher.py start' -ForegroundColor Gray
