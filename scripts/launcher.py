@@ -322,7 +322,7 @@ def _quote_win(arg: str) -> str:
 def start_napcat(cfg: dict[str, Any], hidden: bool) -> int:
     cwd = resolve(cfg, "napcat")
     napcat_cfg = cfg.get("napcat", {})
-    launcher_bat = napcat_cfg.get("launcher", "launcher-win10.bat")
+    launcher_bat = napcat_cfg.get("launcher", "launcher.bat")
     bat_path = cwd / launcher_bat
     if not bat_path.exists():
         raise SystemExit(f"[launcher] NapCat launcher not found: {bat_path}")
