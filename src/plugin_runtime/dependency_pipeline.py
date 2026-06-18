@@ -373,6 +373,8 @@ class PluginDependencyPipeline:
                 check=False,
                 cwd=self._project_root,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except Exception as exc:
             return False, str(exc)
