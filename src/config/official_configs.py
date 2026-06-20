@@ -929,7 +929,6 @@ class ExperimentalConfig(ConfigBase):
             },
             "x-widget": "switch",
             "x-icon": "braces",
-            "advanced": True,
         },
     )
     """
@@ -946,7 +945,6 @@ class ExperimentalConfig(ConfigBase):
             },
             "x-widget": "switch",
             "x-icon": "target",
-            "advanced": True,
         },
     )
     """让麦麦同一时间只专注一个聊天流，适合直播或高强度聊天场景。"""
@@ -961,7 +959,6 @@ class ExperimentalConfig(ConfigBase):
             },
             "x-widget": "switch",
             "x-icon": "message-circle",
-            "advanced": True,
         },
     )
     """Focus 模式是否也作用于私聊。"""
@@ -976,7 +973,6 @@ class ExperimentalConfig(ConfigBase):
             },
             "x-widget": "custom",
             "x-icon": "users",
-            "advanced": True,
         },
     )
     """_wrap_把聊天流分组后，同组共享 Focus，不同组互不抢占。"""
@@ -995,7 +991,6 @@ class ExperimentalConfig(ConfigBase):
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-row": "focus-cool-time",
-            "advanced": True,
         },
     )
     """当前关注的聊天多久没继续处理后，允许被其他聊天唤醒。"""
