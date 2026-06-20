@@ -6,7 +6,7 @@ setlocal enabledelayedexpansion
 :: start-services.bat - 基于 scripts/services.json 启动本地服务
 :: ============================================================
 
-set "REPO_ROOT=%~dp0.."
+set "REPO_ROOT=%~dp0"
 set "CONFIG=%REPO_ROOT%\scripts\services.json"
 
 echo [services] 正在读取服务配置: %CONFIG%
