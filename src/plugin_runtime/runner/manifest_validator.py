@@ -4,18 +4,19 @@
 以及插件依赖/Python 包依赖的解析逻辑。
 """
 
-import json
-import re
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
-from pathlib import Path
-from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
-
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
+from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
+
+import json
+import re
+import tomllib
 
 from src.common.logger import get_logger
 from src.plugin_runtime import detect_host_application_version
