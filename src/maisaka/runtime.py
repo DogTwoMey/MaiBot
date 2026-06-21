@@ -1,13 +1,12 @@
 ﻿"""Maisaka 非 CLI 运行时。"""
 
+import asyncio
+import json
+import time
 from collections import deque
 from datetime import datetime
 from math import ceil
 from typing import Any, Literal, Optional, Sequence
-
-import asyncio
-import json
-import time
 
 from src.chat.heart_flow.heartFC_utils import CycleDetail
 from src.chat.message_receive.chat_manager import BotChatSession, chat_manager
@@ -30,14 +29,8 @@ from src.learners.expression_learner import ExpressionLearner
 from src.learners.jargon_miner import JargonMiner
 from src.llm_models.payload_content.resp_format import RespFormat
 from src.llm_models.payload_content.tool_option import ToolDefinitionInput
-from src.mcp_module import MCPManager
-from src.mcp_module.config import build_mcp_server_runtime_configs
-from src.mcp_module.host_llm_bridge import MCPHostLLMBridge
-from src.mcp_module.provider import MCPToolProvider
-from src.plugin_runtime.tool_provider import PluginToolProvider
-from src.services.message_word_frequency_service import update_high_frequency_terms_from_context_messages
-
-from .chat_loop_service import ChatResponse, MaisakaChatLoopService
+from src.maisaka.builtin_tool.provider import MaisakaBuiltinToolProvider
+from src.maisaka.context.history import drop_leading_orphan_tool_results
 from src.maisaka.context.messages import (
     AssistantMessage,
     LLMContextMessage,
@@ -49,13 +42,19 @@ from src.maisaka.context.messages import (
 from src.maisaka.display.runtime_mixin import MaisakaRuntimeDisplayMixin
 from src.maisaka.display.stage_status_board import remove_stage_status, update_stage_status
 from src.maisaka.focus import MaisakaFocusRuntimeMixin, focus_mode_manager
-from src.maisaka.context.history import drop_leading_orphan_tool_results
-from src.maisaka.monitor.events import emit_message_sent, emit_session_start
-from .reasoning_engine import MaisakaReasoningEngine
+from src.maisaka.monitor.events import emit_message_ingested, emit_message_sent, emit_message_updated, emit_session_start
 from src.maisaka.reply_effect import ReplyEffectTracker
 from src.maisaka.reply_effect.image_utils import extract_visual_attachments_from_sequence
 from src.maisaka.reply_effect.quote_utils import extract_quote_target_ids, message_id_from_context_message
-from src.maisaka.builtin_tool.provider import MaisakaBuiltinToolProvider
+from src.mcp_module import MCPManager
+from src.mcp_module.config import build_mcp_server_runtime_configs
+from src.mcp_module.host_llm_bridge import MCPHostLLMBridge
+from src.mcp_module.provider import MCPToolProvider
+from src.plugin_runtime.tool_provider import PluginToolProvider
+from src.services.message_word_frequency_service import update_high_frequency_terms_from_context_messages
+
+from .chat_loop_service import ChatResponse, MaisakaChatLoopService
+from .reasoning_engine import MaisakaReasoningEngine
 
 logger = get_logger("maisaka_runtime")
 
@@ -146,6 +145,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
         self._reasoning_engine = MaisakaReasoningEngine(self)
         self._monitor_session_start_task: Optional[asyncio.Task[None]] = None
+        self._monitor_visual_refresh_keys: set[tuple[str, str]] = set()
         self._tool_registry = ToolRegistry()
         self._reply_effect_tracker = ReplyEffectTracker(
             session_id=self.session_id,
@@ -392,9 +392,12 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         """将一条已发送成功的消息同步到 Maisaka 内部历史。"""
 
         try:
-            from src.maisaka.context.messages import SessionBackedMessage
             from src.maisaka.context.history import build_prefixed_message_sequence, build_session_message_visible_text
-            from src.maisaka.context.planner_messages import build_planner_prefix, extract_quote_ids_from_message_sequence
+            from src.maisaka.context.messages import SessionBackedMessage
+            from src.maisaka.context.planner_messages import (
+                build_planner_prefix,
+                extract_quote_ids_from_message_sequence,
+            )
 
             user_info = message.message_info.user_info
             speaker_name = user_info.user_cardname or user_info.user_nickname or user_info.user_id
@@ -430,8 +433,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             return True
         except Exception as exc:
             logger.warning(
-                f"{self.log_prefix} 同步已发送消息到 Maisaka 历史失败: "
-                f"message_id={message.message_id} error={exc}"
+                f"{self.log_prefix} 同步已发送消息到 Maisaka 历史失败: message_id={message.message_id} error={exc}"
             )
             return False
 
@@ -571,14 +573,124 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 emit_message_sent(
                     session_id=self.session_id,
                     speaker_name=speaker_name,
-                    content=(message.processed_plain_text or "").strip(),
+                    content=self._build_monitor_message_content(message),
                     message_id=message.message_id,
                     timestamp=message.timestamp.timestamp(),
                     source_kind=source_kind,
+                    platform=message.platform,
+                    user_id=message.message_info.user_info.user_id,
+                    group_id=message.message_info.group_info.group_id if message.message_info.group_info else "",
                 )
             )
         except RuntimeError as exc:
             logger.debug(f"{self.log_prefix} 广播已发送消息到监控面板失败: {exc}")
+
+    def _build_monitor_message_content(self, message: SessionMessage) -> str:
+        """生成监控面板使用的消息可见文本，避免纯图片消息被展示为空。"""
+
+        plain_text = (message.processed_plain_text or "").strip()
+        if plain_text:
+            return plain_text
+
+        try:
+            from src.maisaka.context.message_adapter import build_visible_text_from_sequence
+            from src.maisaka.visual.chat_history_refresher import _refresh_pending_visual_components
+
+            _refresh_pending_visual_components(message.raw_message.components)
+            self._register_monitor_visual_placeholder_refresh(message)
+            return build_visible_text_from_sequence(message.raw_message).strip()
+        except Exception as exc:
+            logger.debug(
+                f"{self.log_prefix} 构造监控消息可见文本失败: "
+                f"message_id={message.message_id} error={exc}"
+            )
+            return ""
+
+    def _register_monitor_visual_placeholder_refresh(self, message: SessionMessage) -> None:
+        """登记监控面板中待识别图片的后续刷新。"""
+
+        from src.maisaka.visual.chat_history_refresher import register_monitor_image_placeholder_refresh
+
+        for image in self._collect_sent_image_components(message.raw_message.components):
+            if not image.binary_hash:
+                continue
+            if image.content.strip() not in {"", "[图片，识别中.....]"}:
+                continue
+
+            refresh_key = (message.message_id, image.binary_hash)
+            if refresh_key in self._monitor_visual_refresh_keys:
+                continue
+
+            self._monitor_visual_refresh_keys.add(refresh_key)
+            register_monitor_image_placeholder_refresh(
+                image.binary_hash,
+                lambda _image_hash, tracked_message=message, key=refresh_key: (
+                    self._schedule_monitor_visual_placeholder_refresh(tracked_message, key)
+                ),
+            )
+
+    def _schedule_monitor_visual_placeholder_refresh(
+        self,
+        message: SessionMessage,
+        refresh_key: tuple[str, str],
+    ) -> None:
+        try:
+            asyncio.create_task(self._emit_monitor_message_updated(message, refresh_key))
+        except RuntimeError as exc:
+            self._monitor_visual_refresh_keys.discard(refresh_key)
+            logger.debug(f"{self.log_prefix} 调度监控消息图片刷新失败: {exc}")
+
+    async def _emit_monitor_message_updated(
+        self,
+        message: SessionMessage,
+        refresh_key: tuple[str, str],
+    ) -> None:
+        """图片识别完成后，原地刷新监控面板中的消息内容。"""
+
+        try:
+            from src.maisaka.context.message_adapter import build_visible_text_from_sequence
+            from src.maisaka.visual.chat_history_refresher import _refresh_pending_visual_components
+
+            if not _refresh_pending_visual_components(message.raw_message.components):
+                return
+
+            user_info = message.message_info.user_info
+            group_info = message.message_info.group_info
+            speaker_name = user_info.user_cardname or user_info.user_nickname or user_info.user_id
+            await emit_message_updated(
+                session_id=self.session_id,
+                speaker_name=speaker_name,
+                content=build_visible_text_from_sequence(message.raw_message).strip(),
+                message_id=message.message_id,
+                timestamp=message.timestamp.timestamp(),
+                platform=message.platform,
+                user_id=user_info.user_id,
+                group_id=group_info.group_id if group_info else "",
+            )
+        finally:
+            self._monitor_visual_refresh_keys.discard(refresh_key)
+
+    def _emit_monitor_message_ingested(self, message: SessionMessage) -> None:
+        """异步广播收到的新消息，供 WebUI 实时展示。"""
+
+        try:
+            user_info = message.message_info.user_info
+            group_info = message.message_info.group_info
+            speaker_name = user_info.user_cardname or user_info.user_nickname or user_info.user_id
+            asyncio.create_task(
+                emit_message_ingested(
+                    session_id=self.session_id,
+                    speaker_name=speaker_name,
+                    content=self._build_monitor_message_content(message),
+                    message_id=message.message_id,
+                    timestamp=message.timestamp.timestamp(),
+                    platform=message.platform,
+                    user_id=user_info.user_id,
+                    group_id=group_info.group_id if group_info else "",
+                )
+            )
+        except RuntimeError as exc:
+            logger.debug(f"{self.log_prefix} 广播收到消息到监控面板失败: {exc}")
 
     async def register_message(self, message: SessionMessage) -> None:
         """缓存一条新消息并唤醒主循环。"""
@@ -589,6 +701,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         self._record_external_message_interval(message, received_at)
         self._update_message_trigger_state(message)
         self.message_cache.append(message)
+        self._emit_monitor_message_ingested(message)
         self._prune_processed_message_cache()
         if self._is_reply_effect_tracking_enabled():
             asyncio.create_task(self._reply_effect_tracker.observe_user_message(message))
@@ -773,10 +886,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         """仅保留最近 30 分钟内的外部消息间隔记录。"""
         current_time = time.time() if now is None else now
         expire_before = current_time - EXTERNAL_MESSAGE_INTERVAL_SAMPLE_WINDOW_SECONDS
-        while (
-            self._recent_external_message_intervals
-            and self._recent_external_message_intervals[0][0] < expire_before
-        ):
+        while self._recent_external_message_intervals and self._recent_external_message_intervals[0][0] < expire_before:
             self._recent_external_message_intervals.popleft()
 
     def _get_recent_average_external_message_interval(self) -> Optional[float]:
@@ -965,8 +1075,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
         if was_armed:
             logger.info(
-                f"{self.log_prefix} 检测到新的{trigger_reason}，刷新强制 continue 状态；"
-                f"消息编号={message.message_id}"
+                f"{self.log_prefix} 检测到新的{trigger_reason}，刷新强制 continue 状态；消息编号={message.message_id}"
             )
             return
 
@@ -984,8 +1093,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         trigger_reason = self._force_next_timing_reason or "@/提及消息"
         trigger_message_id = self._force_next_timing_message_id or "unknown"
         reason = (
-            f"检测到新的{trigger_reason}（消息编号={trigger_message_id}），"
-            "本轮直接跳过 Timing Gate 并视作 continue。"
+            f"检测到新的{trigger_reason}（消息编号={trigger_message_id}），本轮直接跳过 Timing Gate 并视作 continue。"
         )
         logger.info(
             f"{self.log_prefix} 已结束本次强制 continue 状态；"
@@ -1101,9 +1209,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
         logger.debug(f"{self.log_prefix} no_action 退避中，延迟 {remaining_seconds:.2f} 秒后再检查")
         self._cancel_deferred_message_turn_task()
-        self._deferred_message_turn_task = asyncio.create_task(
-            self._schedule_deferred_message_turn(remaining_seconds)
-        )
+        self._deferred_message_turn_task = asyncio.create_task(self._schedule_deferred_message_turn(remaining_seconds))
         return True
 
     def _bind_planner_interrupt_flag(self, interrupt_flag: asyncio.Event) -> None:
@@ -1218,10 +1324,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
         first_kept_index = 0
         dropped_context_count = 0
-        while (
-            first_kept_index < len(chat_history)
-            and dropped_context_count < drop_context_count
-        ):
+        while first_kept_index < len(chat_history) and dropped_context_count < drop_context_count:
             message = chat_history[first_kept_index]
             if message.count_in_context:
                 dropped_context_count += 1
@@ -1390,7 +1493,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             "以下工具当前未直接暴露给你，但可以通过 tool_search 工具发现并在后续轮次中使用：",
             *tool_lines,
             "",
-            "如需其中某个工具，请先调用 tool_search。tool_search 只负责发现工具，不直接执行业务。",
+            "如需其中某个工具，请先调用 tool_search。tool_search 只负责发现工具，不直接执行。",
             "</system-reminder>",
         ]
         return "\n".join(reminder_lines)
@@ -1505,9 +1608,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         idle_seconds = max(0.0, time.time() - last_external_received_at)
         delay_seconds = max(0.0, (trigger_threshold - pending_count) * average_message_interval - idle_seconds)
         self._cancel_deferred_message_turn_task()
-        self._deferred_message_turn_task = asyncio.create_task(
-            self._schedule_deferred_message_turn(delay_seconds)
-        )
+        self._deferred_message_turn_task = asyncio.create_task(self._schedule_deferred_message_turn(delay_seconds))
 
     def _collect_pending_messages(self) -> list[SessionMessage]:
         """从消息缓存中收集一批尚未处理的消息。"""
@@ -1529,8 +1630,8 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         if unique_messages:
             focus_mode_manager.mark_read(self.session_id)
         # logger.info(
-            # f"{self.log_prefix} 已从消息缓存区[{start_index}:{self._last_processed_index}] "
-            # f"收集 {len(unique_messages)} 条新消息"
+        # f"{self.log_prefix} 已从消息缓存区[{start_index}:{self._last_processed_index}] "
+        # f"收集 {len(unique_messages)} 条新消息"
         # )
         return unique_messages
 

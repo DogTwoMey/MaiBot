@@ -39,6 +39,8 @@ export interface ChatConfig {
 
 export interface ExperimentalConfig {
   enable_behavior_learning: boolean
+  behavior_learning_list: LearningItem[]
+  behavior_groups: ChatStreamGroup[]
   enable_replyer_format_output: boolean
   focus_mode: boolean
   focus_cool_time: number
@@ -67,6 +69,7 @@ export interface ChatStreamGroup {
   targets?: TargetItem[]
   expression_groups?: TargetItem[]
   jargon_groups?: TargetItem[]
+  behavior_groups?: TargetItem[]
 }
 
 export type ExpressionGroup = ChatStreamGroup
@@ -119,26 +122,6 @@ export interface DreamConfig {
   dream_visible: boolean
 }
 
-export interface LPMMKnowledgeConfig {
-  enable: boolean
-  lpmm_mode: string
-  rag_synonym_search_top_k: number
-  rag_synonym_threshold: number
-  info_extraction_workers: number
-  qa_relation_search_top_k: number
-  qa_relation_threshold: number
-  qa_paragraph_search_top_k: number
-  qa_paragraph_node_weight: number
-  qa_ent_filter_top_k: number
-  qa_ppr_damping: number
-  qa_res_top_k: number
-  embedding_dimension: number
-  max_embedding_workers: number
-  embedding_chunk_size: number
-  max_synonym_entities: number
-  enable_ppr: boolean
-}
-
 export interface KeywordRule {
   keywords?: string[]
   regex?: string[]
@@ -188,7 +171,6 @@ export interface DebugConfig {
   show_jargon_prompt: boolean
   show_memory_prompt: boolean
   show_planner_prompt: boolean
-  show_lpmm_paragraph: boolean
   keep_prompt_preview_json_base64: boolean
 }
 

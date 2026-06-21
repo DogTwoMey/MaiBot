@@ -1,8 +1,7 @@
 ﻿"""reply 内置工具。"""
 
-from typing import Any, Optional
-
 import traceback
+from typing import Any, Optional
 
 from src.chat.replyer.replyer_manager import replyer_manager
 from src.cli.maisaka_cli_sender import CLI_PLATFORM_NAME, render_cli_message
@@ -40,12 +39,16 @@ def get_tool_spec() -> ToolSpec:
             "properties": {
                 "msg_id": {
                     "type": "string",
-                    "description": "要回复的目标用户消息编号。",
+                    "description": "要回复的消息msg_id。",
                 },
                 "set_quote": {
                     "type": "boolean",
                     "description": "以引用回复的方式发送这条回复，不用每句都引用。",
                     "default": True,
+                },
+                "reply_guide": {
+                    "type": "string",
+                    "description": "回复需要注意的事项和回复指引",
                 },
             },
             "required": ["msg_id"],
@@ -121,9 +124,7 @@ async def handle_tool(
             replyer_type="maisaka",
         )
     except Exception:
-        logger.exception(
-            f"{tool_ctx.runtime.log_prefix} 获取回复生成器时发生异常: 目标消息编号={target_message_id}"
-        )
+        logger.exception(f"{tool_ctx.runtime.log_prefix} 获取回复生成器时发生异常: 目标消息编号={target_message_id}")
         logger.info(traceback.format_exc())
         return tool_ctx.build_failure_result(
             invocation.tool_name,
@@ -231,9 +232,7 @@ async def handle_tool(
                     )
                 )
     except Exception:
-        logger.exception(
-            f"{tool_ctx.runtime.log_prefix} 发送文字消息时发生异常，目标消息编号={target_message_id}"
-        )
+        logger.exception(f"{tool_ctx.runtime.log_prefix} 发送文字消息时发生异常，目标消息编号={target_message_id}")
         return tool_ctx.build_failure_result(
             invocation.tool_name,
             "发送可见回复时发生异常。",

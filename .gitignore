@@ -285,6 +285,8 @@ OtherRes.txt
 logs
 
 .ruff_cache
+.codex-runtime/
+unsloth_compiled_cache/
 
 .vscode
 
@@ -381,6 +383,7 @@ backup/
 # typo_generator 依赖数据（字频表生成约需 ~1s，不必反复重建）
 depends-data/char_frequency.json
 agentlite/
+/qwen_mai/
 
 
 # apisource: 不追踪百炼免费额度 JSON 响应和旧版自动生成产物
