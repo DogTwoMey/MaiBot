@@ -8,7 +8,7 @@ adapter  = "external/adapter"
 bot_root = "."
 
 [napcat]
-launcher      = "launcher-win10.bat"   # or "launcher.bat" / "launcher-user.bat"
+launcher      = "launcher.bat"         # Win11 (wt.exe); 用 "launcher-win10.bat" for Win10 (cmd.exe)
 # QQ number for quick login. Leave "" to use QR code login.
 # Equivalent to the bare number previously hard-coded in run.bat (e.g. `./launcher-win10.bat 2460714978`).
 qq_number     = ""
