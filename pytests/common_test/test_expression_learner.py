@@ -189,4 +189,3 @@ async def test_ai_self_reflect_expression_stays_unchecked(
 
     assert expression.checked is False
     assert expression.modified_by == ModifiedBy.AI
-
