@@ -25,6 +25,7 @@ from src.maisaka.context.messages import (
     SessionBackedMessage,
     ToolResultMessage,
 )
+from src.maisaka.mode_policy import is_no_action_equivalent_cycle_reason
 from .manager import FocusTargetResolution, focus_mode_manager
 
 FOCUS_SWITCH_NEW_MESSAGE_LIMIT = 20
@@ -103,7 +104,7 @@ class MaisakaFocusRuntimeMixin:
             self._consecutive_no_action_count = 0
             return
 
-        if cycle_end_reason not in {"timing_no_action", "tool_pause:no_action"}:
+        if not is_no_action_equivalent_cycle_reason(cycle_end_reason):
             self._consecutive_no_action_count = 0
             return
 

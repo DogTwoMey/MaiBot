@@ -127,7 +127,12 @@ def parse_evaluation_response(response: str) -> Dict[str, Any]:
     }
 
 
-async def check_expression_suitability(situation: str, style: str) -> Tuple[bool, str, Optional[str]]:
+async def check_expression_suitability(
+    situation: str,
+    style: str,
+    *,
+    session_id: str = "",
+) -> Tuple[bool, str, Optional[str]]:
     """
     执行单次 LLM 评估。
 
@@ -154,11 +159,12 @@ async def check_expression_suitability(situation: str, style: str) -> Tuple[bool
 
     prompt = await prompt_manager.render_prompt(prompt_template)
 
-    logger.info(f"正在评估表达方式: situation={situation}, style={style}")
+    logger.info(f"正在优化表达方式: situation={situation}, style={style}")
 
     generation_result = await judge_llm.generate_response(
         prompt=prompt,
         options=LLMGenerationOptions(temperature=0.6, max_tokens=1024),
+        session_id=session_id,
     )
     response = generation_result.response
 

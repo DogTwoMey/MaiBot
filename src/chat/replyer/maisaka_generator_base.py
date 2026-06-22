@@ -1,11 +1,12 @@
-﻿import json
-import random
-import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Tuple
+
+import json
+import random
+import re
+import time
 
 from src.chat.message_receive.chat_manager import BotChatSession
 from src.chat.message_receive.message import SessionMessage
@@ -432,6 +433,7 @@ class BaseMaisakaReplyGenerator:
         reply_reason: str,
         expression_habits: str = "",
         stream_id: Optional[str] = None,
+        reference_info: str = "",
     ) -> str:
         del reply_message
         del reply_reason
@@ -569,6 +571,7 @@ class BaseMaisakaReplyGenerator:
             reply_reason=reply_reason,
             expression_habits=expression_habits,
             stream_id=stream_id,
+            reference_info=str((reply_tool_args or {}).get("reference_info") or ""),
         )
         final_user_message = self._build_final_user_message(
             reply_message=reply_message,
@@ -822,7 +825,7 @@ class BaseMaisakaReplyGenerator:
             return finalize(False)
 
         prompt_ms = round((time.perf_counter() - prompt_started_at) * 1000, 2)
-        prompt_preview = PromptCLIVisualizer._build_prompt_dump_text(request_messages)
+        prompt_preview = PromptCLIVisualizer.build_prompt_dump_text(request_messages)
 
         async def message_factory(_client: object, model_info: Optional[ModelInfo] = None) -> List[Message]:
             del _client
@@ -849,7 +852,7 @@ class BaseMaisakaReplyGenerator:
         response_text = (generation_result.response or "").strip()
         result.completion.request_prompt = prompt_preview
         result.request_message_count = len(request_messages)
-        result.request_messages = PromptCLIVisualizer._build_structured_message_payload(
+        result.request_messages = PromptCLIVisualizer.build_structured_message_payload(
             request_messages,
             keep_base64=False,
         )
@@ -1091,7 +1094,7 @@ class BaseMaisakaReplyGenerator:
                 return finalize(False)
 
             prompt_ms = round((time.perf_counter() - prompt_started_at) * 1000, 2)
-            prompt_preview = PromptCLIVisualizer._build_prompt_dump_text(request_messages)
+            prompt_preview = PromptCLIVisualizer.build_prompt_dump_text(request_messages)
 
             async def message_factory(
                 _client: object,
@@ -1129,7 +1132,7 @@ class BaseMaisakaReplyGenerator:
                     reply_tool_args=dict(reply_tool_args_for_attempt),
                 )
                 prompt_ms = round((time.perf_counter() - prompt_started_at) * 1000, 2)
-                prompt_preview = PromptCLIVisualizer._build_prompt_dump_text(request_messages)
+                prompt_preview = PromptCLIVisualizer.build_prompt_dump_text(request_messages)
                 return request_messages
 
             llm_started_at = time.perf_counter()
@@ -1157,7 +1160,7 @@ class BaseMaisakaReplyGenerator:
 
             result.completion.request_prompt = prompt_preview
             result.request_message_count = len(request_messages)
-            result.request_messages = PromptCLIVisualizer._build_structured_message_payload(
+            result.request_messages = PromptCLIVisualizer.build_structured_message_payload(
                 request_messages,
                 keep_base64=False,
             )
@@ -1330,11 +1333,11 @@ class BaseMaisakaReplyGenerator:
         if hook_rewrite_events:
             result.metrics.extra["replyer_hook_rewrite_events"] = list(hook_rewrite_events)
         logger.info(
-            "Replyer KV cache usage - "
-            f"hit_tokens={prompt_cache_hit_tokens}, "
-            f"miss_tokens={prompt_cache_miss_tokens}, "
-            f"hit_rate={prompt_cache_hit_rate:.2f}%, "
-            f"prompt_tokens={generation_result.prompt_tokens}"
+            "Replyer缓存："
+            f"命中={prompt_cache_hit_tokens}, "
+            f"未命中={prompt_cache_miss_tokens}, "
+            f"命中率={prompt_cache_hit_rate:.2f}%, "
+            f"token使用={generation_result.prompt_tokens}"
         )
 
         if not result.success:

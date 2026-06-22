@@ -27,8 +27,8 @@ async def test_jargon_learner_processes_all_extracted_candidates(monkeypatch: py
             return "prompt"
 
     class FakeLearnModel:
-        async def generate_response_with_messages(self, builder, options):
-            del builder, options
+        async def generate_response_with_messages(self, builder, options, session_id: str):
+            del builder, options, session_id
             return SimpleNamespace(response="response")
 
     class FakeJargonMiner:

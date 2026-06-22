@@ -11,6 +11,7 @@ from typing import Any, Literal, Optional, Sequence
 from src.chat.heart_flow.heartFC_utils import CycleDetail
 from src.chat.message_receive.chat_manager import BotChatSession, chat_manager
 from src.chat.message_receive.message import SessionMessage
+from src.chat.replyer.expression_vector_index import expression_vector_index
 from src.chat.utils.utils import get_bot_account, is_bot_self, is_mentioned_bot_in_message
 from src.common.data_models.mai_message_data_model import GroupInfo, MessageInfo, UserInfo
 from src.common.data_models.message_component_data_model import (
@@ -43,6 +44,7 @@ from src.maisaka.context.messages import (
 from src.maisaka.display.runtime_mixin import MaisakaRuntimeDisplayMixin
 from src.maisaka.display.stage_status_board import remove_stage_status, update_stage_status
 from src.maisaka.focus import MaisakaFocusRuntimeMixin, focus_mode_manager
+from src.maisaka.mode_policy import is_no_action_equivalent_cycle_reason
 from src.maisaka.monitor.events import emit_message_ingested, emit_message_sent, emit_message_updated, emit_session_start
 from src.maisaka.reply_effect import ReplyEffectTracker
 from src.maisaka.reply_effect.image_utils import extract_visual_attachments_from_sequence
@@ -1163,6 +1165,16 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             f"退避={backoff_seconds:.2f} 秒"
         )
 
+    def record_no_action_backoff_cycle_result(self, cycle_end_reason: str) -> None:
+        """按整轮结束原因维护 no_action 退避状态。"""
+
+        if is_no_action_equivalent_cycle_reason(cycle_end_reason):
+            source = "timing_gate" if str(cycle_end_reason).strip().startswith("timing_") else "planner"
+            self.record_no_action_decision_result("no_action", source=source)
+            return
+
+        self.record_no_action_decision_result(cycle_end_reason, source="cycle")
+
     def _should_delay_for_no_action_backoff(self, pending_count: int) -> bool:
         """判断当前消息触发是否应被 no_action 退避延迟。"""
 
@@ -1233,6 +1245,25 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 logger.warning(f"{self.log_prefix} 已重新拉起 Maisaka 内部循环任务")
             else:
                 logger.debug(f"{self.log_prefix} 已启动 Maisaka 内部循环任务")
+
+        self._ensure_expression_vector_history_backfill_running()
+
+    @staticmethod
+    def _should_run_expression_vector_history_backfill() -> bool:
+        """判断是否需要启动表达向量历史补建任务。"""
+
+        return global_config.expression.expression_selection_mode in {"vector", "vector_intent"}
+
+    def _ensure_expression_vector_history_backfill_running(self) -> None:
+        """在向量表达模式下拉起全局历史表达向量补建任务。"""
+
+        if not self._should_run_expression_vector_history_backfill():
+            return
+
+        expression_config = global_config.expression
+        expression_vector_index.ensure_history_backfill_task(
+            index_path=expression_config.expression_vector_index_path,
+        )
 
     def _register_tool_providers(self) -> None:
         """注册 Maisaka 运行时默认启用的工具 Provider。"""

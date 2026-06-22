@@ -211,6 +211,7 @@ class JargonLearner:
             generation_result = await jargon_learn_model.generate_response_with_messages(
                 lambda _client: learning_messages,
                 options=LLMGenerationOptions(temperature=0.3),
+                session_id=learning_session_id,
             )
             self._log_learning_context_preview(
                 learning_messages,
@@ -364,9 +365,8 @@ class JargonLearner:
 
         logger.info(
             f"{self.session_id} 黑话学习上下文预览已生成: "
-            f"WebUI={preview_access.viewer_web_uri} "
-            f"HTML={preview_access.viewer_path} "
-            f"TXT={preview_access.dump_path}"
+            f"WebUI={preview_access.preview_web_uri} "
+            f"JSON={preview_access.record_path}"
         )
 
     def _check_cached_jargons_in_messages(

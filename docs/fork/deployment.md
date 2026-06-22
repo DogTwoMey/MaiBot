@@ -319,6 +319,16 @@ rtk uv run python scripts/sync_upstream.py --apply --only adapter
 rtk uv run python scripts/sync_upstream.py --apply --rebase
 ```
 
+`sync_upstream.py` 用于日常按仓库配置同步。需要把 MaiBot upstream 的 `main` 与 `dev` 都整合到当前 fork 时，使用完整远端引用并为两次合并分别提交：
+
+```powershell
+git fetch upstream --prune
+git merge --no-ff refs/remotes/upstream/main
+git merge --no-ff refs/remotes/upstream/dev
+```
+
+不要简写为 `upstream/main` 或 `upstream/dev`：本仓库历史上存在同名本地分支，Git 会产生歧义警告甚至解析到错误分支。合并后必须执行 [`design_divergence.md` 的检查清单](design_divergence.md#-合并前必做清单)，并单独确认数据库迁移版本、Maisaka 工具调用兜底、Talk Value Rules 可视化 Hook 和 A_Memorix 实现归属。
+
 同步 submodule 后，主仓会显示 submodule 指针前进，提交：
 
 ```powershell
