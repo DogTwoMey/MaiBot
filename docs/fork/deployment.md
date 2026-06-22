@@ -203,6 +203,17 @@ argv          = ["uv", "run", "python", "bot.py"]
 
 所有命令从 MaiBot 根目录执行。
 
+Windows 一键脚本会在启动 Bot 前先执行 Dashboard 构建；构建失败时不会继续启动组件。`node_modules` 不存在、依赖缺失或与 `dashboard/package-lock.json` 不一致时，脚本会先执行一次 `npm ci` 修复依赖树。
+
+```powershell
+# Windows 一键入口
+.\start-all.bat
+.\restart-all.bat
+.\stop-all.bat
+```
+
+直接调用 `scripts/launcher.py` 不会自动构建 Dashboard，适合已确认 `dashboard/dist` 为最新产物的调试场景：
+
 ```powershell
 # 启动（默认：三个独立 cmd 窗口各显各的日志）
 rtk uv run python scripts/launcher.py start
