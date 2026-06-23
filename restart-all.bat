@@ -9,9 +9,10 @@ setlocal EnableExtensions EnableDelayedExpansion
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
-echo ╔══════════════════════════════════════════════╗
-echo ║         MaiBot 一键重启                     ║
-echo ╚══════════════════════════════════════════════╝
+:: 使用 ASCII 框线，避免部分 cmd.exe 环境错误解析 UTF-8 制表字符。
+echo +----------------------------------------------+
+echo ^|         MaiBot 一键重启                     ^|
+echo +----------------------------------------------+
 echo.
 
 if not exist "%REPO_ROOT%.venv\Scripts\python.exe" (
@@ -29,14 +30,14 @@ if errorlevel 1 (
 
 :: Step 1: 停止所有
 echo [1/4] 停止 MaiBot 组件...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 
 "%REPO_ROOT%.venv\Scripts\python.exe" "%REPO_ROOT%scripts\launcher.py" stop
 echo.
 
 :: Step 2: 构建 Dashboard
 echo [2/4] 构建 Dashboard...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 
 call :build_dashboard
 if errorlevel 1 (
@@ -49,7 +50,7 @@ echo.
 
 :: Step 3: 重启本地服务（先停后启）
 echo [3/4] 重启本地依赖服务...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 
 if exist "%REPO_ROOT%scripts\start_services.py" (
     "%REPO_ROOT%.venv\Scripts\python.exe" "%REPO_ROOT%scripts\start_services.py" stop
@@ -62,7 +63,7 @@ echo.
 
 :: Step 4: 启动 MaiBot 组件
 echo [4/4] 启动 MaiBot 组件...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 
 :: 等待 2 秒让服务完全就绪
 timeout /t 2 /nobreak >nul
@@ -76,9 +77,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo ╔══════════════════════════════════════════════╗
-echo ║         MaiBot 已全部重启                   ║
-echo ╚══════════════════════════════════════════════╝
+echo +----------------------------------------------+
+echo ^|         MaiBot 已全部重启                   ^|
+echo +----------------------------------------------+
 echo.
 pause
 exit /b 0

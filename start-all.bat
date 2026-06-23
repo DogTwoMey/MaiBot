@@ -10,9 +10,10 @@ setlocal EnableExtensions EnableDelayedExpansion
 set "REPO_ROOT=%~dp0"
 cd /d "%REPO_ROOT%"
 
-echo ╔══════════════════════════════════════════════╗
-echo ║         MaiBot 一键启动                     ║
-echo ╚══════════════════════════════════════════════╝
+:: 使用 ASCII 框线，避免部分 cmd.exe 环境错误解析 UTF-8 制表字符。
+echo +----------------------------------------------+
+echo ^|         MaiBot 一键启动                     ^|
+echo +----------------------------------------------+
 echo.
 
 :: 检查 .venv 是否存在
@@ -32,7 +33,7 @@ if errorlevel 1 (
 
 :: Step 1: 构建 Dashboard
 echo [1/3] 构建 Dashboard...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 call :build_dashboard
 if errorlevel 1 (
     echo.
@@ -44,13 +45,13 @@ echo.
 
 :: Step 2: 启动本地依赖服务
 echo [2/3] 启动本地依赖服务...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 call "%REPO_ROOT%start-services.bat"
 echo.
 
 :: Step 3: 启动 MaiBot 组件 (NapCat + Adapter + Bot)
 echo [3/3] 启动 MaiBot 组件...
-echo ─────────────────────────────────────────────
+echo -----------------------------------------------
 
 :: 调用 launcher.py start
 "%REPO_ROOT%.venv\Scripts\python.exe" "%REPO_ROOT%scripts\launcher.py" start
@@ -63,9 +64,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo ╔══════════════════════════════════════════════╗
-echo ║         MaiBot 已全部启动                   ║
-echo ╚══════════════════════════════════════════════╝
+echo +----------------------------------------------+
+echo ^|         MaiBot 已全部启动                   ^|
+echo +----------------------------------------------+
 echo.
 pause
 exit /b 0
