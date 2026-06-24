@@ -96,6 +96,15 @@ export interface ItemFieldDefinition {
   label?: string
   placeholder?: string
   default?: unknown
+  multiple?: boolean
+  choices?: unknown[]
+  min?: number
+  max?: number
+  step?: number
+  item_type?: string
+  item_fields?: Record<string, ItemFieldDefinition>
+  min_items?: number
+  max_items?: number
   i18n?: Record<string, Record<string, string>>
 }
 
@@ -109,6 +118,7 @@ export interface ConfigFieldSchema {
   description: string
   example?: string
   required: boolean
+  multiple?: boolean
   choices?: unknown[]
   min?: number
   max?: number
@@ -186,4 +196,22 @@ export interface PluginConfigSchema {
   sections: Record<string, ConfigSectionSchema>
   layout: ConfigLayoutSchema
   _note?: string
+}
+
+export type PluginRuntimeComponentType = 'action' | 'command' | 'tool'
+
+export interface PluginRuntimeComponent {
+  name: string
+  description: string
+  enabled: boolean
+  plugin_name: string
+  component_type: PluginRuntimeComponentType
+  action_parameters?: Record<string, string>
+  action_require?: string[]
+  associated_types?: string[]
+  activation_type?: string
+  random_activation_probability?: number
+  activation_keywords?: string[]
+  parallel_action?: boolean
+  parameters_schema?: Record<string, unknown>
 }

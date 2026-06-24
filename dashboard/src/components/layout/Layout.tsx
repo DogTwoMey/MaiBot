@@ -29,16 +29,15 @@ export function Layout({ children }: LayoutProps) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const announce = useAnnounce()
   const isLogsPath = pathname === '/logs' || pathname.startsWith('/reasoning-process')
-  const workspaceMode = pathname.startsWith('/chat') ? 'chat' : isLogsPath ? 'logs' : 'settings'
+  const workspaceMode = pathname === '/chat' ? 'chat' : isLogsPath ? 'logs' : 'settings'
   const isSettingsWorkspace = workspaceMode === 'settings'
   const isChatWorkspace = workspaceMode === 'chat'
-  const showBackToTop = isSettingsWorkspace
+  const showBackToTop = isSettingsWorkspace && pathname !== '/planner-monitor'
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [topbarCollapsed, setTopbarCollapsed] = useState(false)
-  const [tooltipsEnabled, setTooltipsEnabled] = useState(false) // 控制 tooltip 启用状态
   const [visibleWorkspaceMode, setVisibleWorkspaceMode] = useState<WorkspaceMode>(workspaceMode)
   const [visibleChildren, setVisibleChildren] = useState<LayoutProps['children']>(children)
   const [pendingWorkspace, setPendingWorkspace] = useState<{
@@ -47,20 +46,6 @@ export function Layout({ children }: LayoutProps) {
   } | null>(null)
   const { theme, setTheme } = useTheme()
   const menuSections = useMenuSections()
-
-  // 侧边栏状态变化时，延迟启用/禁用 tooltip
-  useEffect(() => {
-    if (sidebarOpen) {
-      // 侧边栏展开时，立即禁用 tooltip
-      setTooltipsEnabled(false)
-    } else {
-      // 侧边栏收起时，等待动画完成后再启用 tooltip
-      const timer = setTimeout(() => {
-        setTooltipsEnabled(true)
-      }, 350) // 稍大于 CSS transition duration (300ms)
-      return () => clearTimeout(timer)
-    }
-  }, [sidebarOpen])
 
   // 搜索快捷键监听（Cmd/Ctrl + K）
   useEffect(() => {
@@ -157,10 +142,10 @@ export function Layout({ children }: LayoutProps) {
             {isSettingsWorkspace && (
               <motion.div
                 key="settings-sidebar"
-                className="relative z-40 hidden shrink-0 lg:block"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: sidebarOpen ? 208 : 64, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
+                className="relative z-40 hidden shrink-0 overflow-hidden transition-[width] duration-150 ease-out motion-reduce:transition-none lg:block"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 transition={{
                   type: 'spring',
                   stiffness: 320,
@@ -168,12 +153,15 @@ export function Layout({ children }: LayoutProps) {
                   mass: 0.7,
                   opacity: { duration: 0.2 },
                 }}
-                style={{ overflow: 'hidden' }}
+                style={{
+                  width: sidebarOpen
+                    ? 'var(--layout-sidebar-width)'
+                    : 'var(--layout-sidebar-collapsed-width)',
+                }}
               >
                 <Sidebar
                   sidebarOpen={sidebarOpen}
                   mobileMenuOpen={mobileMenuOpen}
-                  tooltipsEnabled={tooltipsEnabled}
                   onMobileMenuClose={() => setMobileMenuOpen(false)}
                 />
               </motion.div>
@@ -186,7 +174,6 @@ export function Layout({ children }: LayoutProps) {
               <Sidebar
                 sidebarOpen={sidebarOpen}
                 mobileMenuOpen={mobileMenuOpen}
-                tooltipsEnabled={tooltipsEnabled}
                 onMobileMenuClose={() => setMobileMenuOpen(false)}
               />
             </div>

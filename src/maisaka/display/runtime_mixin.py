@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from rich.console import Group, RenderableType
@@ -21,6 +22,12 @@ from .prompt_cli_renderer import PromptCLIVisualizer
 logger = get_logger("maisaka_runtime")
 
 
+@dataclass(slots=True)
+class ToolPromptAccessPanel:
+    panel: Panel
+    prompt_html_uri: str = ""
+
+
 class MaisakaRuntimeDisplayMixin:
     """Rich terminal rendering and runtime log helpers."""
 
@@ -29,15 +36,6 @@ class MaisakaRuntimeDisplayMixin:
         *,
         cycle_id: Optional[int] = None,
         time_records: Optional[dict[str, float]] = None,
-        timing_selected_history_count: Optional[int] = None,
-        timing_prompt_tokens: Optional[int] = None,
-        timing_model_name: Optional[str] = None,
-        timing_action: str = "",
-        timing_response: str = "",
-        timing_tool_calls: Optional[list[Any]] = None,
-        timing_tool_results: Optional[list[str]] = None,
-        timing_tool_detail_results: Optional[list[dict[str, Any]]] = None,
-        timing_prompt_section: Optional[RenderableType] = None,
         planner_selected_history_count: Optional[int] = None,
         planner_prompt_tokens: Optional[int] = None,
         planner_model_name: Optional[str] = None,
@@ -63,29 +61,6 @@ class MaisakaRuntimeDisplayMixin:
             panel_title = f"{panel_title} [{cycle_id}]"
         panel_subtitle = self._build_cycle_time_records_text(time_records or {})
         renderables: list[RenderableType] = [Text("\n".join(body_lines))]
-        timing_panel = self._build_cycle_stage_panel(
-            title="Timing Gate",
-            border_style="bright_magenta",
-            selected_history_count=timing_selected_history_count,
-            prompt_tokens=timing_prompt_tokens,
-            model_name=timing_model_name,
-            response_text=timing_response,
-            prompt_section=timing_prompt_section,
-            extra_lines=None,
-        )
-        if timing_panel is not None:
-            renderables.append(timing_panel)
-
-        timing_tool_cards = self._build_tool_activity_cards(
-            stage_title="Timing Tool",
-            tool_calls=timing_tool_calls,
-            tool_results=timing_tool_results,
-            tool_detail_results=timing_tool_detail_results,
-            planner_style=False,
-        )
-        if timing_tool_cards:
-            renderables.extend(timing_tool_cards)
-
         planner_panel = self._build_cycle_stage_panel(
             title="Planner",
             border_style="green",
@@ -225,11 +200,10 @@ class MaisakaRuntimeDisplayMixin:
             return "流程耗时：无"
 
         label_map = {
-            "timing_gate": "Timing Gate",
             "planner": "Planner",
             "tool_calls": "工具执行",
         }
-        ordered_keys = ["timing_gate", "planner", "tool_calls"]
+        ordered_keys = ["planner", "tool_calls"]
 
         parts: list[str] = []
         for key in ordered_keys:
@@ -342,7 +316,7 @@ class MaisakaRuntimeDisplayMixin:
         border_style: str = "bright_yellow",
         output_content: str = "",
         metadata: Optional[dict[str, Any]] = None,
-    ) -> Panel:
+    ) -> ToolPromptAccessPanel:
         """将工具 prompt 渲染为可点击查看的预览入口。"""
 
         labels = self._get_tool_detail_labels(tool_name)
@@ -354,36 +328,46 @@ class MaisakaRuntimeDisplayMixin:
             try:
                 normalized_messages = deserialize_prompt_messages(request_messages)
             except Exception as exc:
-                logger.warning(f"工具 {tool_name} 的 request_messages 无法反序列化，已回退为文本预览: {exc}")
-            else:
-                return Panel(
-                    PromptCLIVisualizer.build_prompt_access_panel(
-                        normalized_messages,
-                        category=labels["prompt_category"],
-                        chat_id=self.session_id,
-                        request_kind=labels["request_kind"],
-                        selection_reason=subtitle,
-                        output_content=output_content,
-                        metadata=metadata,
-                    ),
-                    title=labels["prompt_title"],
-                    border_style=border_style,
-                    padding=(0, 1),
+                logger.debug(
+                    f"工具 {tool_name} 的 request_messages 无法还原为模型消息，将使用瘦身结构预览: {exc}"
                 )
-
-        return Panel(
-            PromptCLIVisualizer.build_text_access_panel(
-                prompt_text,
+                normalized_messages = request_messages
+            preview_access = PromptCLIVisualizer.build_prompt_preview_access(
+                normalized_messages,
                 category=labels["prompt_category"],
                 chat_id=self.session_id,
                 request_kind=labels["request_kind"],
-                subtitle=subtitle,
+                selection_reason=subtitle,
                 output_content=output_content,
                 metadata=metadata,
+            )
+            return ToolPromptAccessPanel(
+                panel=Panel(
+                    preview_access.body,
+                    title=labels["prompt_title"],
+                    border_style=border_style,
+                    padding=(0, 1),
+                ),
+                prompt_html_uri=preview_access.preview_web_uri,
+            )
+
+        preview_access = PromptCLIVisualizer.build_text_preview_access(
+            prompt_text,
+            category=labels["prompt_category"],
+            chat_id=self.session_id,
+            request_kind=labels["request_kind"],
+            subtitle=subtitle,
+            output_content=output_content,
+            metadata=metadata,
+        )
+        return ToolPromptAccessPanel(
+            panel=Panel(
+                preview_access.body,
+                title=labels["prompt_title"],
+                border_style=border_style,
+                padding=(0, 1),
             ),
-            title=labels["prompt_title"],
-            border_style=border_style,
-            padding=(0, 1),
+            prompt_html_uri=preview_access.preview_web_uri,
         )
 
     @staticmethod
@@ -509,20 +493,20 @@ class MaisakaRuntimeDisplayMixin:
 
         output_text = str(detail.get("output_text") or "").strip()
         prompt_text = str(detail.get("prompt_text") or "").strip()
-        if prompt_text:
-            parts.append(
-                self._build_tool_prompt_access_panel(
-                    tool_name=tool_name,
-                    prompt_text=prompt_text,
-                    request_messages=(
-                        detail.get("request_messages") if isinstance(detail.get("request_messages"), list) else None
-                    ),
-                    tool_call_id=tool_call_id,
-                    border_style=prompt_border_style,
-                    output_content=output_text,
-                    metadata=preview_metadata,
-                )
+        request_messages = detail.get("request_messages") if isinstance(detail.get("request_messages"), list) else None
+        if prompt_text or request_messages:
+            prompt_access_panel = self._build_tool_prompt_access_panel(
+                tool_name=tool_name,
+                prompt_text=prompt_text,
+                request_messages=request_messages,
+                tool_call_id=tool_call_id,
+                border_style=prompt_border_style,
+                output_content=output_text,
+                metadata=preview_metadata,
             )
+            if prompt_access_panel.prompt_html_uri:
+                detail["prompt_html_uri"] = prompt_access_panel.prompt_html_uri
+            parts.append(prompt_access_panel.panel)
 
         reasoning_text = str(detail.get("reasoning_text") or "").strip()
         if reasoning_text:

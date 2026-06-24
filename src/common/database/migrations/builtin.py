@@ -33,6 +33,11 @@ from .v24_to_v25 import migrate_v24_to_v25
 from .v25_to_v26 import migrate_v25_to_v26
 from .v26_to_v27 import migrate_v26_to_v27
 from .v27_to_v28 import migrate_v27_to_v28
+from .v28_to_v29 import migrate_v28_to_v29
+from .v29_to_v30 import migrate_v29_to_v30
+from .v30_to_v31 import migrate_v30_to_v31
+from .v31_to_v32 import migrate_v31_to_v32
+from .v32_to_v33 import migrate_v32_to_v33
 from .version_store import SQLiteUserVersionStore
 
 EMPTY_SCHEMA_VERSION = 0
@@ -64,7 +69,12 @@ V25_SCHEMA_VERSION = 25
 V26_SCHEMA_VERSION = 26
 V27_SCHEMA_VERSION = 27
 V28_SCHEMA_VERSION = 28
-LATEST_SCHEMA_VERSION = 28
+V29_SCHEMA_VERSION = 29
+V30_SCHEMA_VERSION = 30
+V31_SCHEMA_VERSION = 31
+V32_SCHEMA_VERSION = 32
+V33_SCHEMA_VERSION = 33
+LATEST_SCHEMA_VERSION = 33
 
 _LEGACY_V1_EXCLUSIVE_TABLES = (
     "chat_streams",
@@ -162,7 +172,7 @@ def _detect_v18_base_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
     return True
 
 
-def _detect_v18_common_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
+def _detect_v18_common_schema(snapshot: DatabaseSchemaSnapshot, *, use_latest_high_frequency_terms: bool = False) -> bool:
     """判断数据库是否满足 v18 之后行为学习以外的共有结构条件。"""
 
     if not _detect_v13_base_schema(snapshot):
@@ -177,11 +187,40 @@ def _detect_v18_common_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
         return False
     if not snapshot.has_column("llm_usage", "prompt_cache_enabled"):
         return False
+    if use_latest_high_frequency_terms:
+        if not _detect_latest_high_frequency_terms_schema(snapshot):
+            return False
+    elif not _detect_legacy_high_frequency_terms_schema(snapshot):
+        return False
+    return True
+
+
+def _detect_legacy_high_frequency_terms_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
+    """判断高频词表是否为 v18-v28 的全局词频结构。"""
+
     if not snapshot.has_table("high_frequency_terms"):
         return False
     if not snapshot.has_column("high_frequency_terms", "term"):
         return False
     if not snapshot.has_column("high_frequency_terms", "normalized_term"):
+        return False
+    if not snapshot.has_column("high_frequency_terms", "updated_at"):
+        return False
+    return True
+
+
+def _detect_latest_high_frequency_terms_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
+    """判断高频词表是否为按聊天流分类的当前结构。"""
+
+    if not snapshot.has_table("high_frequency_terms"):
+        return False
+    if not snapshot.has_column("high_frequency_terms", "chat_id"):
+        return False
+    if not snapshot.has_column("high_frequency_terms", "term"):
+        return False
+    if snapshot.has_column("high_frequency_terms", "normalized_term"):
+        return False
+    if snapshot.has_column("high_frequency_terms", "term_type"):
         return False
     if not snapshot.has_column("high_frequency_terms", "updated_at"):
         return False
@@ -500,10 +539,13 @@ def _detect_v24_base_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
     return True
 
 
-def _detect_v26_base_schema(snapshot: DatabaseSchemaSnapshot) -> bool:
+def _detect_v26_base_schema(snapshot: DatabaseSchemaSnapshot, *, use_latest_high_frequency_terms: bool = False) -> bool:
     """判断数据库是否满足移除 scene node 图层后的行为学习结构。"""
 
-    if not _detect_v18_common_schema(snapshot):
+    if not _detect_v18_common_schema(
+        snapshot,
+        use_latest_high_frequency_terms=use_latest_high_frequency_terms,
+    ):
         return False
     if not snapshot.has_table("behavior_scene_clusters"):
         return False
@@ -597,6 +639,95 @@ class LatestSchemaVersionDetector(BaseSchemaVersionDetector):
             Optional[int]: 若识别为最新结构则返回最新版本号，否则返回 ``None``。
         """
 
+        if not _detect_v26_base_schema(snapshot, use_latest_high_frequency_terms=True):
+            return None
+        if snapshot.has_column("behavior_scene_clusters", "score"):
+            return None
+        if not snapshot.has_table("one_time_maintenance_tasks"):
+            return None
+        if snapshot.has_column("tool_records", "tool_builtin_prompt"):
+            return None
+        if snapshot.has_column("tool_records", "tool_display_prompt"):
+            return None
+        if any(snapshot.has_table(table_name) for table_name in LEGACY_V1_CLEANUP_TABLES):
+            return None
+        if not snapshot.has_column("llm_usage", "session_id"):
+            return None
+        if snapshot.has_column("llm_usage", "endpoint"):
+            return None
+        if snapshot.has_column("llm_usage", "user_type"):
+            return None
+        return LATEST_SCHEMA_VERSION
+
+
+class V30SchemaVersionDetector(BaseSchemaVersionDetector):
+    """v30 schema 结构探测器。"""
+
+    @property
+    def name(self) -> str:
+        return "v30_schema_detector"
+
+    def detect_version(self, snapshot: DatabaseSchemaSnapshot) -> Optional[int]:
+        """检测数据库是否为 v30 结构。"""
+
+        if not _detect_v26_base_schema(snapshot, use_latest_high_frequency_terms=True):
+            return None
+        if snapshot.has_column("behavior_scene_clusters", "score"):
+            return None
+        if not snapshot.has_table("one_time_maintenance_tasks"):
+            return None
+        if snapshot.has_column("tool_records", "tool_builtin_prompt"):
+            return None
+        if snapshot.has_column("tool_records", "tool_display_prompt"):
+            return None
+        if any(snapshot.has_table(table_name) for table_name in LEGACY_V1_CLEANUP_TABLES):
+            return None
+        if not snapshot.has_column("llm_usage", "session_id"):
+            return None
+        if snapshot.has_column("llm_usage", "endpoint"):
+            return None
+        if snapshot.has_column("llm_usage", "user_type"):
+            return None
+        return V30_SCHEMA_VERSION
+
+
+class V29SchemaVersionDetector(BaseSchemaVersionDetector):
+    """v29 schema 结构探测器。"""
+
+    @property
+    def name(self) -> str:
+        return "v29_schema_detector"
+
+    def detect_version(self, snapshot: DatabaseSchemaSnapshot) -> Optional[int]:
+        """检测数据库是否为 v29 结构。"""
+
+        if not _detect_v26_base_schema(snapshot, use_latest_high_frequency_terms=True):
+            return None
+        if snapshot.has_column("behavior_scene_clusters", "score"):
+            return None
+        if not snapshot.has_table("one_time_maintenance_tasks"):
+            return None
+        if snapshot.has_column("tool_records", "tool_builtin_prompt"):
+            return None
+        if snapshot.has_column("tool_records", "tool_display_prompt"):
+            return None
+        if any(snapshot.has_table(table_name) for table_name in LEGACY_V1_CLEANUP_TABLES):
+            return None
+        if snapshot.has_column("llm_usage", "session_id"):
+            return None
+        return V29_SCHEMA_VERSION
+
+
+class V28SchemaVersionDetector(BaseSchemaVersionDetector):
+    """v28 schema 结构探测器。"""
+
+    @property
+    def name(self) -> str:
+        return "v28_schema_detector"
+
+    def detect_version(self, snapshot: DatabaseSchemaSnapshot) -> Optional[int]:
+        """检测数据库是否为 v28 结构。"""
+
         if not _detect_v26_base_schema(snapshot):
             return None
         if snapshot.has_column("behavior_scene_clusters", "score"):
@@ -609,7 +740,7 @@ class LatestSchemaVersionDetector(BaseSchemaVersionDetector):
             return None
         if any(snapshot.has_table(table_name) for table_name in LEGACY_V1_CLEANUP_TABLES):
             return None
-        return LATEST_SCHEMA_VERSION
+        return V28_SCHEMA_VERSION
 
 
 class V27SchemaVersionDetector(BaseSchemaVersionDetector):
@@ -1368,6 +1499,9 @@ def build_default_schema_version_detectors() -> List[BaseSchemaVersionDetector]:
 
     return [
         LatestSchemaVersionDetector(),
+        V30SchemaVersionDetector(),
+        V29SchemaVersionDetector(),
+        V28SchemaVersionDetector(),
         V27SchemaVersionDetector(),
         V26SchemaVersionDetector(),
         V25SchemaVersionDetector(),
@@ -1607,6 +1741,41 @@ def build_default_migration_registry() -> MigrationRegistry:
                 name="v27_to_v28",
                 description="新增一次性维护任务状态表，并移除工具 prompt 冗余列。",
                 handler=migrate_v27_to_v28,
+            ),
+            MigrationStep(
+                version_from=V28_SCHEMA_VERSION,
+                version_to=V29_SCHEMA_VERSION,
+                name="v28_to_v29",
+                description="将高频词词库改为按 chat_id 分类，并移除归一化词与类型列。",
+                handler=migrate_v28_to_v29,
+            ),
+            MigrationStep(
+                version_from=V29_SCHEMA_VERSION,
+                version_to=V30_SCHEMA_VERSION,
+                name="v29_to_v30",
+                description="调整 LLM 使用记录字段：移除 endpoint/user_type，新增 session_id。",
+                handler=migrate_v29_to_v30,
+            ),
+            MigrationStep(
+                version_from=V30_SCHEMA_VERSION,
+                version_to=V31_SCHEMA_VERSION,
+                name="v30_to_v31",
+                description="清理泛 tag 和低信息行为场景簇。",
+                handler=migrate_v30_to_v31,
+            ),
+            MigrationStep(
+                version_from=V31_SCHEMA_VERSION,
+                version_to=V32_SCHEMA_VERSION,
+                name="v31_to_v32",
+                description="清理表达方式中由 prompt 示例带出的前缀和示例内容。",
+                handler=migrate_v31_to_v32,
+            ),
+            MigrationStep(
+                version_from=V32_SCHEMA_VERSION,
+                version_to=V33_SCHEMA_VERSION,
+                name="v32_to_v33",
+                description="修复黑话记录中无法被 DateTime 解析的空时间字段。",
+                handler=migrate_v32_to_v33,
             ),
         ]
     )

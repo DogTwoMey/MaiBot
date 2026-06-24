@@ -2,13 +2,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Float, Index, Integer, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlmodel import Field, LargeBinary, SQLModel
-
-
-class ModelUser(str, Enum):
-    SYSTEM = "system"
-    PLUGIN = "plugin"
 
 
 class ImageType(str, Enum):
@@ -74,8 +69,7 @@ class ModelUsage(SQLModel, table=True):
     model_api_provider_name: str = Field(index=True, max_length=255)  # 模型API供应商名称
 
     # 请求相关信息
-    endpoint: Optional[str] = Field(default=None, max_length=255, nullable=True)  # 模型API的具体endpoint
-    user_type: ModelUser = Field(sa_column=Column(SQLEnum(ModelUser)), default=ModelUser.SYSTEM)  # 模型使用者类型
+    session_id: str = Field(default="", index=True, max_length=255)  # 对应真实聊天流；非聊天上下文为空字符串
     task_name: Optional[str] = Field(default=None, index=True, max_length=100, nullable=True)  # 模型任务配置名称
     request_type: str = Field(max_length=50)  # 内部请求类型，记录哪种模块使用了此模型
     time_cost: float = Field(sa_column=Column(Float))  # 本次请求耗时，单位秒
@@ -242,15 +236,15 @@ class HighFrequencyTerm(SQLModel, table=True):
 
     __tablename__ = "high_frequency_terms"  # type: ignore
     __table_args__ = (
-        UniqueConstraint("normalized_term", name="uq_high_frequency_terms_normalized_term"),
-        Index("ix_high_frequency_terms_rank", "rank"),
+        UniqueConstraint("chat_id", "term", name="uq_high_frequency_terms_chat_term"),
+        Index("ix_high_frequency_terms_chat_id", "chat_id"),
+        Index("ix_high_frequency_terms_chat_rank", "chat_id", "rank"),
         Index("ix_high_frequency_terms_updated_at", "updated_at"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    chat_id: str = Field(max_length=255)
     term: str = Field(sa_column=Column(Text, nullable=False))
-    normalized_term: str = Field(sa_column=Column(Text, nullable=False))
-    term_type: str = Field(default="word", max_length=20)
     rank: int = Field(default=0)
     occurrence_count: int = Field(default=0)
     message_count: int = Field(default=0)
@@ -436,7 +430,7 @@ class Jargon(SQLModel, table=True):
     last_inference_count: int = Field(default=0)  # 上一次进行推断时的count值，用于判断是否需要重新推断
     created_by: JargonCreatedBy = Field(
         default=JargonCreatedBy.AI,
-        sa_column=Column(SQLEnum(JargonCreatedBy), nullable=False),
+        sa_column=Column(String(6), nullable=False),
     )  # 创建来源，AI 表示自动学习，MANUAL 表示手动创建
     created_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))
     updated_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))

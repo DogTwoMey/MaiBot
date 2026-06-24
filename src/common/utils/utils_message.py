@@ -18,6 +18,7 @@ from src.common.data_models.message_component_data_model import (
     AtComponent,
     DictComponent,
     EmojiComponent,
+    FileComponent,
     ForwardNodeComponent,
     ImageComponent,
     MessageSequence,
@@ -118,6 +119,9 @@ class MessageUtils:
             voice_bytes = base64.b64decode(seg.data)
             binary_hash = hashlib.md5(voice_bytes).hexdigest()
             return VoiceComponent(binary_hash=binary_hash, binary_data=voice_bytes)
+        elif seg.type == "file":
+            assert isinstance(seg.data, dict), "file类型的seg数据应该是字典"
+            return FileComponent.from_payload(seg.data)
         elif seg.type == "at":
             return MessageUtils._parse_at_segment_data(seg.data)
         elif seg.type == "reply":
@@ -125,6 +129,10 @@ class MessageUtils:
             return ReplyComponent(target_message_id=seg.data)
         elif seg.type == "dict":
             assert isinstance(seg.data, dict), "dict类型的seg数据应该是字典"
+            if str(seg.data.get("type") or "").strip().lower() == "file":
+                raw_payload = seg.data.get("data", seg.data)
+                if isinstance(raw_payload, dict):
+                    return FileComponent.from_payload(raw_payload)
             return DictComponent(data=seg.data)
         else:
             raise NotImplementedError(f"暂时不支持的消息片段类型: {seg.type}")

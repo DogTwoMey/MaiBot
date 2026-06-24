@@ -2,7 +2,10 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Check, Plus, Search, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 
+import { ChatScopeFilterPanel } from '@/components/chat-scope-filter-panel'
+import { AccentPanel } from '@/components/ui/accent-panel'
 import { Button } from '@/components/ui/button'
+import { DashboardTabBar, DashboardTabTrigger } from '@/components/ui/dashboard-tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -13,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs } from '@/components/ui/tabs'
 import { useDataList } from '@/hooks/useDataList'
 import { useToast } from '@/hooks/use-toast'
 
@@ -39,10 +43,13 @@ import type { Jargon, JargonChatInfo } from '@/types/jargon'
 import type { StatsData } from './types'
 
 interface JargonFilters {
+  summary: JargonSummaryTab
   scope: 'all' | 'global' | 'local'
   chatId: string
-  isJargon: string
 }
+
+type JargonStatusFilter = 'confirmed_jargon' | 'confirmed_not_jargon' | 'pending'
+type JargonSummaryTab = 'total' | JargonStatusFilter | 'global_count' | 'complete_count'
 
 /**
  * 黑话管理主页面
@@ -54,6 +61,8 @@ export function JargonManagementPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [deleteConfirmJargon, setDeleteConfirmJargon] = useState<Jargon | null>(null)
   const [isBatchDeleteDialogOpen, setIsBatchDeleteDialogOpen] = useState(false)
+  const [scopePanelCollapsed, setScopePanelCollapsed] = useState(false)
+  const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null)
   const { toast } = useToast()
 
   // 黑话列表：分页/搜索/筛选/多选统一由 useDataList 承载，翻页/改参自动重置页码并清空选中
@@ -62,24 +71,34 @@ export function JargonManagementPage() {
   const list = useDataList<Jargon, JargonFilters, number>({
     domain: 'jargon',
     getId: (jargon) => jargon.id,
-    initialFilters: { scope: 'all', chatId: 'all', isJargon: 'all' },
+    initialFilters: { summary: 'total', scope: 'all', chatId: 'all' },
     searchDebounceMs: 300,
     queryFn: async ({ page, pageSize, search, filters }) => {
+      const summaryStatus: JargonStatusFilter | undefined = [
+        'confirmed_jargon',
+        'confirmed_not_jargon',
+        'pending',
+      ].includes(filters.summary)
+        ? (filters.summary as JargonStatusFilter)
+        : undefined
       const result = await getJargonList({
         page,
         page_size: pageSize,
         search: search || undefined,
         session_id:
-          filters.scope !== 'global' && filters.chatId !== 'all' ? filters.chatId : undefined,
-        is_jargon:
-          filters.isJargon === 'all'
-            ? undefined
-            : filters.isJargon === 'true'
-              ? true
-              : filters.isJargon === 'false'
-                ? false
-                : undefined,
-        is_global: filters.scope === 'all' ? undefined : filters.scope === 'global',
+          filters.summary !== 'global_count' &&
+          filters.scope !== 'global' &&
+          filters.chatId !== 'all'
+            ? filters.chatId
+            : undefined,
+        jargon_status: summaryStatus,
+        is_complete: filters.summary === 'complete_count' ? true : undefined,
+        is_global:
+          filters.summary === 'global_count'
+            ? true
+            : filters.scope === 'all'
+              ? undefined
+              : filters.scope === 'global',
       })
       return { items: result.data, total: result.total }
     },
@@ -89,9 +108,9 @@ export function JargonManagementPage() {
   const loading = list.isPending
   const page = list.page
   const pageSize = list.pageSize
+  const summaryFilter = list.filters.summary
   const scopeFilter = list.filters.scope
   const filterChatId = list.filters.chatId
-  const filterIsJargon = list.filters.isJargon
   const selectedIds = list.selectedIds
 
   // 统计数据：失败时保持占位数值，不打断页面
@@ -130,18 +149,22 @@ export function JargonManagementPage() {
   // 任何写操作成功后，按 'jargon' 前缀整体失效（列表 + 统计 + 聊天列表）
   const invalidateJargon = () => list.invalidate()
 
-  // 查看详情（事件驱动的读取，失败用 toast 反馈用户动作）
+  // 列表行先即时打开详情弹窗，原始上下文等大字段再按需补齐。
   const handleViewDetail = async (jargon: Jargon) => {
+    setSelectedJargon(jargon)
+    setIsDetailDialogOpen(true)
+    setDetailLoadingId(jargon.id)
     try {
       const response = await getJargonDetail(jargon.id)
-      setSelectedJargon(response.data)
-      setIsDetailDialogOpen(true)
+      setSelectedJargon((current) => (current?.id === jargon.id ? response.data : current))
     } catch (error) {
       toast({
         title: '加载详情失败',
         description: error instanceof Error ? error.message : '无法加载黑话详情',
         variant: 'destructive',
       })
+    } finally {
+      setDetailLoadingId((currentId) => (currentId === jargon.id ? null : currentId))
     }
   }
 
@@ -226,206 +249,225 @@ export function JargonManagementPage() {
   }
 
   const handleChatChange = (chatId: string) => {
+    if (summaryFilter === 'global_count') {
+      list.setFilter('summary', 'total')
+    }
     list.setFilter('chatId', chatId)
   }
 
   const handleScopeChange = (scope: 'all' | 'global' | 'local') => {
     list.setFilter('scope', scope)
+    if (summaryFilter === 'global_count' && scope !== 'global') {
+      list.setFilter('summary', 'total')
+    }
     if (scope === 'global') {
       list.setFilter('chatId', 'all')
     }
   }
 
-  return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col p-4 sm:p-6">
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 sm:space-y-6 pr-4">
+  const handleSummaryChange = (value: string) => {
+    const summary = value as JargonSummaryTab
+    list.setFilter('summary', summary)
+    if (summary === 'global_count') {
+      list.setFilter('scope', 'global')
+      list.setFilter('chatId', 'all')
+    }
+  }
 
+  return (
+    <div className="flex h-[calc(100vh-4rem)] flex-col p-3 sm:p-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="space-y-3 pr-3">
           {/* 统计标签 */}
-          <div
-            data-dashboard-tabs-list="true"
-            className="grid h-10 grid-cols-2 overflow-hidden rounded-lg bg-muted p-1 text-muted-foreground sm:grid-cols-3 lg:grid-cols-6"
-          >
-            {[
-              { label: '总数量', value: stats.total, className: 'text-foreground' },
-              { label: '已确认黑话', value: stats.confirmed_jargon, className: 'text-green-600' },
-              { label: '确认非黑话', value: stats.confirmed_not_jargon, className: 'text-gray-500' },
-              { label: '待判定', value: stats.pending, className: 'text-yellow-600' },
-              { label: '全局黑话', value: stats.global_count, className: 'text-blue-600' },
-              { label: '推断完成', value: stats.complete_count, className: 'text-purple-600' },
-            ].map((item) => (
-              <div
-                key={item.label}
-                data-dashboard-tabs-trigger="true"
-                className="inline-flex h-10 min-w-0 items-center justify-center gap-2 px-2 text-sm font-medium whitespace-nowrap transition-all sm:px-3"
-              >
-                <span className="truncate text-muted-foreground">{item.label}</span>
-                <span className={`shrink-0 font-semibold leading-none ${item.className}`}>
-                  {item.value}
-                </span>
-              </div>
-            ))}
-          </div>
+          <AccentPanel showRetroStripes={false} className="bg-muted rounded-lg border">
+            <Tabs value={summaryFilter} onValueChange={handleSummaryChange}>
+              <DashboardTabBar variant="grid" className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  {
+                    value: 'total',
+                    label: '总数量',
+                    count: stats.total,
+                    className: 'text-foreground',
+                  },
+                  {
+                    value: 'confirmed_jargon',
+                    label: '已确认黑话',
+                    count: stats.confirmed_jargon,
+                    className: 'text-green-600',
+                  },
+                  {
+                    value: 'confirmed_not_jargon',
+                    label: '确认非黑话',
+                    count: stats.confirmed_not_jargon,
+                    className: 'text-gray-500',
+                  },
+                  {
+                    value: 'pending',
+                    label: '待判定',
+                    count: stats.pending,
+                    className: 'text-yellow-600',
+                  },
+                  {
+                    value: 'global_count',
+                    label: '全局黑话',
+                    count: stats.global_count,
+                    className: 'text-blue-600',
+                  },
+                  {
+                    value: 'complete_count',
+                    label: '推断完成',
+                    count: stats.complete_count,
+                    className: 'text-purple-600',
+                  },
+                ].map((item) => (
+                  <DashboardTabTrigger
+                    key={item.value}
+                    value={item.value}
+                    className="h-8 gap-1.5 px-2 text-xs"
+                    aria-label={`${item.label} ${item.count}`}
+                  >
+                    <span>{item.label}</span>
+                    <span className={`leading-none font-semibold ${item.className}`}>
+                      {item.count}
+                    </span>
+                  </DashboardTabTrigger>
+                ))}
+              </DashboardTabBar>
+            </Tabs>
+          </AccentPanel>
 
           {/* 搜索和筛选 */}
-          <div className="rounded-lg border bg-card p-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
-              <div className="space-y-1">
-                <Label htmlFor="search">搜索</Label>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="search"
-                    placeholder="搜索黑话内容..."
-                    value={list.searchInput}
-                    onChange={(e) => list.setSearchInput(e.target.value)}
-                    className="h-8 pl-9"
-                  />
+          <AccentPanel className="bg-card border" showRetroStripeDivider={false}>
+            <div className="p-2.5">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="search" className="text-xs">
+                    搜索
+                  </Label>
+                  <div className="relative">
+                    <Search className="text-muted-foreground absolute top-2 left-2.5 h-4 w-4" />
+                    <Input
+                      id="search"
+                      placeholder="搜索黑话内容..."
+                      value={list.searchInput}
+                      onChange={(e) => list.setSearchInput(e.target.value)}
+                      className="h-8 pl-9"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-1">
-                <Label>状态筛选</Label>
-                <Select
-                  value={filterIsJargon}
-                  onValueChange={(value) => list.setFilter('isJargon', value)}
+                <div className="space-y-1">
+                  <Label htmlFor="page-size" className="text-xs">
+                    每页显示
+                  </Label>
+                  <Select
+                    value={pageSize.toString()}
+                    onValueChange={(value) => list.setPageSize(parseInt(value))}
+                  >
+                    <SelectTrigger id="page-size" className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={() => setIsCreateDialogOpen(true)}
+                  className="h-8 w-10 px-0"
+                  aria-label="新增黑话"
+                  title="新增黑话"
                 >
-                  <SelectTrigger className="h-8">
-                    <SelectValue placeholder="全部状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部状态</SelectItem>
-                    <SelectItem value="true">是黑话</SelectItem>
-                    <SelectItem value="false">非黑话</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="page-size">每页显示</Label>
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(value) => list.setPageSize(parseInt(value))}
-                >
-                  <SelectTrigger id="page-size" className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={() => setIsCreateDialogOpen(true)} className="h-8 gap-2">
-                <Plus className="h-4 w-4" />
-                新增
-              </Button>
-            </div>
 
-            {/* 批量操作工具栏 */}
-            {selectedIds.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
-                <span className="text-sm text-muted-foreground">已选择 {selectedIds.size} 个</span>
-                <Button variant="outline" size="sm" onClick={() => handleBatchSetJargon(true)}>
-                  <Check className="h-4 w-4 mr-1" />
-                  标记为黑话
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handleBatchSetJargon(false)}>
-                  <X className="h-4 w-4 mr-1" />
-                  标记为非黑话
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => list.clearSelection()}>
-                  取消选择
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => setIsBatchDeleteDialogOpen(true)}>
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  批量删除
-                </Button>
-              </div>
-            )}
-          </div>
+              {/* 批量操作工具栏 */}
+              {selectedIds.size > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2">
+                  <span className="text-muted-foreground text-sm">
+                    已选择 {selectedIds.size} 个
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => handleBatchSetJargon(true)}>
+                    <Check className="mr-1 h-4 w-4" />
+                    标记为黑话
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleBatchSetJargon(false)}>
+                    <X className="mr-1 h-4 w-4" />
+                    标记为非黑话
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => list.clearSelection()}>
+                    取消选择
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsBatchDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    批量删除
+                  </Button>
+                </div>
+              )}
+            </div>
+          </AccentPanel>
 
           {/* 黑话列表 */}
-          <div className="grid grid-cols-1 gap-4 lg:h-[calc(100vh-19rem)] lg:min-h-[30rem] lg:grid-cols-[12rem_minmax(0,1fr)] lg:items-stretch">
-            <aside className="flex min-h-0 flex-col rounded-lg border bg-card lg:h-full lg:self-stretch lg:overflow-hidden">
-              <div className="space-y-2 border-b px-3 py-2">
-                <h2 className="text-sm font-medium">范围</h2>
-                <div className="grid grid-cols-3 gap-1 rounded-md bg-muted p-1">
-                  <button
-                    type="button"
-                    onClick={() => handleScopeChange('all')}
-                    className={`rounded px-2 py-1 text-xs transition-colors ${
-                      scopeFilter === 'all' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    全部
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleScopeChange('global')}
-                    className={`rounded px-2 py-1 text-xs transition-colors ${
-                      scopeFilter === 'global' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    全局
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleScopeChange('local')}
-                    className={`rounded px-2 py-1 text-xs transition-colors ${
-                      scopeFilter === 'local' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    非全局
-                  </button>
+          <div
+            className={`grid grid-cols-1 gap-3 transition-[grid-template-columns] duration-200 lg:h-[calc(100vh-15.5rem)] lg:min-h-[34rem] lg:items-stretch ${
+              scopePanelCollapsed
+                ? 'lg:grid-cols-[3.25rem_minmax(0,1fr)]'
+                : 'lg:grid-cols-[11rem_minmax(0,1fr)]'
+            }`}
+          >
+            <ChatScopeFilterPanel
+              modes={[
+                { label: '全部', value: 'all' },
+                { label: '全局', value: 'global' },
+                { label: '非全局', value: 'local' },
+              ]}
+              modeColumns={1}
+              activeMode={scopeFilter}
+              onModeChange={handleScopeChange}
+              items={
+                scopeFilter === 'global'
+                  ? []
+                  : [
+                      { id: 'all', label: '全部聊天' },
+                      ...chatList.map((chat) => ({
+                        id: chat.session_id,
+                        label: chat.chat_name,
+                        title: chat.chat_name,
+                      })),
+                    ]
+              }
+              selectedItemId={filterChatId}
+              onItemSelect={(chatId) => handleChatChange(String(chatId))}
+              emptyContent={
+                <div className="text-muted-foreground px-2 py-6 text-center text-sm">
+                  全局黑话不按聊天划分
                 </div>
-              </div>
-              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-                {scopeFilter === 'global' ? (
-                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                    全局黑话不按聊天划分
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleChatChange('all')}
-                      className={`w-full rounded-md px-2 py-2 text-left text-sm transition-colors ${
-                        filterChatId === 'all'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-foreground hover:bg-muted'
-                      }`}
-                    >
-                      全部聊天
-                    </button>
-                    {chatList.map((chat) => (
-                      <button
-                        key={chat.session_id}
-                        type="button"
-                        onClick={() => handleChatChange(chat.session_id)}
-                        className={`w-full rounded-md px-2 py-2 text-left text-sm transition-colors ${
-                          filterChatId === chat.session_id
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-foreground hover:bg-muted'
-                        }`}
-                        title={chat.chat_name}
-                      >
-                        <span className="block truncate">{chat.chat_name}</span>
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
-            </aside>
+              }
+              collapsed={scopePanelCollapsed}
+              onCollapsedChange={setScopePanelCollapsed}
+              collapseLabel="折叠范围列表"
+              expandLabel="展开范围列表"
+              className="[&_[data-chat-scope-panel-header=true]]:px-2 [&_[data-chat-scope-panel-header=true]]:py-1 [&_[data-chat-scope-panel-item=true]]:py-1.5 [&_[data-chat-scope-panel-mode=true]]:py-0.5 [&_[data-chat-scope-panel-modes=true]]:p-0.5"
+              listClassName="space-y-0.5 p-1"
+            />
 
             <div className="min-h-0 lg:h-full">
               {list.isError ? (
-                <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 rounded-lg border bg-card py-8">
-                  <p className="text-sm text-destructive">{list.error?.message}</p>
-                  <Button variant="outline" size="sm" onClick={() => list.refetch()}>
-                    重试
-                  </Button>
-                </div>
+                <AccentPanel className="bg-card h-full min-h-[12rem] border">
+                  <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 py-8">
+                    <p className="text-destructive text-sm">{list.error?.message}</p>
+                    <Button variant="outline" size="sm" onClick={() => list.refetch()}>
+                      重试
+                    </Button>
+                  </div>
+                </AccentPanel>
               ) : (
                 <JargonList
                   jargons={jargons}
@@ -455,6 +497,7 @@ export function JargonManagementPage() {
         jargon={selectedJargon}
         open={isDetailDialogOpen}
         onOpenChange={setIsDetailDialogOpen}
+        loadingRawContent={detailLoadingId === selectedJargon?.id}
       />
 
       {/* 创建对话框 */}

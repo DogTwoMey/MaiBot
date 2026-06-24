@@ -3,10 +3,12 @@
  */
 import React from 'react'
 import { Info } from 'lucide-react'
+
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { MultiSelect } from '@/components/ui/multi-select'
+import { StreamlineIcon } from '@/components/ui/streamline-icon'
 import {
   Select,
   SelectContent,
@@ -21,6 +23,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+
 import type { TaskConfig } from '../types'
 
 interface TaskConfigCardProps {
@@ -54,6 +57,10 @@ const selectionStrategyOptions = [
   },
 ]
 
+function clampTemperature(value: number): number {
+  return Math.min(2, Math.max(0, value))
+}
+
 export const TaskConfigCard = React.memo(function TaskConfigCard({
   title,
   description,
@@ -66,6 +73,9 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
   showAdvancedSettings = false,
   dataTour,
 }: TaskConfigCardProps) {
+  const temperatureInputId = React.useId()
+  const selectedModels = taskConfig.model_list || []
+
   const handleModelChange = (values: string[]) => {
     onChange('model_list', values)
   }
@@ -88,7 +98,7 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
           <Label>模型列表</Label>
           <MultiSelect
             options={modelNames.map((name) => ({ label: name, value: name }))}
-            selected={taskConfig.model_list || []}
+            selected={selectedModels}
             onChange={handleModelChange}
             placeholder="选择模型..."
             emptyText="暂无可用模型"
@@ -100,14 +110,31 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           {!hideTemperature && (
             <div className="grid gap-3">
-              <Label>温度</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor={temperatureInputId}>温度</Label>
+                <Input
+                  id={temperatureInputId}
+                  type="number"
+                  value={taskConfig.temperature ?? 0.7}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value)
+                    if (!isNaN(value)) {
+                      onChange('temperature', clampTemperature(value))
+                    }
+                  }}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  className="h-8 w-24 text-right text-sm tabular-nums sm:hidden"
+                />
+              </div>
               <Slider
                 value={[taskConfig.temperature ?? 0.7]}
                 onValueChange={(values) => onChange('temperature', values[0])}
                 min={0}
                 max={2}
                 step={0.1}
-                className="w-full"
+                className="hidden w-full sm:flex"
                 data-dashboard-slider="config"
                 data-dashboard-slider-value-format="fixed-2"
               />
@@ -169,7 +196,11 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
               <TooltipProvider delayDuration={150}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                    <StreamlineIcon
+                      name="information-circle-solid"
+                      fallback={Info}
+                      className="h-3.5 w-3.5 cursor-help text-muted-foreground"
+                    />
                   </TooltipTrigger>
                   <TooltipContent side="top" align="start" className="max-w-64">
                     模型响应时间超过此时间将输出警告日志
