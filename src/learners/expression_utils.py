@@ -1,13 +1,16 @@
-import json
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from json_repair import repair_json
+
+import json
+import re
 
 from src.common.data_models.llm_service_data_models import LLMGenerationOptions
 from src.common.logger import get_logger
 from src.prompt.prompt_manager import prompt_manager
 from src.services.llm_service import LLMServiceClient
+
+from .expression_style_utils import normalize_expression_style_for_learning
 
 logger = get_logger("expression_utils")
 
@@ -163,7 +166,7 @@ async def check_expression_suitability(
 
     generation_result = await judge_llm.generate_response(
         prompt=prompt,
-        options=LLMGenerationOptions(temperature=0.6, max_tokens=1024),
+        options=LLMGenerationOptions(temperature=0.6),
         session_id=session_id,
     )
     response = generation_result.response
@@ -252,7 +255,7 @@ def parse_expression_response(response: str) -> Tuple[List[Tuple[str, str, str]]
             continue
 
         situation = str(item.get("situation", "")).strip()
-        style = str(item.get("style", "")).strip()
+        style = normalize_expression_style_for_learning(str(item.get("style", "")).strip())
         source_id = str(item.get("source_id", "")).strip()
 
         if situation and style and source_id:

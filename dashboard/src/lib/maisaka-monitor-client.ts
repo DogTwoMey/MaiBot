@@ -63,6 +63,8 @@ export interface MessageIngestedEvent {
   speaker_name: string
   content: string
   message_id: string
+  reply_to?: MaisakaReplyPreview | null
+  media?: MaisakaMessageMedia[]
   platform?: string
   user_id?: string
   group_id?: string
@@ -74,6 +76,8 @@ export interface MessageSentEvent {
   speaker_name: string
   content: string
   message_id: string
+  reply_to?: MaisakaReplyPreview | null
+  media?: MaisakaMessageMedia[]
   source_kind?: string
   platform?: string
   user_id?: string
@@ -86,6 +90,8 @@ export interface MessageUpdatedEvent {
   speaker_name: string
   content: string
   message_id: string
+  reply_to?: MaisakaReplyPreview | null
+  media?: MaisakaMessageMedia[]
   source_kind?: string
   platform?: string
   user_id?: string
@@ -93,13 +99,20 @@ export interface MessageUpdatedEvent {
   timestamp: number
 }
 
-export interface CycleStartEvent {
-  session_id: string
-  cycle_id: number
-  round_index: number
-  max_rounds: number
-  history_count: number
-  timestamp: number
+export interface MaisakaReplyPreview {
+  message_id: string
+  sender_name: string
+  content: string
+}
+
+export interface MaisakaMessageMedia {
+  kind: 'image' | 'emoji'
+  hash: string
+  text: string
+  url: string
+  data_url?: string
+  default_original?: boolean
+  index?: number
 }
 
 export interface TimingGateResultEvent {
@@ -207,16 +220,6 @@ export interface PlannerFinalizedEvent {
   }
 }
 
-export interface CycleEndEvent {
-  session_id: string
-  cycle_id: number
-  time_records: Record<string, number>
-  agent_state: string
-  end_reason?: string
-  end_detail?: string
-  timestamp: number
-}
-
 export interface ReplierRequestEvent {
   session_id: string
   messages: MaisakaMessage[]
@@ -247,13 +250,11 @@ export type MaisakaMonitorEvent =
   | { type: 'message.ingested'; data: MessageIngestedEvent }
   | { type: 'message.sent'; data: MessageSentEvent }
   | { type: 'message.updated'; data: MessageUpdatedEvent }
-  | { type: 'cycle.start'; data: CycleStartEvent }
   | { type: 'timing_gate.result'; data: TimingGateResultEvent }
   | { type: 'planner.request'; data: PlannerRequestEvent }
   | { type: 'planner.response'; data: PlannerResponseEvent }
   | { type: 'planner.finalized'; data: PlannerFinalizedEvent }
   | { type: 'tool.execution'; data: ToolExecutionEvent }
-  | { type: 'cycle.end'; data: CycleEndEvent }
   | { type: 'replier.request'; data: ReplierRequestEvent }
   | { type: 'replier.response'; data: ReplierResponseEvent }
 

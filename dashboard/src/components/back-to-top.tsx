@@ -210,7 +210,7 @@ export function BackToTop() {
         />
         
         {/* 图标 */}
-        <ArrowUp 
+        <ArrowUp
           className="h-4 w-4 text-primary transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-110"
           strokeWidth={2.5}
         />

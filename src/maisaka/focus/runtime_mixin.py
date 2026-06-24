@@ -25,7 +25,7 @@ from src.maisaka.context.messages import (
     SessionBackedMessage,
     ToolResultMessage,
 )
-from src.maisaka.mode_policy import is_no_action_equivalent_cycle_reason
+from src.maisaka.mode_policy import is_idle_cycle_reason
 from .manager import FocusTargetResolution, focus_mode_manager
 
 FOCUS_SWITCH_NEW_MESSAGE_LIMIT = 20
@@ -58,11 +58,9 @@ class MaisakaFocusRuntimeMixin:
         """Refresh unread and attention flags after focus-mode manual reading."""
 
         self._last_processed_index = len(self.message_cache)
-        self._message_turn_scheduled = False
-        self._message_debounce_required = False
-        self._force_next_timing_continue = False
-        self._force_next_timing_message_id = ""
-        self._force_next_timing_reason = ""
+        self._mark_message_turn_unscheduled()
+        self._clear_message_debounce_required()
+        self._clear_forced_turn_state()
         self._cancel_deferred_message_turn_task()
         focus_mode_manager.mark_read(self.session_id)
 
@@ -94,38 +92,38 @@ class MaisakaFocusRuntimeMixin:
 
         return history_messages
 
-    def record_no_action_cycle_result(self, cycle_end_reason: str) -> None:
-        """Track consecutive no_action cycles and release stale group focus."""
+    def record_idle_cycle_result(self, cycle_end_reason: str) -> None:
+        """Track consecutive idle cycles and release stale group focus."""
 
         if not self._is_focus_mode_active_for_current_chat():
-            self._consecutive_no_action_count = 0
+            self._consecutive_idle_count = 0
             return
         if not self.chat_stream.is_group_session:
-            self._consecutive_no_action_count = 0
+            self._consecutive_idle_count = 0
             return
 
-        if not is_no_action_equivalent_cycle_reason(cycle_end_reason):
-            self._consecutive_no_action_count = 0
+        if not is_idle_cycle_reason(cycle_end_reason):
+            self._consecutive_idle_count = 0
             return
 
-        self._consecutive_no_action_count += 1
-        if self._consecutive_no_action_count < FOCUS_NO_ACTION_EXIT_THRESHOLD:
+        self._consecutive_idle_count += 1
+        if self._consecutive_idle_count < FOCUS_NO_ACTION_EXIT_THRESHOLD:
             return
 
-        self._consecutive_no_action_count = 0
-        self._exit_focus_after_consecutive_no_action()
+        self._consecutive_idle_count = 0
+        self._exit_focus_after_consecutive_idle()
 
-    def _exit_focus_after_consecutive_no_action(self) -> None:
-        """Release the current group from focus after repeated no_action cycles."""
+    def _exit_focus_after_consecutive_idle(self) -> None:
+        """Release the current group from focus after repeated idle cycles."""
 
         released = focus_mode_manager.release_focus_and_block_next_entry(self.session_id)
         if not released:
             return
 
         self._cancel_focus_cooldown_timer_task()
-        self._focus_cooldown_wakeup_scheduled = False
+        self._clear_focus_cooldown_wakeup_scheduled()
         logger.info(
-            f"{self.log_prefix} 连续 {FOCUS_NO_ACTION_EXIT_THRESHOLD} 次 no_action，"
+            f"{self.log_prefix} 连续 {FOCUS_NO_ACTION_EXIT_THRESHOLD} 次空闲结束，"
             "已退出当前群的 Focus，并阻止它立即重新进入"
         )
 
@@ -246,7 +244,7 @@ class MaisakaFocusRuntimeMixin:
                 continue
             if runtime._focus_cooldown_wakeup_scheduled:
                 continue
-            if runtime._proactive_anchor_message is not None:
+            if runtime._proactive_trigger_message is not None:
                 continue
             if runtime._message_turn_scheduled and runtime._has_pending_messages():
                 continue
@@ -343,13 +341,8 @@ class MaisakaFocusRuntimeMixin:
                 source_kind=FOCUS_AT_WAKEUP_SOURCE if wakeup_reason == "at" else FOCUS_COOLDOWN_WAKEUP_SOURCE,
             )
         )
-        self._proactive_anchor_message = wakeup_message
         self._focus_cooldown_wakeup_scheduled = True
-        if self._agent_state == self._STATE_WAIT:
-            self._agent_state = self._STATE_RUNNING
-            self._pending_wait_tool_call_id = None
-            self._cancel_wait_timeout_task()
-        self._internal_turn_queue.put_nowait("proactive")
+        self._queue_proactive_turn(wakeup_message)
         logger.info(
             f"{self.log_prefix} focus_mode 强制唤醒已排队: "
             f"trigger_session_id={trigger_session_id} reason={wakeup_reason} "
@@ -710,35 +703,34 @@ class MaisakaFocusRuntimeMixin:
             f"（未读 {target_unread_count} 条，最多 {FOCUS_SWITCH_NEW_MESSAGE_LIMIT} 条）。\n"
             "</focus_switch>"
         )
-        switch_anchor_message = SessionMessage(
+        switch_trigger_message = SessionMessage(
             message_id=switch_message_id,
             timestamp=switch_timestamp,
             platform=target_session.platform,
         )
-        switch_anchor_message.session_id = target_session.session_id
-        switch_anchor_message.message_info = MessageInfo(
+        switch_trigger_message.session_id = target_session.session_id
+        switch_trigger_message.message_info = MessageInfo(
             user_info=target_runtime._build_runtime_user_info(),
             group_info=target_runtime._build_group_info(),
             additional_config={},
         )
-        switch_anchor_message.raw_message = MessageSequence([TextComponent(switch_notice)])
-        switch_anchor_message.processed_plain_text = switch_notice
+        switch_trigger_message.raw_message = MessageSequence([TextComponent(switch_notice)])
+        switch_trigger_message.processed_plain_text = switch_notice
 
         copied_history.append(
             SessionBackedMessage.from_session_message(
-                switch_anchor_message,
-                raw_message=switch_anchor_message.raw_message,
+                switch_trigger_message,
+                raw_message=switch_trigger_message.raw_message,
                 visible_text=switch_notice,
                 source_kind="focus_switch",
             )
         )
         copied_history.extend(recent_context_messages)
         target_runtime._chat_history = copied_history
-        target_runtime._message_turn_scheduled = False
-        target_runtime._message_debounce_required = False
-        target_runtime._proactive_anchor_message = switch_anchor_message
+        target_runtime._mark_message_turn_unscheduled()
+        target_runtime._clear_message_debounce_required()
         target_runtime._enter_stop_state()
-        target_runtime._internal_turn_queue.put_nowait("proactive")
+        target_runtime._queue_proactive_turn(switch_trigger_message)
 
         self._enter_stop_state()
         structured_content = {

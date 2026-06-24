@@ -10,19 +10,9 @@ from src.core.tooling import ToolAvailabilityContext, ToolExecutionContext, Tool
 from src.llm_models.payload_content.tool_option import ToolDefinitionInput
 
 from src.maisaka.focus import focus_mode_manager
-from src.maisaka.mode_policy import effective_builtin_stage, effective_builtin_visibility
-
 from .context import BuiltinToolRuntimeContext
-from .continue_tool import get_tool_spec as get_continue_tool_spec
-from .continue_tool import handle_tool as handle_continue_tool
-from .finish import get_tool_spec as get_finish_tool_spec
-from .finish import handle_tool as handle_finish_tool
 from .fetch_history import get_tool_spec as get_fetch_history_tool_spec
 from .fetch_history import handle_tool as handle_fetch_history_tool
-from .no_action import get_tool_spec as get_no_action_tool_spec
-from .no_action import handle_tool as handle_no_action_tool
-from .query_jargon import get_tool_spec as get_query_jargon_tool_spec
-from .query_jargon import handle_tool as handle_query_jargon_tool
 from .query_memory import get_tool_spec as get_query_memory_tool_spec
 from .query_memory import handle_tool as handle_query_memory_tool
 from .query_person_profile import get_tool_spec as get_query_person_profile_tool_spec
@@ -37,8 +27,8 @@ from .switch_chat import get_tool_spec as get_switch_chat_tool_spec
 from .switch_chat import handle_tool as handle_switch_chat_tool
 from .tool_search import get_tool_spec as get_tool_search_tool_spec
 from .tool_search import handle_tool as handle_tool_search_tool
-from .view_complex_message import get_tool_spec as get_view_complex_message_tool_spec
-from .view_complex_message import handle_tool as handle_view_complex_message_tool
+from .view_forward_message import get_tool_spec as get_view_forward_message_tool_spec
+from .view_forward_message import handle_tool as handle_view_forward_message_tool
 from .wait import get_tool_spec as get_wait_tool_spec
 from .wait import handle_tool as handle_wait_tool
 
@@ -47,7 +37,7 @@ BuiltinToolRawHandler = Callable[
     [BuiltinToolRuntimeContext, ToolInvocation, Optional[ToolExecutionContext]],
     Awaitable[ToolExecutionResult],
 ]
-BuiltinToolStage = Literal["timing", "action", "both"]
+BuiltinToolStage = Literal["action", "both"]
 BuiltinToolVisibility = Literal["visible", "deferred", "hidden"]
 BuiltinToolChatScope = Literal["all", "group", "private"]
 
@@ -67,8 +57,8 @@ class BuiltinToolEntry:
         """生成带统一可见性元数据的工具声明。"""
 
         tool_spec = deepcopy(self.get_spec())
-        tool_spec.metadata["builtin_stage"] = effective_builtin_stage(self.name, self.stage)
-        tool_spec.metadata["visibility"] = effective_builtin_visibility(self.name, self.visibility)
+        tool_spec.metadata["builtin_stage"] = self.stage
+        tool_spec.metadata["visibility"] = self.visibility
         return tool_spec
 
 
@@ -87,18 +77,15 @@ def _get_query_person_profile_tool_spec() -> ToolSpec:
 
 
 BUILTIN_TOOL_ENTRIES: List[BuiltinToolEntry] = [
-    BuiltinToolEntry("no_action", get_no_action_tool_spec, handle_no_action_tool, stage="both"),
-    BuiltinToolEntry("continue", get_continue_tool_spec, handle_continue_tool, stage="timing"),
     BuiltinToolEntry("wait", get_wait_tool_spec, handle_wait_tool, stage="both"),
-    BuiltinToolEntry("finish", get_finish_tool_spec, handle_finish_tool, stage="action"),
     BuiltinToolEntry("reply", get_reply_tool_spec, handle_reply_tool, stage="action"),
     BuiltinToolEntry(
-        "view_complex_message",
-        get_view_complex_message_tool_spec,
-        handle_view_complex_message_tool,
+        "view_forward_message",
+        get_view_forward_message_tool_spec,
+        handle_view_forward_message_tool,
         stage="action",
+        visibility="deferred",
     ),
-    BuiltinToolEntry("query_jargon", get_query_jargon_tool_spec, handle_query_jargon_tool, stage="action"),
     BuiltinToolEntry("query_memory", _get_query_memory_tool_spec, handle_query_memory_tool, stage="action"),
     BuiltinToolEntry(
         "query_person_profile",
@@ -130,13 +117,9 @@ def _get_builtin_tool_entries(
     entries = BUILTIN_TOOL_ENTRIES
     entries = [entry for entry in entries if _is_builtin_tool_enabled_by_config(entry)]
     if stage is not None:
-        entries = [entry for entry in entries if effective_builtin_stage(entry.name, entry.stage) in {stage, "both"}]
+        entries = [entry for entry in entries if entry.stage in {stage, "both"}]
     if visibility is not None:
-        entries = [
-            entry
-            for entry in entries
-            if effective_builtin_visibility(entry.name, entry.visibility) == visibility
-        ]
+        entries = [entry for entry in entries if entry.visibility == visibility]
     if context is not None:
         entries = [entry for entry in entries if _is_builtin_tool_available(entry, context)]
     return entries
@@ -145,9 +128,6 @@ def _get_builtin_tool_entries(
 def _is_builtin_tool_enabled_by_config(entry: BuiltinToolEntry) -> bool:
     """根据全局配置判断内置工具是否应暴露。"""
 
-    if entry.name in {"send_emoji", "send_image"}:
-        if bool(global_config.experimental.enable_replyer_format_output):
-            return False
     if entry.name in {"fetch_history", "switch_chat"}:
         return bool(global_config.experimental.focus_mode)
     return True
@@ -194,16 +174,6 @@ def get_all_builtin_tool_specs(context: Optional[ToolAvailabilityContext] = None
     """获取全部内置工具声明。"""
 
     return [entry.build_spec() for entry in _get_builtin_tool_entries(context=context)]
-
-
-def get_timing_tools(context: Optional[ToolAvailabilityContext] = None) -> List[ToolDefinitionInput]:
-    """获取 Timing Gate 阶段的兼容工具定义。"""
-
-    tool_specs = [
-        entry.build_spec()
-        for entry in _get_builtin_tool_entries(stage="timing", visibility="visible", context=context)
-    ]
-    return [tool_spec.to_llm_definition() for tool_spec in tool_specs if tool_spec.enabled]
 
 
 def get_builtin_tools(context: Optional[ToolAvailabilityContext] = None) -> List[ToolDefinitionInput]:

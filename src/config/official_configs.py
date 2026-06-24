@@ -37,6 +37,7 @@ class BotConfig(ConfigBase):
     """机器人配置类"""
 
     __ui_label__ = "基础"
+    __ui_order__ = 10
 
     platform: str = Field(
         default="",
@@ -263,6 +264,7 @@ class VisualConfig(ConfigBase):
     """视觉配置类"""
 
     __ui_label__ = "视觉"
+    __ui_order__ = 60
 
     planner_mode: Literal["text", "multimodal", "auto"] = Field(
         default="auto",
@@ -356,7 +358,7 @@ class VisualConfig(ConfigBase):
             "x-widget": "input",
             "x-icon": "image",
             "x-layout": "inline-right",
-            "x-input-width": "8rem",
+            "x-input-width": "min(100%, 5.5rem)",
             "x-row": "visual-image-compression",
             "label": {
                 "zh_CN": "最大图片大小(MB)",
@@ -373,6 +375,7 @@ class VisualConfig(ConfigBase):
             "x-widget": "select",
             "x-icon": "minimize-2",
             "x-layout": "inline-right",
+            "x-input-width": "min(100%, 8.5rem)",
             "x-row": "visual-image-compression",
             "x-option-descriptions": OVERSIZED_IMAGE_HANDLE_METHOD_DESCRIPTIONS,
             "label": {
@@ -457,6 +460,7 @@ class ChatConfig(ConfigBase):
     """聊天配置类"""
 
     __ui_label__ = "聊天"
+    __ui_order__ = 20
 
     talk_value: float = Field(
         default=1,
@@ -621,20 +625,75 @@ class ChatConfig(ConfigBase):
     )
     """最多保留多少条中期摘要；设为 0 表示不保留。"""
 
-    enable_new_maisaka: bool = Field(
-        default=False,
+    mid_term_memory_recall_enabled: bool = Field(
+        default=True,
         json_schema_extra={
             "label": {
-                "zh_CN": "启用新 Maisaka",
-                "en_US": "Enable new Maisaka",
-                "ja_JP": "新 Maisaka を有効化",
+                "zh_CN": "中期摘要召回",
+                "en_US": "Recall mid-term summaries",
+                "ja_JP": "中期要約の想起",
             },
             "x-widget": "switch",
-            "x-icon": "sparkles",
+            "x-icon": "search",
+            "x-row": "context-sizes",
             "advanced": True,
         },
     )
-    """启用 Maisaka 新实验行为：跳过 Timing Gate，使用 wait 替代 no_action，并让 wait 参与不回复退避。"""
+    """进入 Planner 前，是否用当前上下文 embedding 匹配并注入一条相关中期摘要。"""
+
+    mid_term_memory_recall_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "中期召回阈值",
+                "en_US": "Mid-term recall threshold",
+                "ja_JP": "中期想起しきい値",
+            },
+            "x-widget": "input",
+            "x-icon": "search",
+            "x-layout": "inline-right",
+            "x-input-width": "6.5rem",
+            "x-row": "context-sizes",
+            "advanced": True,
+        },
+    )
+    """当前上下文与中期摘要匹配段的 embedding 相似度必须大于该阈值，才会注入参考。"""
+
+    mid_term_memory_recall_context_length: int = Field(
+        default=2400,
+        ge=200,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "中期召回上下文长度",
+                "en_US": "Mid-term recall context length",
+                "ja_JP": "中期想起コンテキスト長",
+            },
+            "x-widget": "input",
+            "x-icon": "text",
+            "x-layout": "inline-right",
+            "x-input-width": "6.5rem",
+            "x-row": "context-sizes",
+            "advanced": True,
+        },
+    )
+    """生成中期摘要召回 query embedding 时，最多编织多少字符的当前 Planner 上下文。"""
+
+    enable_reply_necessity_trigger: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "启用回复必要性触发",
+                "en_US": "Enable reply necessity trigger",
+                "ja_JP": "返信必要度トリガーを有効化",
+            },
+            "x-widget": "switch",
+            "x-icon": "activity",
+            "advanced": True,
+        },
+    )
+    """按回复必要性评分决定是否进入 Planner；关闭时仍按消息数和空窗补偿触发。"""
 
     enable_reply_quote: bool = Field(
         default=True,
@@ -686,17 +745,35 @@ class ChatConfig(ConfigBase):
     )
     """思考时来了新消息，最多重新思考多少次。"""
 
+    max_consecutive_wait_count: int = Field(
+        default=5,
+        ge=1,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "连续 wait 上限",
+                "en_US": "Max consecutive wait",
+                "ja_JP": "連続 wait 上限",
+            },
+            "x-widget": "input",
+            "x-icon": "timer-reset",
+            "advanced": True,
+        },
+    )
+    """Planner 最多连续调用 wait 多少次；达到上限后 wait 工具会拒绝继续进入等待。"""
+
     no_action_backoff_base_seconds: float = Field(
         default=15,
         ge=0,
         json_schema_extra={
             "label": {
-                "zh_CN": "no_action 退避基准",
-                "en_US": "no_action backoff base",
-                "ja_JP": "no_action バックオフ基準",
+                "zh_CN": "空闲退避基准",
+                "en_US": "Idle backoff base",
+                "ja_JP": "アイドルバックオフ基準",
             },
             "x-widget": "input",
             "x-icon": "timer",
+            "x-layout": "inline-right",
+            "x-input-width": "7.5rem",
             "x-description-display": "icon",
             "advanced": False,
         },
@@ -708,9 +785,9 @@ class ChatConfig(ConfigBase):
         ge=0,
         json_schema_extra={
             "label": {
-                "zh_CN": "no_action 退避上限",
-                "en_US": "no_action backoff cap",
-                "ja_JP": "no_action バックオフ上限",
+                "zh_CN": "空闲退避上限",
+                "en_US": "Idle backoff cap",
+                "ja_JP": "アイドルバックオフ上限",
             },
             "x-widget": "input",
             "x-icon": "timer-reset",
@@ -725,9 +802,9 @@ class ChatConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "label": {
-                "zh_CN": "no_action 退避起点",
-                "en_US": "no_action backoff start",
-                "ja_JP": "no_action バックオフ開始",
+                "zh_CN": "空闲退避起点",
+                "en_US": "Idle backoff start",
+                "ja_JP": "アイドルバックオフ開始",
             },
             "x-widget": "input",
             "x-icon": "list-start",
@@ -742,9 +819,9 @@ class ChatConfig(ConfigBase):
         ge=0,
         json_schema_extra={
             "label": {
-                "zh_CN": "no_action 退避绕过消息数",
-                "en_US": "no_action backoff bypass messages",
-                "ja_JP": "no_action バックオフ迂回メッセージ数",
+                "zh_CN": "空闲退避绕过消息数",
+                "en_US": "Idle backoff bypass messages",
+                "ja_JP": "アイドルバックオフ迂回メッセージ数",
             },
             "x-widget": "input",
             "x-icon": "message-square-more",
@@ -883,6 +960,7 @@ class ExperimentalConfig(ConfigBase):
 
     __ui_label__ = "实验性功能"
     __ui_advanced__ = True
+    __ui_order__ = 30
 
     enable_behavior_learning: bool = Field(
         default=False,
@@ -933,22 +1011,6 @@ class ExperimentalConfig(ConfigBase):
         },
     )
     """_wrap_让多个群聊或私聊共享学到的行为经验。"""
-
-    enable_replyer_format_output: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "Replyer 格式化输出",
-                "en_US": "Replyer formatted output",
-                "ja_JP": "Replyer フォーマット出力",
-            },
-            "x-widget": "switch",
-            "x-icon": "braces",
-        },
-    )
-    """
-    允许模型输出 @、表情、图片等结构化片段；不熟悉时建议关闭。
-    """
 
     focus_mode: bool = Field(
         default=False,
@@ -1030,6 +1092,7 @@ class MessageReceiveConfig(ConfigBase):
 
     __ui_label__ = "消息接收"
     __ui_advanced__ = True
+    __ui_order__ = 70
 
     image_parse_threshold: int = Field(
         default=5,
@@ -3106,6 +3169,7 @@ class AMemorixConfig(ConfigBase):
     """长期记忆配置"""
 
     __ui_label__ = "记忆"
+    __ui_order__ = 50
 
     plugin: AMemorixPluginConfig = Field(
         default_factory=AMemorixPluginConfig,
@@ -3366,6 +3430,7 @@ class ExpressionConfig(ConfigBase):
     """表达配置类"""
 
     __ui_label__ = "学习"
+    __ui_order__ = 40
 
     expression_checked_only: bool = Field(
         default=True,
@@ -3563,6 +3628,7 @@ class VoiceConfig(ConfigBase):
 
     __ui_label__ = "语音"
     __ui_advanced__ = True
+    __ui_order__ = 90
 
     enable_asr: bool = Field(
         default=False,
@@ -3579,6 +3645,7 @@ class EmojiConfig(ConfigBase):
 
     __ui_label__ = "表情"
     __ui_advanced__ = True
+    __ui_order__ = 80
 
     emoji_send_num: int = Field(
         default=25,
@@ -3768,6 +3835,7 @@ class ResponsePostProcessConfig(ConfigBase):
 
     __ui_label__ = "后处理"
     __ui_advanced__ = True
+    __ui_order__ = 100
 
     enable_response_post_process: bool = Field(
         default=True,
@@ -3971,6 +4039,7 @@ class LogConfig(ConfigBase):
 
     __ui_label__ = "调试"
     __ui_advanced__ = True
+    __ui_order__ = 130
 
     date_style: str = Field(
         default="m-d H:i:s",
@@ -4265,49 +4334,6 @@ class DebugConfig(ConfigBase):
     )
     """记录回复效果评分，方便观察回复质量。"""
 
-    enable_local_mai_replyer: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "启用本地麦麦 Replyer",
-                "en_US": "Enable local Mai replyer",
-                "ja_JP": "ローカル Mai Replyer を有効化",
-            },
-            "x-widget": "switch",
-            "x-icon": "route",
-            "advanced": True,
-        },
-    )
-    """如果你不知道这是什么，请勿打开"""
-
-    record_reply_request: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "记录 Replyer 请求",
-                "en_US": "Record Replyer request",
-                "ja_JP": "Replyer リクエスト記録",
-            },
-            "x-widget": "switch",
-            "x-icon": "file-json",
-        },
-    )
-    """保存 Replyer 的请求内容，方便排查回复问题。"""
-
-    record_planner_request: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "记录 Planner 请求",
-                "en_US": "Record Planner request",
-                "ja_JP": "Planner リクエスト記録",
-            },
-            "x-widget": "switch",
-            "x-icon": "file-json",
-        },
-    )
-    """保存 Planner 的完整请求和回复，日志体积会变大。"""
-
     keep_prompt_preview_json_base64: bool = Field(
         default=False,
         json_schema_extra={
@@ -4557,6 +4583,7 @@ class WebUIConfig(ConfigBase):
 
     __ui_label__ = "WebUI"
     __ui_advanced__ = True
+    __ui_order__ = 110
 
     enabled: bool = Field(
         default=True,
@@ -4572,19 +4599,20 @@ class WebUIConfig(ConfigBase):
     )
     """是否启动 WebUI 管理界面。"""
 
-    host: str = Field(
-        default="127.0.0.1",
+    host: list[str] = Field(
+        default=["127.0.0.1", "::1"],
         json_schema_extra={
             "label": {
                 "zh_CN": "WebUI 主机",
                 "en_US": "WebUI host",
                 "ja_JP": "WebUI ホスト",
             },
-            "x-widget": "input",
+            "x-widget": "tags",
             "x-icon": "globe",
+            "x-placeholder": "127.0.0.1",
         },
     )
-    """WebUI 监听地址；本机使用通常填 127.0.0.1。"""
+    """WebUI 监听地址列表；可同时绑定 IPv4 和 IPv6，例如 ["0.0.0.0", "::"]。"""
 
     port: int = Field(
         default=8001,
@@ -4654,8 +4682,9 @@ class WebUIConfig(ConfigBase):
                 "en_US": "Allowed IPs",
                 "ja_JP": "許可 IP",
             },
-            "x-widget": "input",
+            "x-widget": "comma-list",
             "x-icon": "network",
+            "x-placeholder": "127.0.0.1",
         },
     )
     """允许访问 WebUI 的 IP，多个用逗号分隔。"""
@@ -4668,8 +4697,9 @@ class WebUIConfig(ConfigBase):
                 "en_US": "Trusted proxy IPs",
                 "ja_JP": "信頼プロキシ IP",
             },
-            "x-widget": "input",
+            "x-widget": "comma-list",
             "x-icon": "server",
+            "x-placeholder": "127.0.0.1",
         },
     )
     """可信反向代理 IP；只有这些代理传来的真实 IP 会被信任。"""
@@ -5144,6 +5174,7 @@ class PluginConfig(ConfigBase):
 
     __ui_label__ = "插件"
     __ui_advanced__ = True
+    __ui_order__ = 120
 
     permission: list[str] = Field(
         default_factory=list,
@@ -5155,6 +5186,7 @@ class PluginConfig(ConfigBase):
             },
             "x-widget": "tags",
             "x-icon": "shield-check",
+            "x-placeholder": "qq:123456789",
         },
     )
     """允许用聊天命令管理插件的用户，格式如 qq:123456789。"""

@@ -16,12 +16,8 @@ from .config_upgrade_hooks import apply_config_upgrade_hooks
 from .config_utils import compare_versions, output_config_changes, recursive_parse_item_to_table
 from .default_model_config import create_default_model_config
 from .file_watcher import FileChange, FileWatcher
-from .legacy_migration import (
-    mark_legacy_config_migration_completed,
-    migrate_legacy_bind_env_to_bot_config_dict,
-    should_apply_legacy_migration,
-    try_migrate_legacy_bot_config_dict,
-)
+from .legacy_migration import migrate_legacy_bind_env_to_bot_config_dict, try_migrate_legacy_bot_config_dict
+from .legacy_migration_state import mark_legacy_config_migration_completed, should_apply_legacy_migration
 from .model_configs import APIProvider, ModelInfo, ModelTaskConfig
 from .official_configs import (
     AMemorixConfig,
@@ -66,7 +62,7 @@ MODEL_CONFIG_PATH: Path = (CONFIG_DIR / "model_config.toml").resolve().absolute(
 LEGACY_ENV_PATH: Path = (PROJECT_ROOT / ".env").resolve().absolute()
 A_MEMORIX_LEGACY_CONFIG_PATH: Path = (CONFIG_DIR / "a_memorix.toml").resolve().absolute()
 MMC_VERSION: str = read_project_version(PROJECT_ROOT)
-CONFIG_VERSION: str = "8.14.11"
+CONFIG_VERSION: str = "8.14.14"
 MODEL_CONFIG_VERSION: str = "1.17.3"
 
 logger = get_logger("config")
