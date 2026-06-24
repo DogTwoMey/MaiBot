@@ -2,26 +2,93 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Iterator, List, Sequence, Tuple, Type
 
 from src.chat.message_receive.message import SessionMessage
 from src.common.data_models.llm_service_data_models import PromptMessage
+from src.common.data_models.message_component_data_model import (
+    ByteComponent,
+    ForwardNodeComponent,
+    StandardMessageComponents,
+)
 from src.llm_models.payload_content.message import Message
 from src.llm_models.payload_content.tool_option import ToolCall, ToolDefinitionInput, normalize_tool_options
 from src.plugin_runtime.host.message_utils import PluginMessageUtils
 
 
-def serialize_session_message(message: SessionMessage) -> Dict[str, Any]:
+def serialize_session_message(
+    message: SessionMessage,
+    *,
+    include_binary_data: bool = False,
+) -> Dict[str, Any]:
     """将会话消息序列化为 Hook 可传输载荷。
 
     Args:
         message: 待序列化的会话消息。
+        include_binary_data: 是否内嵌媒体 Base64。Hook 默认只传媒体哈希和文本，
+            避免单条媒体消息超过 RPC 帧限制。
 
     Returns:
         Dict[str, Any]: 可通过插件运行时传输的消息字典。
     """
 
-    return dict(PluginMessageUtils._session_message_to_dict(message))
+    return dict(
+        PluginMessageUtils._session_message_to_dict(
+            message,
+            include_binary_data=include_binary_data,
+        )
+    )
+
+
+def deserialize_modified_session_message(
+    original_message: SessionMessage,
+    serialized_message: Dict[str, Any],
+    raw_message: Any,
+) -> SessionMessage:
+    """仅在 Hook 实际改写消息载荷时执行反序列化。
+
+    未改写时直接返回宿主原消息，避免紧凑 Hook 载荷导致原消息中的媒体二进制丢失。
+
+    Args:
+        original_message: 宿主持有的原始会话消息。
+        serialized_message: 发送给 Hook 的紧凑消息载荷。
+        raw_message: Hook 分发完成后返回的消息载荷。
+
+    Returns:
+        SessionMessage: 原消息或 Hook 改写后恢复出的消息。
+    """
+
+    if raw_message is None or raw_message == serialized_message:
+        return original_message
+    modified_message = deserialize_session_message(raw_message)
+    _restore_message_binary_data(original_message, modified_message)
+    return modified_message
+
+
+def _restore_message_binary_data(original_message: SessionMessage, modified_message: SessionMessage) -> None:
+    """按组件类型和哈希恢复紧凑 Hook 载荷中省略的媒体二进制。"""
+
+    binary_data_by_key: Dict[Tuple[Type[ByteComponent], str], bytes] = {
+        (type(component), component.binary_hash): component.binary_data
+        for component in _iter_byte_components(original_message.raw_message.components)
+        if component.binary_data
+    }
+    for component in _iter_byte_components(modified_message.raw_message.components):
+        if component.binary_data:
+            continue
+        component.binary_data = binary_data_by_key.get((type(component), component.binary_hash), b"")
+
+
+def _iter_byte_components(components: Sequence[StandardMessageComponents]) -> Iterator[ByteComponent]:
+    """递归遍历普通消息和转发节点中的媒体组件。"""
+
+    for component in components:
+        if isinstance(component, ByteComponent):
+            yield component
+            continue
+        if isinstance(component, ForwardNodeComponent):
+            for forward_component in component.forward_components:
+                yield from _iter_byte_components(forward_component.content)
 
 
 def deserialize_session_message(raw_message: Any) -> SessionMessage:

@@ -15,7 +15,7 @@ from src.config.config import global_config
 from src.core.announcement_manager import global_announcement_manager
 from src.platform_io.route_key_factory import RouteKeyFactory
 from src.plugin_runtime.component_query import component_query_service
-from src.plugin_runtime.hook_payloads import deserialize_session_message, serialize_session_message
+from src.plugin_runtime.hook_payloads import deserialize_modified_session_message, serialize_session_message
 from src.plugin_runtime.hook_schema_utils import build_object_schema
 from src.plugin_runtime.host.hook_dispatcher import HookDispatchResult
 from src.plugin_runtime.host.hook_spec_registry import HookSpec, HookSpecRegistry
@@ -224,16 +224,21 @@ class ChatBot:
             tuple[HookDispatchResult, SessionMessage]: Hook 聚合结果以及可能被改写后的消息对象。
         """
 
+        serialized_message = serialize_session_message(message)
         hook_result = await self._get_runtime_manager().invoke_hook(
             hook_name,
-            message=serialize_session_message(message),
+            message=serialized_message,
             **kwargs,
         )
         mutated_message = message
         raw_message = hook_result.kwargs.get("message")
         if raw_message is not None:
             try:
-                mutated_message = deserialize_session_message(raw_message)
+                mutated_message = deserialize_modified_session_message(
+                    message,
+                    serialized_message,
+                    raw_message,
+                )
             except Exception as exc:
                 logger.warning(f"Hook {hook_name} 返回的 message 无法反序列化，已忽略: {exc}")
         return hook_result, mutated_message
