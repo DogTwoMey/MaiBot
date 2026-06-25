@@ -7,18 +7,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast, get_origin
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from src.common.logger import get_logger
 from src.core.config_types import ConfigField
 from src.plugin_runtime.runner.manifest_validator import is_reserved_plugin_directory
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value, get_token_manager
 
 logger = get_logger("webui.plugin_routes")
 
 
-def require_plugin_token(maibot_session: Optional[str]) -> str:
+def require_plugin_token(auth_source: Optional[str] | Request) -> str:
     token_manager = get_token_manager()
+    maibot_session = get_auth_cookie_value(auth_source) if isinstance(auth_source, Request) else auth_source
     if not maibot_session or not token_manager.verify_token(maibot_session):
         raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
     return maibot_session

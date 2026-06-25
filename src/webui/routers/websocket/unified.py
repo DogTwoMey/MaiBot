@@ -9,7 +9,7 @@ import uuid
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from src.common.logger import get_logger
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value_from_cookies, get_token_manager
 from src.webui.logs_ws import load_recent_logs
 from src.webui.routers.chat.service import (
     chat_manager,
@@ -82,7 +82,7 @@ async def authenticate_websocket_connection(websocket: WebSocket, token: Optiona
         logger.debug("统一 WebSocket 使用临时 token 认证成功")
         return True
 
-    cookie_token = websocket.cookies.get("maibot_session")
+    cookie_token = get_auth_cookie_value_from_cookies(websocket.cookies)
     if cookie_token:
         token_manager = get_token_manager()
         if token_manager.verify_token(cookie_token):

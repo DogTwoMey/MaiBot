@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from src.common.logger import get_logger
 from src.common.logger_color_and_mapping import MODULE_COLORS
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value_from_cookies, get_token_manager
 from src.webui.routers.websocket.auth import verify_ws_token
 from src.webui.routers.websocket.manager import websocket_manager
 
@@ -119,7 +119,7 @@ async def websocket_logs(websocket: WebSocket, token: Optional[str] = Query(None
     客户端连接后会持续接收服务器端的日志消息
     支持三种认证方式（按优先级）：
     1. query 参数 token（推荐，通过 /api/webui/ws-token 获取临时 token）
-    2. Cookie 中的 maibot_session
+    2. 当前实例专属认证 Cookie
 
     示例：ws://host/ws/logs?token=xxx
     """
@@ -132,7 +132,7 @@ async def websocket_logs(websocket: WebSocket, token: Optional[str] = Query(None
 
     # 方式 2: 尝试从 Cookie 获取 session token
     if not is_authenticated:
-        cookie_token = websocket.cookies.get("maibot_session")
+        cookie_token = get_auth_cookie_value_from_cookies(websocket.cookies)
         if cookie_token:
             token_manager = get_token_manager()
             if token_manager.verify_token(cookie_token):

@@ -1,7 +1,7 @@
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from src.common.logger import get_logger
 from src.config.config import MMC_VERSION
@@ -51,8 +51,8 @@ async def check_git_status() -> GitStatusResponse:
 
 
 @router.get("/mirrors", response_model=AvailableMirrorsResponse)
-async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None)) -> AvailableMirrorsResponse:
-    require_plugin_token(maibot_session)
+async def get_available_mirrors(http_request: Request) -> AvailableMirrorsResponse:
+    require_plugin_token(http_request)
 
     service = get_git_mirror_service()
     config = service.get_mirror_config()
@@ -61,8 +61,8 @@ async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None)) ->
 
 
 @router.post("/mirrors", response_model=MirrorConfigResponse)
-async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = Cookie(None)) -> MirrorConfigResponse:
-    require_plugin_token(maibot_session)
+async def add_mirror(request: AddMirrorRequest, http_request: Request) -> MirrorConfigResponse:
+    require_plugin_token(http_request)
 
     try:
         service = get_git_mirror_service()
@@ -87,9 +87,9 @@ async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = 
 async def update_mirror(
     mirror_id: str,
     request: UpdateMirrorRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> MirrorConfigResponse:
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
 
     try:
         service = get_git_mirror_service()
@@ -115,8 +115,8 @@ async def update_mirror(
 
 
 @router.delete("/mirrors/{mirror_id}")
-async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+async def delete_mirror(mirror_id: str, http_request: Request) -> Dict[str, Any]:
+    require_plugin_token(http_request)
 
     service = get_git_mirror_service()
     config = service.get_mirror_config()
@@ -128,9 +128,9 @@ async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(N
 @router.post("/fetch-raw", response_model=FetchRawFileResponse)
 async def fetch_raw_file(
     request: FetchRawFileRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> FetchRawFileResponse:
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"收到获取 Raw 文件请求: {request.owner}/{request.repo}/{request.branch}/{request.file_path}")
 
     await update_progress(
@@ -187,9 +187,9 @@ async def fetch_raw_file(
 @router.post("/clone", response_model=CloneRepositoryResponse)
 async def clone_repository(
     request: CloneRepositoryRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> CloneRepositoryResponse:
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"收到克隆仓库请求: {request.owner}/{request.repo} -> {request.target_path}")
 
     try:

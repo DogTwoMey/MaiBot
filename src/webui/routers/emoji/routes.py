@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Cookie, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 from sqlalchemy import func
@@ -19,7 +19,7 @@ import re
 from src.common.database.database import get_db_session
 from src.common.database.database_model import Images, ImageType
 from src.common.utils.image_path import StoredImagePathError, resolve_stored_image_path, serialize_stored_image_path
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value, get_token_manager
 from src.webui.core import verify_auth_token_from_cookie_or_header as verify_auth_token
 
 from .schemas import (
@@ -219,6 +219,7 @@ async def _review_emoji_record_for_registration(
 
 @router.get("/list", response_model=EmojiListResponse)
 async def get_emoji_list(
+    http_request: Request,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: Optional[str] = Query(None, description="搜索关键词"),
@@ -228,7 +229,6 @@ async def get_emoji_list(
     format: Optional[str] = Query(None, description="图片格式筛选"),
     sort_by: Optional[str] = Query("query_count", description="排序字段"),
     sort_order: Optional[str] = Query("desc", description="排序方向"),
-    maibot_session: Optional[str] = Cookie(None),
 ) -> EmojiListResponse:
     """获取表情包列表。
 
@@ -246,7 +246,7 @@ async def get_emoji_list(
         EmojiListResponse: 分页后的表情包列表。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         statement = select(Images).where(col(Images.image_type) == ImageType.EMOJI)
 
@@ -311,7 +311,7 @@ async def get_emoji_list(
 
 
 @router.get("/{emoji_id}", response_model=EmojiDetailResponse)
-async def get_emoji_detail(emoji_id: int, maibot_session: Optional[str] = Cookie(None)) -> EmojiDetailResponse:
+async def get_emoji_detail(emoji_id: int, http_request: Request) -> EmojiDetailResponse:
     """获取表情包详细信息。
 
     Args:
@@ -322,7 +322,7 @@ async def get_emoji_detail(emoji_id: int, maibot_session: Optional[str] = Cookie
         EmojiDetailResponse: 表情包详细信息。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             statement = select(Images).where(
@@ -344,7 +344,7 @@ async def get_emoji_detail(emoji_id: int, maibot_session: Optional[str] = Cookie
 async def update_emoji(
     emoji_id: int,
     request: EmojiUpdateRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> EmojiUpdateResponse:
     """增量更新表情包。
 
@@ -357,7 +357,7 @@ async def update_emoji(
         EmojiUpdateResponse: 更新结果和更新后的表情包数据。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             statement = select(Images).where(
@@ -421,7 +421,7 @@ async def update_emoji(
 
 
 @router.delete("/{emoji_id}", response_model=EmojiDeleteResponse)
-async def delete_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(None)) -> EmojiDeleteResponse:
+async def delete_emoji(emoji_id: int, http_request: Request) -> EmojiDeleteResponse:
     """删除表情包。
 
     Args:
@@ -432,7 +432,7 @@ async def delete_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(Non
         EmojiDeleteResponse: 删除结果。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             statement = select(Images).where(
@@ -463,7 +463,7 @@ async def delete_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(Non
 
 
 @router.get("/stats/summary")
-async def get_emoji_stats(maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_emoji_stats(http_request: Request) -> Dict[str, Any]:
     """获取表情包统计数据。
 
     Args:
@@ -473,7 +473,7 @@ async def get_emoji_stats(maibot_session: Optional[str] = Cookie(None)) -> Dict[
         Dict[str, Any]: 表情包总数、格式分布和高频使用统计。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             total_statement = select(func.count()).select_from(Images).where(col(Images.image_type) == ImageType.EMOJI)
@@ -567,7 +567,7 @@ async def get_emoji_stats(maibot_session: Optional[str] = Cookie(None)) -> Dict[
 
 
 @router.post("/{emoji_id}/register", response_model=EmojiUpdateResponse)
-async def register_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(None)) -> EmojiUpdateResponse:
+async def register_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateResponse:
     """注册表情包。
 
     Args:
@@ -578,7 +578,7 @@ async def register_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(N
         EmojiUpdateResponse: 注册结果和更新后的表情包数据。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             statement = select(Images).where(
@@ -609,7 +609,7 @@ async def register_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(N
 
 
 @router.post("/{emoji_id}/ban", response_model=EmojiUpdateResponse)
-async def ban_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(None)) -> EmojiUpdateResponse:
+async def ban_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateResponse:
     """禁用表情包。
 
     Args:
@@ -620,7 +620,7 @@ async def ban_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(None))
         EmojiUpdateResponse: 禁用结果和更新后的表情包数据。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         with get_db_session() as session:
             statement = select(Images).where(
@@ -656,8 +656,8 @@ async def ban_emoji(emoji_id: int, maibot_session: Optional[str] = Cookie(None))
 @router.get("/{emoji_id}/thumbnail", response_model=None)
 async def get_emoji_thumbnail(
     emoji_id: int,
+    http_request: Request,
     token: Optional[str] = Query(None, description="访问令牌"),
-    maibot_session: Optional[str] = Cookie(None),
     original: bool = Query(False, description="是否返回原图"),
 ) -> FileResponse | JSONResponse:
     """获取表情包缩略图。
@@ -665,7 +665,7 @@ async def get_emoji_thumbnail(
     Args:
         emoji_id: 表情包 ID。
         token: URL 中携带的访问令牌。
-        maibot_session: WebUI 登录会话 Cookie。
+        http_request: FastAPI 请求对象。
         original: 是否返回原图。
 
     Returns:
@@ -675,7 +675,8 @@ async def get_emoji_thumbnail(
         token_manager = get_token_manager()
         is_valid = False
 
-        if maibot_session and token_manager.verify_token(maibot_session):
+        cookie_token = get_auth_cookie_value(http_request)
+        if cookie_token and token_manager.verify_token(cookie_token):
             is_valid = True
         elif token and token_manager.verify_token(token):
             is_valid = True
@@ -747,7 +748,7 @@ async def get_emoji_thumbnail(
 @router.post("/batch/delete", response_model=BatchDeleteResponse)
 async def batch_delete_emojis(
     request: BatchDeleteRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> BatchDeleteResponse:
     """批量删除表情包。
 
@@ -759,7 +760,7 @@ async def batch_delete_emojis(
         BatchDeleteResponse: 批量删除结果。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         if not request.emoji_ids:
             raise HTTPException(status_code=400, detail="未提供要删除的表情包ID")
@@ -818,10 +819,10 @@ async def batch_delete_emojis(
 @router.post("/upload", response_model=EmojiUploadResponse)
 async def upload_emoji(
     file: EmojiFile,
+    http_request: Request,
     description: DescriptionForm = "",
     emotion: EmotionForm = "",
     is_registered: IsRegisteredForm = True,
-    maibot_session: Optional[str] = Cookie(None),
 ) -> EmojiUploadResponse:
     """上传并注册表情包。
 
@@ -836,7 +837,7 @@ async def upload_emoji(
         EmojiUploadResponse: 上传结果和新表情包数据。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         if not file.content_type:
             raise HTTPException(status_code=400, detail="无法识别文件类型")
@@ -924,9 +925,9 @@ async def upload_emoji(
 @router.post("/batch/upload")
 async def batch_upload_emoji(
     files: EmojiFiles,
+    http_request: Request,
     emotion: EmotionForm = "",
     is_registered: IsRegisteredForm = True,
-    maibot_session: Optional[str] = Cookie(None),
 ) -> Dict[str, Any]:
     """批量上传表情包。
 
@@ -940,7 +941,7 @@ async def batch_upload_emoji(
         Dict[str, Any]: 每个文件的上传结果和汇总统计。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         results: Dict[str, Any] = {
             "success": True,
@@ -1042,7 +1043,7 @@ async def batch_upload_emoji(
 
 
 @router.get("/thumbnail-cache/stats", response_model=ThumbnailCacheStatsResponse)
-async def get_thumbnail_cache_stats(maibot_session: Optional[str] = Cookie(None)) -> ThumbnailCacheStatsResponse:
+async def get_thumbnail_cache_stats(http_request: Request) -> ThumbnailCacheStatsResponse:
     """获取缩略图缓存统计信息。
 
     Args:
@@ -1052,7 +1053,7 @@ async def get_thumbnail_cache_stats(maibot_session: Optional[str] = Cookie(None)
         ThumbnailCacheStatsResponse: 缩略图缓存数量、大小和覆盖率统计。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         ensure_thumbnail_cache_dir()
         cache_files = list(THUMBNAIL_CACHE_DIR.glob("*.webp"))
@@ -1080,7 +1081,7 @@ async def get_thumbnail_cache_stats(maibot_session: Optional[str] = Cookie(None)
 
 
 @router.post("/thumbnail-cache/cleanup", response_model=ThumbnailCleanupResponse)
-async def cleanup_thumbnail_cache(maibot_session: Optional[str] = Cookie(None)) -> ThumbnailCleanupResponse:
+async def cleanup_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
     """清理孤立的缩略图缓存。
 
     Args:
@@ -1090,7 +1091,7 @@ async def cleanup_thumbnail_cache(maibot_session: Optional[str] = Cookie(None)) 
         ThumbnailCleanupResponse: 清理结果和删除数量。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         cleaned, kept = cleanup_orphaned_thumbnails()
         return ThumbnailCleanupResponse(
@@ -1108,8 +1109,8 @@ async def cleanup_thumbnail_cache(maibot_session: Optional[str] = Cookie(None)) 
 
 @router.post("/thumbnail-cache/preheat", response_model=ThumbnailPreheatResponse)
 async def preheat_thumbnail_cache(
+    http_request: Request,
     limit: int = Query(100, ge=1, le=1000, description="最多预热数量"),
-    maibot_session: Optional[str] = Cookie(None),
 ) -> ThumbnailPreheatResponse:
     """预热缩略图缓存。
 
@@ -1121,7 +1122,7 @@ async def preheat_thumbnail_cache(
         ThumbnailPreheatResponse: 预热生成、跳过和失败数量统计。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         ensure_thumbnail_cache_dir()
 
@@ -1188,7 +1189,7 @@ async def preheat_thumbnail_cache(
 
 
 @router.delete("/thumbnail-cache/clear", response_model=ThumbnailCleanupResponse)
-async def clear_all_thumbnail_cache(maibot_session: Optional[str] = Cookie(None)) -> ThumbnailCleanupResponse:
+async def clear_all_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
     """清空所有缩略图缓存。
 
     Args:
@@ -1198,7 +1199,7 @@ async def clear_all_thumbnail_cache(maibot_session: Optional[str] = Cookie(None)
         ThumbnailCleanupResponse: 清空结果和删除数量。
     """
     try:
-        verify_auth_token(maibot_session)
+        verify_auth_token(http_request)
 
         if not THUMBNAIL_CACHE_DIR.exists():
             return ThumbnailCleanupResponse(

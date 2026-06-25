@@ -1,12 +1,12 @@
 from typing import Optional
 
-from fastapi import Cookie, Depends, Request
+from fastapi import Depends, Request
 
-from .core import check_auth_rate_limit, get_current_token, is_token_valid
+from .core import check_auth_rate_limit, get_auth_cookie_value, get_current_token, is_token_valid
 
 
 async def require_auth(
-    maibot_session: Optional[str] = Cookie(None),
+    request: Request,
 ) -> str:
     """
     FastAPI 依赖：要求有效认证
@@ -19,12 +19,11 @@ async def require_auth(
     Raises:
         HTTPException 401: 认证失败
     """
-    return get_current_token(maibot_session)
+    return get_current_token(request)
 
 
 async def require_auth_with_rate_limit(
     request: Request,
-    maibot_session: Optional[str] = Cookie(None),
     _rate_limit: None = Depends(check_auth_rate_limit),
 ) -> str:
     """
@@ -39,11 +38,11 @@ async def require_auth_with_rate_limit(
         HTTPException 401: 认证失败
         HTTPException 429: 请求过于频繁
     """
-    return get_current_token(maibot_session)
+    return get_current_token(request)
 
 
 def get_optional_token(
-    maibot_session: Optional[str] = Cookie(None),
+    request: Request,
 ) -> Optional[str]:
     """
     FastAPI 依赖：可选获取 token（不验证）
@@ -53,11 +52,11 @@ def get_optional_token(
     Returns:
         token 字符串或 None
     """
-    return maibot_session or None
+    return get_auth_cookie_value(request)
 
 
 async def verify_token_optional(
-    maibot_session: Optional[str] = Cookie(None),
+    request: Request,
 ) -> bool:
     """
     FastAPI 依赖：可选验证 token
@@ -67,4 +66,4 @@ async def verify_token_optional(
     Returns:
         True 如果 token 有效，否则 False
     """
-    return is_token_valid(maibot_session)
+    return is_token_valid(request)

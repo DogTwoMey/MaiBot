@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from src.common.logger import get_logger
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value_from_cookies, get_token_manager
 from src.webui.routers.websocket.auth import verify_ws_token
 from src.webui.routers.websocket.manager import websocket_manager
 
@@ -127,7 +127,7 @@ async def websocket_plugin_progress(websocket: WebSocket, token: Optional[str] =
         logger.debug("插件进度 WebSocket 使用临时 token 认证成功")
 
     if not is_authenticated:
-        cookie_token = websocket.cookies.get("maibot_session")
+        cookie_token = get_auth_cookie_value_from_cookies(websocket.cookies)
         if cookie_token:
             token_manager = get_token_manager()
             if token_manager.verify_token(cookie_token):

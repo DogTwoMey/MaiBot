@@ -1,8 +1,9 @@
 """WebUI 认证模块。"""
 
-from typing import Optional
+from hashlib import sha256
+from typing import Mapping, Optional
 
-from fastapi import Cookie, HTTPException, Request, Response
+from fastapi import HTTPException, Request, Response
 
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -12,8 +13,11 @@ from .security import get_token_manager
 logger = get_logger("webui.auth")
 
 # Cookie 配置
-COOKIE_NAME = "maibot_session"
+LEGACY_COOKIE_NAME = "maibot_session"
+COOKIE_NAME_PREFIX = "maibot_session"
+COOKIE_NAME = LEGACY_COOKIE_NAME
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7天
+COOKIE_NAME_DIGEST_LENGTH = 16
 
 
 def _is_secure_environment() -> bool:
@@ -38,14 +42,44 @@ def _is_secure_environment() -> bool:
     return False
 
 
-def get_current_token(
-    maibot_session: Optional[str] = Cookie(None),
-) -> str:
+def build_auth_cookie_name(token: str) -> str:
+    """根据当前访问令牌生成实例隔离的认证 Cookie 名称。"""
+    if not token:
+        raise ValueError("访问令牌不能为空，无法生成认证 Cookie 名称")
+
+    token_digest = sha256(token.encode("utf-8")).hexdigest()[:COOKIE_NAME_DIGEST_LENGTH]
+    return f"{COOKIE_NAME_PREFIX}_{token_digest}"
+
+
+def get_auth_cookie_name() -> str:
+    """获取当前 MaiBot 进程应读取的认证 Cookie 名称。"""
+    token_manager = get_token_manager()
+    return build_auth_cookie_name(token_manager.get_token())
+
+
+def get_auth_cookie_value_from_cookies(cookies: Mapping[str, str]) -> Optional[str]:
+    """从 Cookie 映射中读取当前 MaiBot 进程专属的认证 token。"""
+    return cookies.get(get_auth_cookie_name())
+
+
+def get_auth_cookie_value(request: Request) -> Optional[str]:
+    """从 FastAPI 请求中读取当前 MaiBot 进程专属的认证 token。"""
+    return get_auth_cookie_value_from_cookies(request.cookies)
+
+
+def _resolve_auth_source(auth_source: Optional[str] | Request) -> Optional[str]:
+    """兼容 token 字符串和 Request 对象两类认证来源。"""
+    if isinstance(auth_source, Request):
+        return get_auth_cookie_value(auth_source)
+    return auth_source
+
+
+def get_current_token(request: Request) -> str:
     """
     获取当前请求的 token，仅从 HttpOnly Cookie 获取。
 
     Args:
-        maibot_session: Cookie 中的 token
+        request: FastAPI Request 对象
 
     Returns:
         验证通过的 token
@@ -53,6 +87,7 @@ def get_current_token(
     Raises:
         HTTPException: 认证失败时抛出 401 错误
     """
+    maibot_session = get_auth_cookie_value(request)
     if not is_token_valid(maibot_session):
         raise HTTPException(status_code=401, detail="Token 无效或已过期")
 
@@ -60,8 +95,9 @@ def get_current_token(
     return maibot_session
 
 
-def is_token_valid(maibot_session: Optional[str]) -> bool:
+def is_token_valid(auth_source: Optional[str] | Request) -> bool:
     """判断认证 token 是否存在且有效。"""
+    maibot_session = _resolve_auth_source(auth_source)
     if not maibot_session:
         return False
 
@@ -103,9 +139,17 @@ def set_auth_cookie(response: Response, token: str, request: Optional[Request] =
             logger.warning("=" * 80)
             is_secure = False
 
-    # 设置 Cookie
+    # 设置当前 token 专属 Cookie，并清理旧版固定名称 Cookie，避免同域多实例互相覆盖。
+    cookie_name = build_auth_cookie_name(token)
+    response.delete_cookie(
+        key=LEGACY_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=is_secure,
+        path="/",
+    )
     response.set_cookie(
-        key=COOKIE_NAME,
+        key=cookie_name,
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,  # 防止 JS 读取，阻止 XSS 窃取
@@ -115,7 +159,8 @@ def set_auth_cookie(response: Response, token: str, request: Optional[Request] =
     )
 
     logger.info(
-        f"已设置认证 Cookie: {token[:8]}... (secure={is_secure}, samesite=lax, httponly=True, path=/, max_age={COOKIE_MAX_AGE})"
+        f"已设置认证 Cookie: {cookie_name}={token[:8]}... "
+        f"(secure={is_secure}, samesite=lax, httponly=True, path=/, max_age={COOKIE_MAX_AGE})"
     )
     logger.debug(f"完整 token 前缀: {token[:20]}...")
 
@@ -130,24 +175,25 @@ def clear_auth_cookie(response: Response) -> None:
     # 保持与 set_auth_cookie 相同的安全设置
     is_secure = _is_secure_environment()
 
-    response.delete_cookie(
-        key=COOKIE_NAME,
-        httponly=True,
-        samesite="strict" if is_secure else "lax",
-        secure=is_secure,
-        path="/",
-    )
+    for cookie_name in (get_auth_cookie_name(), LEGACY_COOKIE_NAME):
+        response.delete_cookie(
+            key=cookie_name,
+            httponly=True,
+            samesite="lax",
+            secure=is_secure,
+            path="/",
+        )
     logger.debug("已清除认证 Cookie")
 
 
 def verify_auth_token_from_cookie_or_header(
-    maibot_session: Optional[str] = None,
+    auth_source: Optional[str] | Request = None,
 ) -> bool:
     """
     验证认证 Cookie。
 
     Args:
-        maibot_session: Cookie 中的 token
+        auth_source: Cookie 中的 token 或 FastAPI Request 对象
 
     Returns:
         验证成功返回 True
@@ -155,7 +201,7 @@ def verify_auth_token_from_cookie_or_header(
     Raises:
         HTTPException: 认证失败时抛出 401 错误
     """
-    if not is_token_valid(maibot_session):
+    if not is_token_valid(auth_source):
         raise HTTPException(status_code=401, detail="Token 无效或已过期")
 
     return True

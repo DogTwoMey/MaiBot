@@ -2,12 +2,12 @@
 
 import secrets
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
-from fastapi import APIRouter, Cookie
+from fastapi import APIRouter, Request
 
 from src.common.logger import get_logger
-from src.webui.core import get_token_manager
+from src.webui.core import get_auth_cookie_value, get_token_manager
 
 logger = get_logger("webui.ws_auth")
 router = APIRouter()
@@ -74,7 +74,7 @@ def verify_ws_token(temp_token: str) -> bool:
 
 @router.get("/ws-token")
 async def get_ws_token(
-    maibot_session: Optional[str] = Cookie(None),
+    request: Request,
 ):
     """
     获取 WebSocket 连接用的临时 token
@@ -85,6 +85,7 @@ async def get_ws_token(
 
     注意：在未认证时返回 200 状态码但 success=False，避免前端因 401 刷新页面。
     """
+    maibot_session = get_auth_cookie_value(request)
     if not maibot_session:
         # 返回 200 但 success=False，避免前端因 401 刷新页面
         # 这在登录页面是正常情况，不应该触发错误处理

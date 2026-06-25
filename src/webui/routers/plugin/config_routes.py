@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 import tomlkit
 
 from src.common.logger import get_logger
@@ -322,7 +322,7 @@ async def _validate_plugin_config_via_runtime(plugin_id: str, config_data: Dict[
 
 
 @router.get("/config/{plugin_id}/schema")
-async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_schema(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """按插件 ID 返回配置 Schema。
 
     Args:
@@ -333,7 +333,7 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
         Dict[str, Any]: 包含 Schema 的响应字典。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"获取插件配置 Schema: {plugin_id}")
 
     try:
@@ -365,7 +365,7 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
 
 
 @router.get("/config/{plugin_id}/raw")
-async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_raw(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """获取插件原始 TOML 配置内容。
 
     Args:
@@ -376,7 +376,7 @@ async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = 
         Dict[str, Any]: 包含原始配置文本的响应字典。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"获取插件原始配置: {plugin_id}")
 
     try:
@@ -401,7 +401,7 @@ async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = 
 async def update_plugin_config_raw(
     plugin_id: str,
     request: UpdatePluginRawConfigRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> Dict[str, Any]:
     """更新插件原始 TOML 配置内容。
 
@@ -414,7 +414,7 @@ async def update_plugin_config_raw(
         Dict[str, Any]: 更新结果。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"更新插件原始配置: {plugin_id}")
 
     try:
@@ -446,7 +446,7 @@ async def update_plugin_config_raw(
 
 
 @router.get("/config/{plugin_id}")
-async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """获取插件配置字典。
 
     Args:
@@ -457,7 +457,7 @@ async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cook
         Dict[str, Any]: 当前配置响应。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"获取插件配置: {plugin_id}")
 
     try:
@@ -495,7 +495,7 @@ async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cook
 async def update_plugin_config(
     plugin_id: str,
     request: UpdatePluginConfigRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    http_request: Request,
 ) -> Dict[str, Any]:
     """更新插件结构化配置。
 
@@ -508,7 +508,7 @@ async def update_plugin_config(
         Dict[str, Any]: 更新结果。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"更新插件配置: {plugin_id}")
 
     try:
@@ -562,7 +562,7 @@ async def update_plugin_config(
 
 
 @router.post("/config/{plugin_id}/reset")
-async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def reset_plugin_config(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """重置插件配置文件。
 
     Args:
@@ -573,7 +573,7 @@ async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Co
         Dict[str, Any]: 重置结果。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"重置插件配置: {plugin_id}")
 
     try:
@@ -596,7 +596,7 @@ async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Co
 
 
 @router.post("/config/{plugin_id}/toggle")
-async def toggle_plugin(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def toggle_plugin(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """切换插件启用状态。
 
     Args:
@@ -607,7 +607,7 @@ async def toggle_plugin(plugin_id: str, maibot_session: Optional[str] = Cookie(N
         Dict[str, Any]: 切换结果。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"切换插件状态: {plugin_id}")
 
     try:

@@ -1,8 +1,8 @@
 """插件运行时相关 WebUI 路由。"""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from src.plugin_runtime.component_query import component_query_service
 from src.plugin_runtime.host.component_registry import CommandEntry, ComponentEntry, ComponentTypes, ToolEntry
@@ -62,10 +62,10 @@ def _serialize_component_entry(component: ComponentEntry) -> Dict[str, Any]:
 
 
 @router.get("/runtime/plugins/{plugin_id}/components")
-async def list_plugin_components(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def list_plugin_components(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """返回指定插件当前注册的全部组件。"""
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     _ensure_installed_plugin(plugin_id)
 
     components = []
@@ -79,7 +79,7 @@ async def list_plugin_components(plugin_id: str, maibot_session: Optional[str] =
 
 
 @router.get("/runtime/hooks", response_model=HookSpecListResponse)
-async def list_runtime_hook_specs(maibot_session: Optional[str] = Cookie(None)) -> HookSpecListResponse:
+async def list_runtime_hook_specs(http_request: Request) -> HookSpecListResponse:
     """返回当前插件运行时公开的 Hook 规格清单。
 
     Args:
@@ -89,6 +89,6 @@ async def list_runtime_hook_specs(maibot_session: Optional[str] = Cookie(None)) 
         HookSpecListResponse: Hook 规格列表响应。
     """
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     hooks = [HookSpecResponse(**hook_data) for hook_data in component_query_service.list_hook_specs()]
     return HookSpecListResponse(success=True, hooks=hooks)
