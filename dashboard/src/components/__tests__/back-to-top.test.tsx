@@ -52,6 +52,7 @@ const mockPointerMode = (pointer: 'coarse' | 'fine') => {
 
 describe('BackToTop', () => {
   beforeEach(() => {
+    localStorage.clear()
     mockPointerMode('fine')
     if (!Element.prototype.setPointerCapture) {
       Element.prototype.setPointerCapture = vi.fn()
