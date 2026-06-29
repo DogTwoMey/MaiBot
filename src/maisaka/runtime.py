@@ -227,7 +227,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
     def _planner_interrupt_max_consecutive_count(self) -> int:
         """返回当前实时生效的 Planner 连续打断上限。"""
 
-        return max(0, int(global_config.chat.planner_interrupt_max_consecutive_count))
+        return max(0, int(global_config.chat.reply_timing.planner_interrupt_max_consecutive_count))
 
     @property
     def _enable_expression_learning(self) -> bool:
@@ -390,6 +390,11 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             await self._reply_effect_tracker.finalize_all("runtime_stop")
         focus_mode_manager.release_focus(self.session_id)
         await self._tool_registry.close()
+        if self._mcp_manager is not None:
+            try:
+                await self._mcp_manager.close()
+            except Exception as exc:
+                logger.warning(f"{self.log_prefix} 关闭 MCP 连接失败: {exc}")
         self._mcp_manager = None
         self._mcp_host_bridge = None
         remove_stage_status(self.session_id)
@@ -854,8 +859,8 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
     def _get_base_reply_frequency(self) -> float:
         """返回当前会话类型对应的基础回复频率。"""
         if self.chat_stream.is_group_session:
-            return float(global_config.chat.talk_value)
-        return float(global_config.chat.private_talk_value)
+            return float(global_config.chat.reply_timing.talk_value)
+        return float(global_config.chat.reply_timing.private_talk_value)
 
     def _is_reply_frequency_silent(self) -> bool:
         """判断当前会话是否处于回复频率为 0 的静默接收模式。"""
@@ -1097,8 +1102,8 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
         should_force_reply = (
             reply_probability_boost >= 1.0
-            or (message.is_at and global_config.chat.inevitable_at_reply)
-            or (message.is_mentioned and global_config.chat.mentioned_bot_reply)
+            or (message.is_at and global_config.chat.reply_timing.inevitable_at_reply)
+            or (message.is_mentioned and global_config.chat.reply_timing.mentioned_bot_reply)
         )
         if not should_force_reply or (not message.is_at and not message.is_mentioned):
             return
@@ -1615,7 +1620,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
     def _try_enter_wait_state(self, seconds: Optional[float] = None, tool_call_id: Optional[str] = None) -> tuple[bool, int, int]:
         """尝试进入 wait 状态，并返回是否成功、当前连续次数和上限。"""
 
-        max_count = max(1, int(global_config.chat.max_consecutive_wait_count))
+        max_count = max(1, int(global_config.chat.reply_timing.max_consecutive_wait_count))
         if self._consecutive_wait_count >= max_count:
             return False, self._consecutive_wait_count, max_count
 

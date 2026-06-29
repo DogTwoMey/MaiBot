@@ -11,7 +11,7 @@ from src.config.official_configs import ExperimentalConfig
 def test_get_chat_prompt_for_chat_merges_multiple_matching_prompts(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828")
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_style,
         "chat_prompts",
         [
             {"platform": "qq", "item_id": "1036092828", "rule_type": "group", "prompt": "你也是群管理员，可以适当进行管理"},
@@ -19,7 +19,11 @@ def test_get_chat_prompt_for_chat_merges_multiple_matching_prompts(monkeypatch):
             {"platform": "qq", "item_id": "other", "rule_type": "group", "prompt": "不应该生效"},
         ],
     )
-    monkeypatch.setattr(chat_manager, "get_session_by_session_id", lambda _session_id: None)
+    monkeypatch.setattr(
+        chat_manager,
+        "get_session_by_session_id",
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
+    )
 
     result = ChatConfigUtils.get_chat_prompt_for_chat(session_id, True)
 
@@ -29,7 +33,7 @@ def test_get_chat_prompt_for_chat_merges_multiple_matching_prompts(monkeypatch):
 def test_get_chat_prompt_for_chat_matches_routed_session_by_chat_stream(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_style,
         "chat_prompts",
         [
             {"platform": "qq", "item_id": "1036092828", "rule_type": "group", "prompt": "路由会话也应该生效"},
@@ -38,7 +42,7 @@ def test_get_chat_prompt_for_chat_matches_routed_session_by_chat_stream(monkeypa
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     result = ChatConfigUtils.get_chat_prompt_for_chat(session_id, True)
@@ -64,7 +68,7 @@ def test_expression_learning_list_matches_routed_session_by_chat_stream(monkeypa
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (False, False)
@@ -102,7 +106,7 @@ def test_expression_learning_list_wildcard_takes_priority_over_exact(monkeypatch
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (True, True)
@@ -140,7 +144,7 @@ def test_expression_learning_list_exact_takes_priority_when_no_wildcard_matches(
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (False, False)
@@ -149,8 +153,8 @@ def test_expression_learning_list_exact_takes_priority_when_no_wildcard_matches(
 def test_behavior_learning_uses_experimental_global_switch(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
     monkeypatch.setattr(
-        global_config.expression,
-        "learning_list",
+        global_config.experimental,
+        "behavior_learning_list",
         [
             {
                 "platform": "qq",
@@ -165,7 +169,7 @@ def test_behavior_learning_uses_experimental_global_switch(monkeypatch):
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     assert BehaviorConfigUtils.get_behavior_config_for_chat(session_id) == (True, False)
@@ -186,8 +190,8 @@ def test_behavior_learning_is_disabled_by_default(monkeypatch):
 def test_behavior_learning_keeps_expression_scope_when_global_switch_enabled(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
     monkeypatch.setattr(
-        global_config.expression,
-        "learning_list",
+        global_config.experimental,
+        "behavior_learning_list",
         [
             {
                 "platform": "qq",
@@ -202,7 +206,7 @@ def test_behavior_learning_keeps_expression_scope_when_global_switch_enabled(mon
     monkeypatch.setattr(
         chat_manager,
         "get_session_by_session_id",
-        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None),
+        lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
     assert BehaviorConfigUtils.get_behavior_config_for_chat(session_id) == (True, False)
@@ -333,10 +337,10 @@ def test_jargon_group_scope_supports_item_id_wildcard(monkeypatch):
 
 def test_talk_value_rules_match_routed_session_by_chat_stream(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "qq", "item_id": "1036092828", "rule_type": "group", "time": "00:00-23:59", "value": 0.7}
@@ -354,10 +358,10 @@ def test_talk_value_rules_match_routed_session_by_chat_stream(monkeypatch):
 def test_talk_value_rule_empty_time_is_fallback_and_time_range_overrides(monkeypatch):
     current_time = SimpleNamespace(tm_hour=10, tm_min=30)
     monkeypatch.setattr(utils_config.time, "localtime", lambda: current_time)
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "", "item_id": "", "rule_type": "group", "time": "", "value": 0.2},
@@ -373,10 +377,10 @@ def test_talk_value_rule_empty_time_is_fallback_and_time_range_overrides(monkeyp
 
 def test_talk_value_rule_star_time_overrides_fallback_and_time_range(monkeypatch):
     monkeypatch.setattr(utils_config.time, "localtime", lambda: SimpleNamespace(tm_hour=10, tm_min=30))
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "", "item_id": "", "rule_type": "group", "time": "", "value": 0.2},
@@ -391,10 +395,10 @@ def test_talk_value_rule_star_time_overrides_fallback_and_time_range(monkeypatch
 def test_talk_value_rule_platform_only_is_platform_default(monkeypatch):
     session_id = "session-a"
     monkeypatch.setattr(utils_config.time, "localtime", lambda: SimpleNamespace(tm_hour=10, tm_min=30))
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "", "item_id": "", "rule_type": "group", "time": "", "value": 0.2},
@@ -413,10 +417,10 @@ def test_talk_value_rule_platform_only_is_platform_default(monkeypatch):
 def test_talk_value_rule_item_only_is_item_default(monkeypatch):
     session_id = "session-a"
     monkeypatch.setattr(utils_config.time, "localtime", lambda: SimpleNamespace(tm_hour=10, tm_min=30))
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "", "item_id": "", "rule_type": "group", "time": "", "value": 0.2},
@@ -435,10 +439,10 @@ def test_talk_value_rule_item_only_is_item_default(monkeypatch):
 def test_talk_value_rule_exact_target_overrides_partial_default(monkeypatch):
     session_id = "session-a"
     monkeypatch.setattr(utils_config.time, "localtime", lambda: SimpleNamespace(tm_hour=10, tm_min=30))
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "qq", "item_id": "", "rule_type": "group", "time": "*", "value": 0.4},
@@ -457,10 +461,10 @@ def test_talk_value_rule_exact_target_overrides_partial_default(monkeypatch):
 def test_talk_value_rule_wildcard_target_overrides_partial_default(monkeypatch):
     session_id = "session-a"
     monkeypatch.setattr(utils_config.time, "localtime", lambda: SimpleNamespace(tm_hour=10, tm_min=30))
-    monkeypatch.setattr(global_config.chat, "talk_value", 0.1)
-    monkeypatch.setattr(global_config.chat, "enable_talk_value_rules", True)
+    monkeypatch.setattr(global_config.chat.reply_timing, "talk_value", 0.1)
+    monkeypatch.setattr(global_config.chat.reply_timing, "enable_talk_value_rules", True)
     monkeypatch.setattr(
-        global_config.chat,
+        global_config.chat.reply_timing,
         "talk_value_rules",
         [
             {"platform": "qq", "item_id": "", "rule_type": "group", "time": "*", "value": 0.4},

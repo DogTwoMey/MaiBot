@@ -248,10 +248,10 @@ class BaseMaisakaReplyGenerator:
         prompt_lines: List[str] = []
 
         if is_group_chat is True:
-            if group_chat_prompt := global_config.chat.group_chat_prompt.strip():
+            if group_chat_prompt := global_config.chat.reply_style.group_chat_prompt.strip():
                 prompt_lines.append(f"通用注意事项：\n{group_chat_prompt}")
         elif is_group_chat is False:
-            if private_chat_prompt := global_config.chat.private_chat_prompts.strip():
+            if private_chat_prompt := global_config.chat.reply_style.private_chat_prompts.strip():
                 prompt_lines.append(f"通用注意事项：\n{private_chat_prompt}")
 
         if chat_prompt := self._get_chat_prompt_for_chat(session_id, is_group_chat).strip():
@@ -713,7 +713,7 @@ class BaseMaisakaReplyGenerator:
 
     @classmethod
     def _should_keep_replyer_history_message(cls, message: LLMContextMessage) -> bool:
-        """replyer 只接收真实聊天上下文，不接收参考、工具结果、工具媒体和中期摘要。"""
+        """replyer 只接收真实聊天上下文，不接收参考、工具结果、工具媒体和聊天回想。"""
 
         return not cls._is_replyer_filtered_history_message(message)
 

@@ -22,9 +22,19 @@ class ExpressionConfigUtils:
                     return config_item
 
             for config_item in global_config.expression.learning_list:
-                if ChatConfigUtils.is_default_target(config_item) or ChatConfigUtils.is_wildcard_target(config_item):
+                if (
+                    ChatConfigUtils.is_default_target(config_item)
+                    or ChatConfigUtils.is_wildcard_target(config_item)
+                    or ChatConfigUtils.is_platform_default_target(config_item)
+                ):
                     continue
                 if ChatConfigUtils.target_matches_session(config_item, session_id):
+                    return config_item
+
+            for config_item in global_config.expression.learning_list:
+                if not ChatConfigUtils.is_platform_default_target(config_item):
+                    continue
+                if ChatConfigUtils.platform_default_matches_session(config_item, session_id):
                     return config_item
 
         for config_item in global_config.expression.learning_list:
@@ -83,9 +93,19 @@ class BehaviorConfigUtils:
                     continue
 
             for config_item in global_config.experimental.behavior_learning_list:
-                if ChatConfigUtils.is_default_target(config_item) or ChatConfigUtils.is_wildcard_target(config_item):
+                if (
+                    ChatConfigUtils.is_default_target(config_item)
+                    or ChatConfigUtils.is_wildcard_target(config_item)
+                    or ChatConfigUtils.is_platform_default_target(config_item)
+                ):
                     continue
                 if ChatConfigUtils.target_matches_session(config_item, session_id, is_group_chat):
+                    return config_item
+
+            for config_item in global_config.experimental.behavior_learning_list:
+                if not ChatConfigUtils.is_platform_default_target(config_item):
+                    continue
+                if ChatConfigUtils.platform_default_matches_session(config_item, session_id, is_group_chat):
                     return config_item
 
         for config_item in global_config.experimental.behavior_learning_list:
@@ -178,7 +198,15 @@ class JargonConfigUtils:
                     continue
                 if JargonConfigUtils._is_wildcard_item(config_item):
                     continue
+                if ChatConfigUtils.is_platform_default_target(config_item):
+                    continue
                 if ChatConfigUtils.target_matches_session(config_item, session_id):
+                    return config_item
+
+            for config_item in global_config.jargon.learning_list:
+                if not ChatConfigUtils.is_platform_default_target(config_item):
+                    continue
+                if ChatConfigUtils.platform_default_matches_session(config_item, session_id, is_group_chat):
                     return config_item
 
         for config_item in global_config.jargon.learning_list:
@@ -238,7 +266,7 @@ class ChatConfigUtils:
             logger.debug(f"解析额外 Prompt 聊天流失败: session_id={session_id} error={e}")
             chat_stream = None
 
-        for chat_prompt_item in global_config.chat.chat_prompts:
+        for chat_prompt_item in global_config.chat.reply_style.chat_prompts:
             if hasattr(chat_prompt_item, "platform"):
                 platform = str(chat_prompt_item.platform or "").strip()
                 item_id = str(chat_prompt_item.item_id or "").strip()
@@ -285,15 +313,20 @@ class ChatConfigUtils:
     @staticmethod
     def get_chat_prompt_for_chat(session_id: str, is_group_chat: Optional[bool]) -> str:
         """根据聊天流 ID 获取匹配的额外 Prompt，允许同一聊天流配置多条。"""
-        if not session_id or not global_config.chat.chat_prompts:
-            return ""
-
-        prompt_contents = list(ChatConfigUtils._iter_matching_chat_prompts(session_id, is_group_chat))
+        prompt_contents = ChatConfigUtils.get_chat_prompts_for_chat(session_id, is_group_chat)
         if not prompt_contents:
             return ""
 
         logger.debug(f"匹配到 {len(prompt_contents)} 条聊天额外 Prompt: session_id={session_id}")
         return "\n".join(prompt_contents)
+
+    @staticmethod
+    def get_chat_prompts_for_chat(session_id: str, is_group_chat: Optional[bool]) -> list[str]:
+        """根据聊天流 ID 获取匹配的额外 Prompt 列表，允许同一聊天流配置多条。"""
+        if not session_id or not global_config.chat.reply_style.chat_prompts:
+            return []
+
+        return list(ChatConfigUtils._iter_matching_chat_prompts(session_id, is_group_chat))
 
     @staticmethod
     def _target_values(target_item) -> tuple[str, str, str]:
@@ -313,6 +346,12 @@ class ChatConfigUtils:
         """判断配置目标是否是 learning_list 的默认兜底项。"""
         platform, item_id, _ = ChatConfigUtils._target_values(target_item)
         return not platform and not item_id
+
+    @staticmethod
+    def is_platform_default_target(target_item) -> bool:
+        """判断配置目标是否是 learning_list 的平台兜底项。"""
+        platform, item_id, _ = ChatConfigUtils._target_values(target_item)
+        return bool(platform and platform != "*" and not item_id)
 
     @staticmethod
     def is_wildcard_target(target_item) -> bool:
@@ -445,6 +484,54 @@ class ChatConfigUtils:
         return session_id in ChatConfigUtils.resolve_existing_session_ids(platform, item_id, rule_type)
 
     @staticmethod
+    def platform_default_matches_session(
+        target_item,
+        session_id: str,
+        is_group_chat: Optional[bool] = None,
+    ) -> bool:
+        """判断平台兜底配置是否命中当前聊天流。"""
+        if not session_id:
+            return False
+
+        platform, item_id, rule_type = ChatConfigUtils._target_values(target_item)
+        if not platform or platform == "*" or item_id:
+            return False
+
+        if rule_type == "group":
+            config_is_group = True
+        elif rule_type == "private":
+            config_is_group = False
+        else:
+            return False
+
+        if is_group_chat is not None and config_is_group != is_group_chat:
+            return False
+
+        chat_stream = ChatConfigUtils._get_chat_stream(session_id)
+        if chat_stream is not None:
+            chat_stream_platform = str(chat_stream.platform or "").strip()
+            return chat_stream_platform == platform and bool(chat_stream.is_group_session) == config_is_group
+
+        try:
+            from sqlmodel import select
+
+            from src.common.database.database import get_db_session
+            from src.common.database.database_model import ChatSession
+
+            with get_db_session() as session:
+                statement = select(ChatSession).where(
+                    ChatSession.session_id == session_id,
+                    ChatSession.platform == platform,
+                )
+                chat_session = session.exec(statement).first()
+                if chat_session is None:
+                    return False
+                return bool(str(chat_session.group_id or "").strip()) == config_is_group
+        except Exception as e:
+            logger.debug(f"解析平台兜底配置失败: platform={platform} session_id={session_id} error={e}")
+            return False
+
+    @staticmethod
     def target_matches_session_with_wildcards(
         target_item,
         session_id: str,
@@ -516,17 +603,17 @@ class ChatConfigUtils:
             is_group_chat = ChatConfigUtils._resolve_is_group_chat(session_id)
 
         result = (
-            global_config.chat.talk_value
+            global_config.chat.reply_timing.talk_value
             if is_group_chat is not False
-            else global_config.chat.private_talk_value
+            else global_config.chat.reply_timing.private_talk_value
         ) or 0.0
-        if not global_config.chat.enable_talk_value_rules or not global_config.chat.talk_value_rules:
+        if not global_config.chat.reply_timing.enable_talk_value_rules or not global_config.chat.reply_timing.talk_value_rules:
             return result
         local_time = time.localtime()
         now_min = local_time.tm_hour * 60 + local_time.tm_min
 
         matched_rules = []
-        for rule in global_config.chat.talk_value_rules:
+        for rule in global_config.chat.reply_timing.talk_value_rules:
             target_priority = ChatConfigUtils._talk_rule_target_priority(rule, session_id, is_group_chat)
             if target_priority is None:
                 continue

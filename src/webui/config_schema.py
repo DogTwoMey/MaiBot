@@ -39,6 +39,17 @@ AMEMORIX_BASIC_FIELDS: Dict[str, set[str]] = {
     "AMemorixPersonProfileConfig": {"enabled"},
 }
 
+VIRTUAL_UI_PARENT_SECTIONS: Dict[str, Dict[str, Any]] = {
+    "maisaka": {
+        "className": "VirtualConfigSection",
+        "classDoc": "",
+        "fields": [],
+        "nested": {},
+        "uiLabel": "MaiSaka",
+        "uiAdvanced": False,
+    },
+}
+
 
 class ConfigSchemaGenerator:
     @staticmethod
@@ -72,6 +83,9 @@ class ConfigSchemaGenerator:
                 if nested_schema is not None:
                     nested[field_name] = nested_schema
 
+        if include_nested:
+            cls._ensure_virtual_parent_sections(nested)
+
         schema: Dict[str, Any] = {
             "className": config_class.__name__,
             "classDoc": (config_class.__doc__ or "").strip(),
@@ -84,15 +98,36 @@ class ConfigSchemaGenerator:
         ui_label = getattr(config_class, "__ui_label__", "")
         ui_advanced = bool(getattr(config_class, "__ui_advanced__", False))
         ui_order = int(getattr(config_class, "__ui_order__", 0))
+        ui_use_subtabs = bool(getattr(config_class, "__ui_use_subtabs__", False))
+        ui_sub_label = getattr(config_class, "__ui_sub_label__", "")
+        ui_root_sub_label = getattr(config_class, "__ui_root_sub_label__", "")
         if ui_parent:
             schema["uiParent"] = ui_parent
         if ui_label:
             schema["uiLabel"] = ui_label
+        if ui_use_subtabs:
+            schema["uiUseSubTabs"] = ui_use_subtabs
+        if ui_sub_label:
+            schema["uiSubLabel"] = ui_sub_label
+        if ui_root_sub_label:
+            schema["uiRootSubLabel"] = ui_root_sub_label
         schema["uiAdvanced"] = ui_advanced
         if ui_order:
             schema["uiOrder"] = ui_order
 
         return schema
+
+    @staticmethod
+    def _ensure_virtual_parent_sections(nested: Dict[str, Dict[str, Any]]) -> None:
+        missing_parent_names = {
+            str(section_schema.get("uiParent"))
+            for section_schema in nested.values()
+            if section_schema.get("uiParent") and section_schema.get("uiParent") not in nested
+        }
+        for parent_name in missing_parent_names:
+            virtual_section = VIRTUAL_UI_PARENT_SECTIONS.get(parent_name)
+            if virtual_section is not None:
+                nested[parent_name] = dict(virtual_section)
 
     @classmethod
     def _build_nested_schema(cls, annotation: Any) -> Dict[str, Any] | None:

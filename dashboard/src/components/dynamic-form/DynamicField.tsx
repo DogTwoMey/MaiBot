@@ -316,6 +316,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
   }
 
   const optionDescriptions = schema['x-option-descriptions'] ?? {}
+  const optionLabels = schema['x-option-labels'] ?? {}
   const hasOptionDescriptions = Object.keys(optionDescriptions).length > 0
   const descriptionDisplay = schema['x-description-display'] ?? 'label-hover'
   const fieldDescription = schema.description
@@ -486,7 +487,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
       <div
         data-dynamic-field={schema.name}
         data-dynamic-field-widget="switch"
-        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1.5"
+        className="grid min-h-10 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1.5"
       >
         <div className="min-w-0">
           {renderFieldHeader()}
@@ -699,6 +700,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
   const renderSelect = () => {
     const strValue = typeof value === 'string' ? value : (schema.default as string ?? '')
     const options = schema.options ?? []
+    const renderOptionLabel = (option: string) => optionLabels[option] ?? option
 
     if (options.length === 0) {
       return (
@@ -725,7 +727,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
                   <Tooltip key={option}>
                     <TooltipTrigger asChild>
                       <SelectItem value={option} title={description}>
-                        {option}
+                        {renderOptionLabel(option)}
                       </SelectItem>
                     </TooltipTrigger>
                     <TooltipContent
@@ -738,7 +740,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
                   </Tooltip>
                 ) : (
                   <SelectItem key={option} value={option}>
-                    {option}
+                    {renderOptionLabel(option)}
                   </SelectItem>
                 )
               })}
@@ -746,7 +748,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
           ) : (
             options.map((option) => (
               <SelectItem key={option} value={option}>
-                {option}
+                {renderOptionLabel(option)}
               </SelectItem>
             ))
           )}
@@ -782,7 +784,7 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({
       <div
         data-dynamic-field={schema.name}
         data-dynamic-field-widget={schema['x-widget'] ?? schema.type}
-        className="grid min-w-0 grid-cols-1 items-center gap-1.5 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
+        className="grid min-h-10 min-w-0 grid-cols-1 items-center gap-1.5 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
         style={{ '--field-input-width': inlineRightInputWidth } as React.CSSProperties}
       >
         <div className="min-w-0">

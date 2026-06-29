@@ -471,7 +471,7 @@ class ModelTaskConfig(ConfigBase):
             "advanced": True,
         },
     )
-    """中期聊天摘要模型配置；留空时自动继用 planner 模型"""
+    """聊天回想模型配置；留空时自动继用 planner 模型"""
 
     utils: TaskConfig = Field(
         default_factory=TaskConfig,
@@ -491,6 +491,16 @@ class ModelTaskConfig(ConfigBase):
         },
     )
     """学习模型配置，用于表达方式学习和黑话学习；留空时用 utils 模型"""
+
+    expression_use: TaskConfig = Field(
+        default_factory=TaskConfig,
+        json_schema_extra={
+            "x-widget": "custom",
+            "x-icon": "message-circle-more",
+            "advanced": True,
+        },
+    )
+    """表达方式使用模型配置；留空时用 utils 模型"""
 
     emoji: TaskConfig = Field(
         default_factory=TaskConfig,

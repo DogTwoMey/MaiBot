@@ -48,6 +48,7 @@ export interface FieldSchema {
   'x-input-width'?: string
   'x-description-display'?: DescriptionDisplayMode
   'x-collapsed-by-default'?: boolean
+  'x-option-labels'?: Record<string, string>
   'x-option-descriptions'?: Record<string, string>
   'x-placeholder'?: string
   'x-row'?: string
@@ -67,6 +68,9 @@ export interface ConfigSchema {
   uiLabel?: string
   uiAdvanced?: boolean
   uiOrder?: number
+  uiUseSubTabs?: boolean
+  uiSubLabel?: string
+  uiRootSubLabel?: string
 }
 
 export interface ConfigSchemaResponse {
