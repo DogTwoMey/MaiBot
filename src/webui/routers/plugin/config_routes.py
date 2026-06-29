@@ -333,10 +333,10 @@ async def _validate_plugin_config_via_runtime(plugin_id: str, config_data: Dict[
 
 
 @router.get("/config/{plugin_id}/bundle")
-async def get_plugin_config_bundle(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_bundle(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """一次性返回插件配置页初始化所需的数据，避免重复运行时解析。"""
 
-    require_plugin_token(maibot_session)
+    require_plugin_token(http_request)
     logger.info(f"获取插件配置初始化数据: {plugin_id}")
 
     try:

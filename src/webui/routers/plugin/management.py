@@ -763,8 +763,8 @@ async def get_local_plugin_readme(plugin_id: str, http_request: Request) -> Dict
 
 
 @router.get("/local-changelog/{plugin_id}")
-async def get_local_plugin_changelog(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+async def get_local_plugin_changelog(plugin_id: str, http_request: Request) -> Dict[str, Any]:
+    require_plugin_token(http_request)
     logger.info(f"获取本地插件更新日志: {plugin_id}")
 
     try:

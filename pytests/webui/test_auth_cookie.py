@@ -1,6 +1,7 @@
 from fastapi import Response
 from starlette.requests import Request
 
+from src.webui.app import create_app
 from src.webui.core import auth
 
 
@@ -85,3 +86,19 @@ def test_set_auth_cookie_uses_token_scoped_name_and_clears_legacy_cookie(monkeyp
 
     assert any(header.startswith(f"{auth.build_auth_cookie_name(token)}={token};") for header in set_cookie_headers)
     assert any(header.startswith(f"{auth.LEGACY_COOKIE_NAME}=") and "Max-Age=0" in header for header in set_cookie_headers)
+
+
+def test_create_app_registers_dashboard_api_routes() -> None:
+    app = create_app(enable_static=False)
+    routes = {
+        (method, route.path)
+        for route in app.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert ("GET", "/api/webui/auth/check") in routes
+    assert ("POST", "/api/webui/auth/verify") in routes
+    assert ("GET", "/api/webui/config/bot") in routes
+    assert ("GET", "/api/webui/config/schema/bot") in routes
+    assert ("GET", "/api/webui/plugins/config/{plugin_id}/bundle") in routes
+    assert ("GET", "/api/webui/plugins/local-changelog/{plugin_id}") in routes
