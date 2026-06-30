@@ -183,11 +183,11 @@ class MaisakaFocusRuntimeMixin:
         ]
         return focus_mode_manager.resolve_session_from_args(arguments, running_sessions)
 
-    def _maybe_schedule_focus_cooldown_wakeup(self, *, trigger_session_id: str) -> None:
+    def _maybe_schedule_focus_cooldown_wakeup(self, *, trigger_session_id: str) -> bool:
         """Wake one idle focused chat when other running chats have pending messages."""
 
         if not self._is_focus_mode_active_for_current_chat():
-            return
+            return False
 
         from src.chat.heart_flow.heartflow_manager import heartflow_manager
 
@@ -197,14 +197,14 @@ class MaisakaFocusRuntimeMixin:
             trigger_session_id=trigger_session_id,
         )
         if target_runtime is None:
-            return
-        target_runtime._queue_focus_cooldown_wakeup(trigger_session_id=trigger_session_id)
+            return False
+        return target_runtime._queue_focus_cooldown_wakeup(trigger_session_id=trigger_session_id)
 
-    def _maybe_schedule_focus_at_wakeup(self, *, trigger_session_id: str) -> None:
+    def _maybe_schedule_focus_at_wakeup(self, *, trigger_session_id: str) -> bool:
         """Wake one focused chat immediately when another running chat @mentions Maibot."""
 
         if not self._is_focus_mode_active_for_current_chat():
-            return
+            return False
 
         from src.chat.heart_flow.heartflow_manager import heartflow_manager
 
@@ -215,8 +215,8 @@ class MaisakaFocusRuntimeMixin:
             ignore_cool_time=True,
         )
         if target_runtime is None:
-            return
-        target_runtime._queue_focus_cooldown_wakeup(
+            return False
+        return target_runtime._queue_focus_cooldown_wakeup(
             trigger_session_id=trigger_session_id,
             wakeup_reason="at",
         )

@@ -245,6 +245,24 @@ class FocusModeManager:
         self._last_cycle_at_by_session_id[normalized_session_id] = time.time()
         return True
 
+    def force_enter_focus(self, session_id: str, *, is_group_chat: Optional[bool] = None) -> bool:
+        """Force a session into its focus scope, replacing the current focused slot."""
+
+        normalized_session_id = self._normalize_session_id(session_id)
+        if not normalized_session_id:
+            return False
+        if not self._is_focus_mode_active_for_session(normalized_session_id, is_group_chat):
+            self._normalize_state()
+            self.release_focus(normalized_session_id)
+            return True
+
+        self._normalize_state()
+        scope_key = self._resolve_focus_scope_key(normalized_session_id, is_group_chat)
+        self._focused_session_ids_by_scope[scope_key] = [normalized_session_id]
+        self._next_focus_blocked_session_id_by_scope.pop(scope_key, None)
+        self._last_cycle_at_by_session_id[normalized_session_id] = time.time()
+        return True
+
     def release_focus(self, session_id: str) -> None:
         """Remove a session from the focus set."""
 

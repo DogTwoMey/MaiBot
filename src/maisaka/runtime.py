@@ -863,7 +863,16 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             is_group_chat=self.chat_stream.is_group_session,
         )
         if not can_enter_focus and message.is_at:
-            self._maybe_schedule_focus_at_wakeup(trigger_session_id=self.session_id)
+            wakeup_queued = self._maybe_schedule_focus_at_wakeup(trigger_session_id=self.session_id)
+            if not wakeup_queued and focus_mode_manager.force_enter_focus(
+                self.session_id,
+                is_group_chat=self.chat_stream.is_group_session,
+            ):
+                logger.info(
+                    f"{self.log_prefix} focus_mode 下收到 @ 但没有可唤醒的关注会话，"
+                    f"已强制进入当前会话并继续调度；消息编号={message.message_id}"
+                )
+                return True
         else:
             self._maybe_schedule_focus_cooldown_wakeup(trigger_session_id=self.session_id)
         if can_enter_focus:

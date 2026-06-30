@@ -256,6 +256,67 @@ def test_private_chat_message_breaks_wait(monkeypatch) -> None:
     assert group_runtime.enqueued is False
 
 
+def test_forced_turn_recovers_stale_scheduled_flag(monkeypatch) -> None:
+    monkeypatch.setattr(turn_scheduler_module.focus_mode_manager, "can_decide", lambda *args, **kwargs: True)
+
+    class DummyQueue:
+        @staticmethod
+        def empty() -> bool:
+            return True
+
+    class DummyRuntime:
+        _STATE_WAIT = "wait"
+        _STATE_STOP = "stop"
+        _STATE_RUNNING = "running"
+        log_prefix = "[test]"
+        session_id = "session-1"
+        chat_stream = SimpleNamespace(is_group_session=True)
+        message_cache = [object()]
+        _last_processed_index = 0
+        _internal_turn_queue = DummyQueue()
+
+        def __init__(self) -> None:
+            self._agent_state = self._STATE_STOP
+            self._message_turn_scheduled = True
+            self.unscheduled = False
+            self.enqueued = False
+
+        @staticmethod
+        def _is_reply_frequency_silent() -> bool:
+            return False
+
+        @staticmethod
+        def _get_pending_message_count() -> int:
+            return 1
+
+        @staticmethod
+        def _has_forced_turn_trigger() -> bool:
+            return True
+
+        @staticmethod
+        def _get_effective_reply_frequency() -> float:
+            return 1.0
+
+        @staticmethod
+        def _format_reply_frequency_for_display(value: float) -> str:
+            return str(value)
+
+        def _mark_message_turn_unscheduled(self) -> None:
+            self.unscheduled = True
+            self._message_turn_scheduled = False
+
+        def _enqueue_message_turn(self) -> None:
+            self.enqueued = True
+            self._message_turn_scheduled = True
+
+    runtime = DummyRuntime()
+    MessageTurnScheduler(runtime).schedule_message_turn()
+
+    assert runtime.unscheduled is True
+    assert runtime.enqueued is True
+    assert runtime._message_turn_scheduled is True
+
+
 @pytest.mark.asyncio
 async def test_wait_tool_rejects_after_consecutive_limit(monkeypatch) -> None:
     monkeypatch.setattr(global_config.chat.reply_timing, "max_consecutive_wait_count", 5, raising=False)

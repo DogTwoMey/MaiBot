@@ -72,12 +72,20 @@ class MessageTurnScheduler:
             else:
                 runtime._enter_stop_state()
 
-        if runtime._message_turn_scheduled:
-            return
-
         pending_count = runtime._get_pending_message_count()
         if pending_count <= 0:
             return
+
+        if runtime._message_turn_scheduled:
+            has_forced_trigger = runtime._has_forced_turn_trigger()
+            has_queued_turn = not runtime._internal_turn_queue.empty()
+            if not has_forced_trigger or has_queued_turn or runtime._agent_state == runtime._STATE_RUNNING:
+                return
+            logger.warning(
+                f"{runtime.log_prefix} 检测到强制触发仍未被消费，"
+                "但消息调度占位没有对应的待执行 turn，已释放占位并重新调度"
+            )
+            runtime._mark_message_turn_unscheduled()
 
         effective_frequency = runtime._get_effective_reply_frequency()
         formatted_frequency = runtime._format_reply_frequency_for_display(effective_frequency)
