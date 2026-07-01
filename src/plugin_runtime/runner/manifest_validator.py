@@ -6,13 +6,14 @@
 
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
+from pathlib import Path
+from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
+
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
-from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
-from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
 
 import json
 import re
@@ -929,8 +930,8 @@ class ManifestValidator:
             self._log_errors(source=str(plugin_path))
             return None
 
-        manifest_id = str(manifest_data.get("id") or plugin_path.name).strip() or plugin_path.name
-        return self.parse_manifest(manifest_data, source=manifest_id)
+        manifest_source = str(manifest_data.get("id", "")).strip() or str(plugin_path)
+        return self.parse_manifest(manifest_data, source=manifest_source)
 
     def iter_plugin_manifests(
         self,
