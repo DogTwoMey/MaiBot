@@ -254,7 +254,9 @@ def test_jargon_learning_real_message_uses_shared_message_metadata_format() -> N
     assert len(source_items) == 1
 
     source_text = JargonLearner._build_learning_source_content(1, source_items[0])
-    assert source_text.startswith('<message source_id="1" quote="-95288214" time="12:00:00" user="用户">')
+    assert source_text.startswith(
+        '<message source_id="1" quote="-95288214" time="12:00:00" user="用户" user_id="user-m-reply">'
+    )
     assert "是不是你调用错误了" in source_text
     assert "[发言内容]" not in source_text
     assert "[引用消息]" not in source_text

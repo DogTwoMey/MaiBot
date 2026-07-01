@@ -206,9 +206,18 @@ class SDKMemoryKernel:
             "running": False,
             "attempted": False,
             "success": False,
+            "stage": "idle",
+            "progress": {
+                "total": 0,
+                "processed": 0,
+                "percent": 0.0,
+                "elapsed_seconds": 0.0,
+                "estimated_remaining_seconds": None,
+            },
             "last_error": "",
             "started_at": None,
             "finished_at": None,
+            "updated_at": None,
         }
         self._background_tasks: Dict[str, asyncio.Task] = {}
         self._background_lock = asyncio.Lock()
@@ -226,7 +235,22 @@ class SDKMemoryKernel:
 
     def _cfg(self, key: str, default: Any = None) -> Any:
         current: Any = self.config
-        if key in {"storage", "embedding", "retrieval", "graph", "episode", "web", "advanced", "threshold", "summarization"} and isinstance(current, dict):
+        if (
+            key
+            in {
+                "storage",
+                "embedding",
+                "retrieval",
+                "graph",
+                "episode",
+                "web",
+                "advanced",
+                "threshold",
+                "summarization",
+                "person_profile",
+            }
+            and isinstance(current, dict)
+        ):
             return current.get(key, default)
         for part in key.split("."):
             if isinstance(current, dict) and part in current:
@@ -1679,17 +1703,28 @@ class SDKMemoryKernel:
 
         dual_mode = self._dual_vector_pools_config_enabled()
         legacy_source_store = self.vector_store if dual_mode else None
+        self._update_dual_vector_auto_migration_stage(
+            "prepare_rebuild",
+            dual_mode=dual_mode,
+            total=int(total),
+            counts=dict(target_counts),
+            legacy_source_available=legacy_source_store is not None,
+        )
         if legacy_source_store is not None and not self._stored_vectors_compatible_with_current_embedding(
             legacy_source_store
         ):
             legacy_source_store = None
+            self._update_dual_vector_auto_migration_stage("legacy_source_incompatible")
         dual_build_root: Optional[Path] = None
         build_paragraph_vector_store: Optional[VectorStore] = None
         build_graph_vector_store: Optional[VectorStore] = None
         if dual_mode and legacy_source_store is not None and legacy_source_store.has_data():
             try:
+                self._update_dual_vector_auto_migration_stage("legacy_source_load")
                 legacy_source_store.load()
+                self._update_dual_vector_auto_migration_stage("legacy_source_warmup")
                 legacy_source_store.warmup_index(force_train=False)
+                self._update_dual_vector_auto_migration_stage("legacy_source_ready")
             except Exception as exc:
                 logger.warning(f"加载旧单池向量用于双池迁移失败，将回退 embedding 重建: {exc}")
         if not dual_mode:
@@ -1732,6 +1767,7 @@ class SDKMemoryKernel:
             for row in paragraph_rows
             if str(row.get("hash", "") or "").strip() and str(row.get("content", "") or "").strip()
         ]
+        self._update_dual_vector_auto_migration_stage("paragraphs_start", paragraph_items=len(paragraph_items))
         if dual_mode:
             done, failed, error, _done_ids, _failed_ids, copy_stats = await self._copy_or_encode_dual_rebuild_vectors(
                 items=paragraph_items,
@@ -1750,6 +1786,12 @@ class SDKMemoryKernel:
             if error:
                 errors.append(error)
         stats["paragraphs"] = {"done": done, "failed": failed}
+        self._update_dual_vector_auto_migration_stage(
+            "paragraphs_done",
+            paragraph_done=done,
+            paragraph_failed=failed,
+            paragraph_migration=dict(migration_stats.get("paragraphs") or {}),
+        )
 
         entity_rows = self.metadata_store.query(
             f"""
@@ -1764,6 +1806,7 @@ class SDKMemoryKernel:
             for row in entity_rows
             if str(row.get("hash", "") or "").strip() and str(row.get("name", "") or "").strip()
         ]
+        self._update_dual_vector_auto_migration_stage("entities_start", entity_items=len(entity_items))
         if dual_mode:
             done, failed, error, _done_ids, _failed_ids, copy_stats = await self._copy_or_encode_dual_rebuild_vectors(
                 items=entity_items,
@@ -1783,6 +1826,12 @@ class SDKMemoryKernel:
             if error:
                 errors.append(error)
         stats["entities"] = {"done": done, "failed": failed}
+        self._update_dual_vector_auto_migration_stage(
+            "entities_done",
+            entity_done=done,
+            entity_failed=failed,
+            entity_migration=dict(migration_stats.get("entities") or {}),
+        )
 
         if relation_enabled:
             relation_rows = self.metadata_store.query(
@@ -1805,6 +1854,7 @@ class SDKMemoryKernel:
                 for row in relation_rows
                 if str(row.get("hash", "") or "").strip()
             ]
+            self._update_dual_vector_auto_migration_stage("relations_start", relation_items=len(relation_items))
             if dual_mode:
                 done, failed, error, done_ids, failed_ids, copy_stats = await self._copy_or_encode_dual_rebuild_vectors(
                     items=relation_items,
@@ -1824,6 +1874,12 @@ class SDKMemoryKernel:
                 if error:
                     errors.append(error)
             stats["relations"] = {"done": done, "failed": failed}
+            self._update_dual_vector_auto_migration_stage(
+                "relations_done",
+                relation_done=done,
+                relation_failed=failed,
+                relation_migration=dict(migration_stats.get("relations") or {}),
+            )
 
             conn = self.metadata_store.get_connection()
             cursor = conn.cursor()
@@ -1870,6 +1926,15 @@ class SDKMemoryKernel:
                 int(build_paragraph_vector_store.num_vectors) if build_paragraph_vector_store else 0
             )
             actual_graph_vectors = int(build_graph_vector_store.num_vectors) if build_graph_vector_store else 0
+            self._update_dual_vector_auto_migration_stage(
+                "activation_check",
+                stats=dict(stats),
+                migration=dict(migration_stats),
+                actual_paragraph_vectors=actual_paragraph_vectors,
+                expected_paragraph_vectors=expected_paragraph_vectors,
+                actual_graph_vectors=actual_graph_vectors,
+                expected_graph_vectors=expected_graph_vectors,
+            )
             if (
                 failed_total == 0
                 and actual_paragraph_vectors == expected_paragraph_vectors
@@ -1877,23 +1942,33 @@ class SDKMemoryKernel:
             ):
                 try:
                     if build_paragraph_vector_store is not None:
+                        self._update_dual_vector_auto_migration_stage("paragraph_pool_warmup")
                         build_paragraph_vector_store.warmup_index(force_train=True)
+                        self._update_dual_vector_auto_migration_stage("paragraph_pool_save")
                         self._save_vector_store(build_paragraph_vector_store)
                     if build_graph_vector_store is not None:
+                        self._update_dual_vector_auto_migration_stage("graph_pool_warmup")
                         build_graph_vector_store.warmup_index(force_train=True)
+                        self._update_dual_vector_auto_migration_stage("graph_pool_save")
                         self._save_vector_store(build_graph_vector_store)
+                    self._update_dual_vector_auto_migration_stage("activate_dirs")
                     self._activate_dual_vector_build_dirs(dual_build_root)
+                    self._update_dual_vector_auto_migration_stage("write_manifest")
                     self._write_dual_vector_ready_manifest(stats=stats, migration_stats=migration_stats)
+                    self._update_dual_vector_auto_migration_stage("reload_dual_stores")
                     activation_ok = self._reload_dual_vector_stores_from_disk()
                     if not activation_ok:
                         errors.append("dual_pool_activation:ready_manifest_unusable")
                     else:
+                        self._update_dual_vector_auto_migration_stage("dual_backfill")
                         backfill_result = await self._backfill_missing_dual_vector_pool_entries(
                             batch_size=safe_batch_size,
                         )
+                        self._update_dual_vector_auto_migration_stage("dual_backfill_done", backfill=backfill_result)
                         if not bool(backfill_result.get("success", False)):
                             for item in backfill_result.get("errors", []) or []:
                                 errors.append(str(item))
+                        self._update_dual_vector_auto_migration_stage("clear_legacy_single_pool")
                         self._clear_legacy_single_vector_files_after_dual_ready()
                 except Exception as exc:
                     activation_ok = False
@@ -1914,10 +1989,12 @@ class SDKMemoryKernel:
                 self._reload_dual_vector_stores_from_disk()
             self._refresh_relation_write_service()
         else:
+            self._update_dual_vector_auto_migration_stage("single_pool_warmup")
             self.vector_store.warmup_index(force_train=True)
             self.paragraph_vector_store = self._make_vector_store(self._paragraph_vector_dir())
             self.graph_vector_store = self._make_vector_store(self._graph_vector_dir())
             self._refresh_relation_write_service()
+        self._update_dual_vector_auto_migration_stage("runtime_rebuild")
         self._runtime_bundle = build_search_runtime(
             plugin_config=self._build_runtime_config(),
             logger_obj=logger,
@@ -1931,6 +2008,7 @@ class SDKMemoryKernel:
             self._refresh_runtime_dependents(preserve_managers=True)
             self._apply_runtime_sparse_mode()
 
+        self._update_dual_vector_auto_migration_stage("self_check")
         report = await self._refresh_runtime_self_check(sample_text="A_Memorix vector rebuild self check")
         if bool(report.get("ok", False)) and not errors:
             self._set_embedding_degraded(active=False, checked_at=float(report.get("checked_at") or time.time()))
@@ -1946,6 +2024,7 @@ class SDKMemoryKernel:
         if rebuild_success:
             self._vector_persist_blocked_until_rebuild = False
             self._vector_rebuild_source_dimension = None
+        self._update_dual_vector_auto_migration_stage("persist", rebuild_success=rebuild_success, errors=list(errors[:5]))
         self._persist(force_vectors=rebuild_success)
         return {
             "success": rebuild_success,
@@ -2024,9 +2103,9 @@ class SDKMemoryKernel:
             dimension_request_mode=str(self._cfg("embedding.dimension_request_mode", "explicit") or "explicit"),
             retry_config=self._cfg("embedding.retry", {}) or {},
         )
+        configured_embedding_dimension = int(self.embedding_dimension)
         stored_dimension = self._stored_vector_dimension()
-        provisional_dimension = stored_dimension or self.embedding_dimension
-        self.embedding_dimension = int(provisional_dimension)
+        provisional_dimension = stored_dimension or configured_embedding_dimension
 
         matrix_format = str(self._cfg("graph.sparse_matrix_format", "csr") or "csr").strip().lower()
         graph_format = SparseMatrixFormat.CSC if matrix_format == "csc" else SparseMatrixFormat.CSR
@@ -2194,9 +2273,10 @@ class SDKMemoryKernel:
             if not paragraph_hash:
                 raise RuntimeError("聊天摘要导入成功但未返回 paragraph_hash，无法执行 Episode 增量入队")
             assert self.metadata_store is not None
-            self.metadata_store.enqueue_episode_pending(paragraph_hash, source=source)
+            if self._should_auto_enqueue_episode(source_type="chat_summary"):
+                self.metadata_store.enqueue_episode_pending(paragraph_hash, source=source)
+                episode_pending_ids.append(paragraph_hash)
             stored_ids.append(paragraph_hash)
-            episode_pending_ids.append(paragraph_hash)
             self._persist()
         payload = {"success": success, "detail": detail}
         if stored_ids:
@@ -2382,15 +2462,12 @@ class SDKMemoryKernel:
             source_type=source_type,
             metadata={"chat_id": chat_id, "person_ids": person_tokens},
         )
-        self.metadata_store.enqueue_episode_pending(paragraph_hash, source=source)
+        if self._should_auto_enqueue_episode(source_type=source_type):
+            self.metadata_store.enqueue_episode_pending(paragraph_hash, source=source)
         self._persist()
-        await self.process_episode_pending_batch(
-            limit=max(1, int(self._cfg("episode.pending_batch_size", 50))),
-            max_retry=max(1, int(self._cfg("episode.pending_max_retry", 3))),
-        )
         for person_id in person_tokens:
             self._mark_person_active(person_id)
-            await self.refresh_person_profile(person_id)
+            self._enqueue_person_profile_refresh(person_id, reason=str(source_type or "ingest_text"))
         payload = {"stored_ids": [paragraph_hash, *stored_relations], "skipped_ids": []}
         if warnings:
             payload["warnings"] = warnings
@@ -2840,6 +2917,102 @@ class SDKMemoryKernel:
             and not self._dual_vector_pools_enabled()
             and not self._dual_vector_auto_migration_attempted
             and not self._background_stopping
+        )
+
+    def _normalize_dual_vector_auto_migration_progress(
+        self,
+        progress: Optional[Dict[str, Any]] = None,
+        *,
+        now: Optional[float] = None,
+        explicit_processed: bool = False,
+        completed: bool = False,
+        success: bool = False,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = dict(progress or {})
+        now_ts = float(now if now is not None else time.time())
+        started_at = self._dual_vector_auto_migration_status.get("started_at")
+        elapsed_seconds = 0.0
+        if isinstance(started_at, (int, float)):
+            elapsed_seconds = max(0.0, now_ts - float(started_at))
+
+        def _coerce_non_negative_int(value: Any, default: int = 0) -> int:
+            try:
+                number = int(float(value))
+            except (TypeError, ValueError):
+                return default
+            return max(0, number)
+
+        total = _coerce_non_negative_int(payload.get("total"), 0)
+        if total <= 0:
+            counts = payload.get("counts")
+            if isinstance(counts, dict):
+                total = sum(
+                    _coerce_non_negative_int(counts.get(key), 0)
+                    for key in ("paragraphs", "entities", "relations")
+                )
+
+        processed_keys = (
+            "paragraph_done",
+            "paragraph_failed",
+            "entity_done",
+            "entity_failed",
+            "relation_done",
+            "relation_failed",
+        )
+        if explicit_processed:
+            processed = _coerce_non_negative_int(payload.get("processed"), 0)
+        elif any(key in payload for key in processed_keys):
+            processed = sum(_coerce_non_negative_int(payload.get(key), 0) for key in processed_keys)
+        else:
+            processed = _coerce_non_negative_int(payload.get("processed"), 0)
+        if total > 0:
+            processed = min(processed, total)
+
+        if completed and success:
+            if total > 0:
+                processed = total
+            percent = 100.0
+        elif total > 0:
+            percent = min(99.5, max(0.0, (float(processed) / float(total)) * 100.0))
+        else:
+            percent = 0.0
+
+        estimated_remaining_seconds: Optional[int] = None
+        if not completed and total > 0 and 0 < processed < total and elapsed_seconds > 0.0:
+            rate = float(processed) / elapsed_seconds
+            if rate > 0.0:
+                remaining = (float(total) - float(processed)) / rate
+                estimated_remaining_seconds = max(0, int(remaining + 0.999))
+
+        payload.update(
+            {
+                "total": int(total),
+                "processed": int(processed),
+                "percent": round(percent, 2),
+                "elapsed_seconds": round(elapsed_seconds, 3),
+                "estimated_remaining_seconds": estimated_remaining_seconds,
+            }
+        )
+        return payload
+
+    def _update_dual_vector_auto_migration_stage(self, stage: str, **progress: Any) -> None:
+        if not bool(self._dual_vector_auto_migration_status.get("running", False)):
+            return
+        now_ts = time.time()
+        explicit_processed = "processed" in progress
+        payload = dict(self._dual_vector_auto_migration_status.get("progress") or {})
+        payload.update(progress)
+        payload = self._normalize_dual_vector_auto_migration_progress(
+            payload,
+            now=now_ts,
+            explicit_processed=explicit_processed,
+        )
+        self._dual_vector_auto_migration_status.update(
+            {
+                "stage": str(stage or "unknown"),
+                "progress": payload,
+                "updated_at": now_ts,
+            }
         )
 
     async def memory_graph_admin(self, *, action: str, **kwargs) -> Dict[str, Any]:
@@ -3689,6 +3862,7 @@ class SDKMemoryKernel:
             self._ensure_background_task("paragraph_vector_backfill", self._paragraph_vector_backfill_loop)
             self._ensure_background_task("memory_maintenance", self._memory_maintenance_loop)
             self._ensure_background_task("person_profile_refresh", self._person_profile_refresh_loop)
+            self._ensure_background_task("person_profile_refresh_queue", self._person_profile_refresh_queue_loop)
             self._ensure_background_task("feedback_correction", self._feedback_correction_loop)
             self._ensure_background_task("feedback_correction_reconcile", self._feedback_correction_reconcile_loop)
             if self._should_start_dual_vector_auto_migration():
@@ -3718,19 +3892,37 @@ class SDKMemoryKernel:
                 "running": True,
                 "attempted": True,
                 "success": False,
+                "stage": "initial_delay",
+                "progress": self._normalize_dual_vector_auto_migration_progress(
+                    {"total": 0, "processed": 0},
+                    now=started_at,
+                    explicit_processed=True,
+                ),
                 "last_error": "",
                 "started_at": started_at,
                 "finished_at": None,
+                "updated_at": started_at,
             }
         )
         try:
             await self._sleep_background(DUAL_VECTOR_AUTO_MIGRATION_INITIAL_DELAY_SECONDS)
             if self._background_stopping or self._dual_vector_pools_enabled():
+                finished_at = time.time()
+                success = self._dual_vector_pools_enabled()
+                progress = self._normalize_dual_vector_auto_migration_progress(
+                    self._dual_vector_auto_migration_status.get("progress"),
+                    now=finished_at,
+                    completed=True,
+                    success=success,
+                )
                 self._dual_vector_auto_migration_status.update(
                     {
                         "running": False,
-                        "success": self._dual_vector_pools_enabled(),
-                        "finished_at": time.time(),
+                        "success": success,
+                        "stage": "skipped",
+                        "progress": progress,
+                        "finished_at": finished_at,
+                        "updated_at": finished_at,
                     }
                 )
                 return
@@ -3741,8 +3933,10 @@ class SDKMemoryKernel:
                 if self._background_stopping or self._dual_vector_pools_enabled():
                     break
                 if delay > 0:
+                    self._update_dual_vector_auto_migration_stage("retry_delay", retry_index=index, delay_seconds=delay)
                     await self._sleep_background(delay)
                 if self._vector_rebuild_lock.locked():
+                    self._update_dual_vector_auto_migration_stage("waiting_rebuild_lock", retry_index=index)
                     if index == len(retry_delays) - 1:
                         result = {
                             "success": False,
@@ -3750,6 +3944,7 @@ class SDKMemoryKernel:
                             "detail": "已有向量重建任务正在运行",
                         }
                     continue
+                self._update_dual_vector_auto_migration_stage("rebuild_start", retry_index=index)
                 result = await self._rebuild_all_vectors()
                 if str(result.get("error", "") or "") != "vector_rebuild_running":
                     break
@@ -3769,31 +3964,65 @@ class SDKMemoryKernel:
                 logger.warning(f"双池后台自动迁移未完成，继续使用单池: {last_error}")
             else:
                 logger.info("双池后台自动迁移完成，已切换到双池检索")
+            finished_at = time.time()
+            progress = {
+                **dict(self._dual_vector_auto_migration_status.get("progress") or {}),
+                "result": result,
+            }
+            progress = self._normalize_dual_vector_auto_migration_progress(
+                progress,
+                now=finished_at,
+                completed=True,
+                success=success,
+            )
             self._dual_vector_auto_migration_status.update(
                 {
                     "running": False,
                     "success": success,
+                    "stage": "completed" if success else "failed",
+                    "progress": progress,
                     "last_error": last_error[:500],
-                    "finished_at": time.time(),
+                    "finished_at": finished_at,
+                    "updated_at": finished_at,
                 }
             )
         except asyncio.CancelledError:
+            finished_at = time.time()
+            progress = self._normalize_dual_vector_auto_migration_progress(
+                self._dual_vector_auto_migration_status.get("progress"),
+                now=finished_at,
+                completed=True,
+                success=False,
+            )
             self._dual_vector_auto_migration_status.update(
                 {
                     "running": False,
+                    "stage": "cancelled",
+                    "progress": progress,
                     "last_error": "cancelled",
-                    "finished_at": time.time(),
+                    "finished_at": finished_at,
+                    "updated_at": finished_at,
                 }
             )
             raise
         except Exception as exc:
             logger.warning(f"双池后台自动迁移异常，继续使用单池: {exc}")
+            finished_at = time.time()
+            progress = self._normalize_dual_vector_auto_migration_progress(
+                self._dual_vector_auto_migration_status.get("progress"),
+                now=finished_at,
+                completed=True,
+                success=False,
+            )
             self._dual_vector_auto_migration_status.update(
                 {
                     "running": False,
                     "success": False,
+                    "stage": "exception",
+                    "progress": progress,
                     "last_error": str(exc)[:500],
-                    "finished_at": time.time(),
+                    "finished_at": finished_at,
+                    "updated_at": finished_at,
                 }
             )
 
@@ -3908,6 +4137,8 @@ class SDKMemoryKernel:
                 ][:max_refresh]
                 for person_id in candidates:
                     try:
+                        if self._has_pending_person_profile_refresh(person_id):
+                            continue
                         await self.refresh_person_profile(person_id, limit=max(4, int(self._cfg("person_profile.top_k_evidence", 12) or 12)), mark_active=False)
                     except Exception as exc:
                         logger.warning(f"刷新人物画像失败: {exc}")
@@ -3915,6 +4146,22 @@ class SDKMemoryKernel:
             raise
         except Exception as exc:
             logger.warning(f"person_profile_refresh loop 异常: {exc}")
+
+    async def _person_profile_refresh_queue_loop(self) -> None:
+        try:
+            while not self._background_stopping:
+                await asyncio.sleep(self._person_profile_refresh_queue_interval_seconds())
+                if self._background_stopping:
+                    break
+                if not bool(self._cfg("person_profile.enabled", True)):
+                    continue
+                await self._process_person_profile_refresh_queue_batch(
+                    limit=self._person_profile_refresh_queue_batch_size()
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(f"person_profile_refresh_queue loop 异常: {exc}")
 
     @staticmethod
     def _relation_status_is_inactive(status: Optional[Dict[str, Any]]) -> bool:
@@ -4547,13 +4794,22 @@ class SDKMemoryKernel:
                 "task": self._build_feedback_task_detail(final_task or running_task),
             }
 
-    async def _process_feedback_profile_refresh_batch(self, *, limit: int) -> Dict[str, Any]:
+    async def _process_feedback_profile_refresh_batch(
+        self,
+        *,
+        limit: int,
+        debounce_seconds: float = 0.0,
+        retry_backoff_seconds: float = 0.0,
+        max_retry: Optional[int] = None,
+    ) -> Dict[str, Any]:
         if self.metadata_store is None or self.person_profile_service is None:
             return {"processed": 0, "refreshed": 0, "failed": 0, "items": [], "failures": []}
 
         rows = self.metadata_store.fetch_person_profile_refresh_batch(
             limit=max(1, int(limit or 1)),
-            max_retry=max(1, int(self._cfg("person_profile.max_retry", 3) or 3)),
+            max_retry=self._person_profile_refresh_max_retry() if max_retry is None else max(0, int(max_retry)),
+            debounce_seconds=max(0.0, float(debounce_seconds or 0.0)),
+            retry_backoff_seconds=max(0.0, float(retry_backoff_seconds or 0.0)),
         )
         items: List[Dict[str, Any]] = []
         failures: List[Dict[str, Any]] = []
@@ -4640,7 +4896,7 @@ class SDKMemoryKernel:
                     continue
                 batch_size = self._feedback_cfg_reconcile_batch_size()
                 if self._feedback_cfg_profile_refresh_enabled():
-                    await self._process_feedback_profile_refresh_batch(limit=batch_size)
+                    await self._process_person_profile_refresh_queue_batch(limit=batch_size)
                 if self._feedback_cfg_episode_rebuild_enabled():
                     await self._process_feedback_episode_rebuild_batch(limit=batch_size)
         except asyncio.CancelledError:
@@ -4802,6 +5058,64 @@ class SDKMemoryKernel:
     def _feedback_cfg_reconcile_batch_size() -> int:
         memory_cfg = global_config.a_memorix.integration
         return max(1, int(getattr(memory_cfg, "feedback_correction_reconcile_batch_size", 20) or 20))
+
+    def _should_auto_enqueue_episode(self, *, source_type: str) -> bool:
+        if not bool(self._cfg("episode.enabled", True)):
+            return False
+        if not bool(self._cfg("episode.generation_enabled", True)):
+            return False
+
+        normalized_source_type = str(source_type or "").strip().lower()
+        disabled_types = {
+            str(item or "").strip().lower()
+            for item in self._argument_tokens(self._cfg("episode.disabled_source_types", ["person_fact"]))
+        }
+        return normalized_source_type not in disabled_types
+
+    def _person_profile_refresh_queue_interval_seconds(self) -> float:
+        return max(1.0, float(self._cfg("person_profile.refresh_queue_interval_seconds", 60) or 60))
+
+    def _person_profile_refresh_queue_batch_size(self) -> int:
+        return max(1, int(self._cfg("person_profile.refresh_queue_batch_size", 10) or 10))
+
+    def _person_profile_refresh_debounce_seconds(self) -> float:
+        return max(0.0, float(self._cfg("person_profile.refresh_debounce_seconds", 120) or 0))
+
+    def _person_profile_refresh_retry_backoff_seconds(self) -> float:
+        return max(0.0, float(self._cfg("person_profile.refresh_retry_backoff_seconds", 300) or 0))
+
+    def _person_profile_refresh_max_retry(self) -> int:
+        return max(0, int(self._cfg("person_profile.max_retry", 3) or 0))
+
+    def _enqueue_person_profile_refresh(self, person_id: str, *, reason: str = "") -> bool:
+        if self.metadata_store is None or not bool(self._cfg("person_profile.enabled", True)):
+            return False
+        payload = self.metadata_store.enqueue_person_profile_refresh(
+            person_id=person_id,
+            reason=str(reason or "").strip() or "memory_ingest",
+        )
+        return isinstance(payload, dict)
+
+    def _has_pending_person_profile_refresh(self, person_id: str) -> bool:
+        if self.metadata_store is None:
+            return False
+        request = self.metadata_store.get_person_profile_refresh_request(person_id)
+        if not isinstance(request, dict):
+            return False
+        status = str(request.get("status", "") or "").strip().lower()
+        if status in {"pending", "running"}:
+            return True
+        if status != "failed":
+            return False
+        return int(request.get("retry_count", 0) or 0) < self._person_profile_refresh_max_retry()
+
+    async def _process_person_profile_refresh_queue_batch(self, *, limit: int) -> Dict[str, Any]:
+        return await self._process_feedback_profile_refresh_batch(
+            limit=limit,
+            debounce_seconds=self._person_profile_refresh_debounce_seconds(),
+            retry_backoff_seconds=self._person_profile_refresh_retry_backoff_seconds(),
+            max_retry=self._person_profile_refresh_max_retry(),
+        )
 
     @classmethod
     def _feedback_cfg_window_label(cls) -> str:
@@ -7001,8 +7315,7 @@ class SDKMemoryKernel:
             return True
 
         metadata = coerce_metadata_dict(paragraph.get("metadata"))
-        paragraph_chat_id = str(metadata.get("chat_id", "") or "").strip()
-        if paragraph_chat_id and paragraph_chat_id in allowed_chat_ids:
+        if cls._metadata_chat_scope_ids(metadata) & allowed_chat_ids:
             return True
 
         source = str(paragraph.get("source", "") or metadata.get("source", "") or "").strip()
@@ -7015,9 +7328,13 @@ class SDKMemoryKernel:
 
         metadata = coerce_metadata_dict(hit.get("metadata"))
         hit_type = str(hit.get("type", "") or "").strip()
-        metadata_chat_id = str(metadata.get("chat_id", "") or "").strip()
-        if metadata_chat_id:
-            return metadata_chat_id in allowed_chat_ids
+        metadata_chat_ids = cls._metadata_chat_scope_ids(metadata)
+        if metadata_chat_ids:
+            if metadata_chat_ids & allowed_chat_ids:
+                return True
+            if hit_type in {"paragraph", "relation"}:
+                return None
+            return False
 
         source = str(metadata.get("source", "") or hit.get("source", "") or "").strip()
         chat_sources = {str(cls._chat_source(allowed_chat_id) or "") for allowed_chat_id in allowed_chat_ids}
@@ -7026,6 +7343,24 @@ class SDKMemoryKernel:
         if source.startswith("chat_summary:"):
             return source in chat_sources
         return None
+
+    @staticmethod
+    def _extend_chat_scope_ids(tokens: set[str], value: Any) -> None:
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                SDKMemoryKernel._extend_chat_scope_ids(tokens, item)
+            return
+
+        token = str(value or "").strip()
+        if token:
+            tokens.add(token)
+
+    @classmethod
+    def _metadata_chat_scope_ids(cls, metadata: Dict[str, Any]) -> set[str]:
+        tokens: set[str] = set()
+        for key in ("chat_id", "session_id", "stream_id", "chat_ids", "session_ids", "stream_ids"):
+            cls._extend_chat_scope_ids(tokens, metadata.get(key))
+        return tokens
 
     def _filter_hits_by_chat_scope(
         self,
