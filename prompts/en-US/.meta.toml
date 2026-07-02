@@ -11,7 +11,12 @@ description = "Finds semantically duplicated behavior patterns and outputs keepe
 [maisaka_chat]
 display_name = "Planner"
 advanced = false
-description = "Main Maisaka planning template that combines identity, time, tool instructions, and chat context to drive thinking, decisions, and tool calls."
+description = "Main Maisaka planning template that combines system guidance, identity, time, tool instructions, and chat context to drive thinking, decisions, and tool calls."
+
+[system_guidance]
+display_name = "System Guidance"
+advanced = false
+description = "Shared system-level baseline rules for Maisaka planner, replyer, and related subflows, keeping generic constraints out of persona, chat, and reply templates."
 
 [maisaka_chat_merged_timing]
 display_name = "Planner (Timing merged)"
@@ -21,7 +26,7 @@ description = "Main Maisaka planning template used when independent timing aware
 [maisaka_replyer]
 display_name = "Replyer"
 advanced = false
-description = "Maisaka reply generation template that creates the final reply from persona, expression style, chat notes, and reply context."
+description = "Maisaka reply generation template that creates the final reply from system guidance, persona, expression style, chat notes, and reply context."
 
 [default_expressor]
 display_name = "Default Expressor"

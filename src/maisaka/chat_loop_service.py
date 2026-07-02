@@ -42,6 +42,7 @@ from src.maisaka.context.messages import (
 )
 from src.maisaka.context.history import normalize_tool_call_result_pairs
 from src.maisaka.memory.mid_term import is_mid_term_memory_message
+from src.maisaka.prompt_sections import build_system_guidance_prompt
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.focus import focus_mode_manager
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
@@ -636,6 +637,7 @@ class MaisakaChatLoopService:
             "identity": self.personality_prompt,
             "planner_idle_focus_rule": self._build_planner_idle_focus_rule(),
             "query_memory_rule": self._build_query_memory_rule(),
+            "system_guidance": build_system_guidance_prompt(global_config.bot.nickname),
         }
 
 

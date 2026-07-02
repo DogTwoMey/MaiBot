@@ -198,6 +198,40 @@ def test_builtin_prompt_templates_have_intro_metadata() -> None:
             assert metadata.description, f"{prompt_file} 缺少 description 元信息"
 
 
+def test_maisaka_main_prompts_render_shared_system_guidance(tmp_path: Path) -> None:
+    custom_prompts_root = tmp_path / "custom_prompts"
+    prompt_context = {
+        "bot_name": "麦麦",
+        "group_chat_attention_block": "聊天注意事项",
+        "identity": "身份设定",
+        "long_term_memory_block": "长期记忆",
+        "planner_idle_focus_rule": "空闲时切换聊天",
+        "query_memory_rule": "- query_memory(): 按需检索",
+        "reply_style": "回复风格",
+        "replyer_output_instruction": "只输出回复内容",
+    }
+
+    for locale_dir in sorted(path for path in PROMPTS_ROOT.iterdir() if path.is_dir()):
+        locale = locale_dir.name
+        system_guidance = load_prompt(
+            "system_guidance",
+            locale=locale,
+            custom_prompts_root=custom_prompts_root,
+            bot_name=prompt_context["bot_name"],
+        )
+        context = prompt_context | {"system_guidance": system_guidance}
+
+        for prompt_name in ("maisaka_chat", "maisaka_chat_focus", "maisaka_replyer"):
+            rendered = load_prompt(
+                prompt_name,
+                locale=locale,
+                custom_prompts_root=custom_prompts_root,
+                **context,
+            )
+
+            assert system_guidance in rendered
+
+
 def test_list_prompt_templates_reports_duplicate_name_with_custom_root(tmp_path: Path) -> None:
     prompts_root = tmp_path / "prompts"
     first_dir = prompts_root / "zh-CN" / "chat"
