@@ -43,6 +43,7 @@ from src.maisaka.context.messages import (
 from src.maisaka.context.planner_messages import extract_quote_ids_from_message_sequence
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.memory.mid_term import is_mid_term_memory_message
+from src.maisaka.prompt_sections import build_system_guidance_prompt
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.plugin_runtime.hook_payloads import deserialize_prompt_messages, serialize_prompt_messages
 
@@ -407,6 +408,7 @@ class BaseMaisakaReplyGenerator:
                 identity=self._build_personality_prompt(),
                 reply_style=self._select_reply_style(),
                 long_term_memory_block=self._build_long_term_memory_block(reference_info),
+                system_guidance=build_system_guidance_prompt(global_config.bot.nickname),
             )
         except Exception:
             system_prompt = "你是一个友好的 AI 助手，请根据聊天记录自然回复。"

@@ -14,6 +14,10 @@ def test_build_system_prompt_injects_reference_info(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(generator, "_build_replyer_output_instruction", lambda: "output")
     monkeypatch.setattr(generator, "_build_personality_prompt", lambda: "identity")
     monkeypatch.setattr(generator, "_select_reply_style", lambda: "style")
+    monkeypatch.setattr(
+        "src.chat.replyer.maisaka_generator_base.build_system_guidance_prompt",
+        lambda bot_name: f"system guidance for {bot_name}",
+    )
 
     def fake_load_prompt(prompt_name: str, **context: str) -> str:
         assert prompt_name == "maisaka_replyer"
@@ -30,3 +34,4 @@ def test_build_system_prompt_injects_reference_info(monkeypatch: pytest.MonkeyPa
 
     assert system_prompt == "system prompt"
     assert "用户喜欢深夜打游戏" in captured_context["long_term_memory_block"]
+    assert captured_context["system_guidance"].startswith("system guidance for")
