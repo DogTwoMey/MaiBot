@@ -46,6 +46,7 @@
 | [D11](#d11-bot-级-user-id-感知) | Bot 级 user_id 感知（同 id 不同名问题） | `src/maisaka/runtime.py` | 已落地 |
 | [D12](#d12-启发自-fork-但上游已官方支持的项) | 启发自 fork、但上游已官方支持的项 | 多处 | 合并时需转用上游方案 |
 | [D13](#d13-已收敛的表达与黑话学习开关修复) | 已收敛的表达与黑话学习开关修复 | `src/maisaka/runtime.py` | 已转用 upstream 拆分方案 |
+| [D14](#d14-德蕾琪娜自我视觉识别插件分支) | 德蕾琪娜自我视觉识别插件分支 | `plugins/sengokucola_self-identity-plugin/` | 插件分支落地 |
 
 ---
 
@@ -206,6 +207,21 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 **fork 方案**：`src/maisaka/runtime.py` 在构造 `SessionMessage` 时额外传 `user_id=user_info.user_id`，下游消息处理 / 人物识别使用该字段做主键。
 
 **是否要上游化**：值得，但需要协调 adapter 侧同步传递 user_id。
+
+---
+
+## D14: 德蕾琪娜自我视觉识别插件分支
+
+**起因**：仅靠 prompt 做“这张图是不是我”的判断时容易两头出错：过严时会把已经在本地图库中的德蕾琪娜二创图否掉，过宽时又会把普通银发少女认作自己。
+
+**fork 方案**：在 `plugins/sengokucola_self-identity-plugin/` 的 `codex/self-visual-identity` 分支上扩展插件工具，而不是改主程序视觉链路：
+
+- 新增 `identify_self_in_image` 工具：先对目标图与 `self_image/` 原图做 SHA1 精确匹配，再分批调用 VLM 与图库缩略图比对。
+- VLM prompt 主要比较二次元角色设计锚点：发型轮廓、刘海遮挡、侧马尾/双马尾/发束结构、发饰位置、服装剪影、饰件位置、主配色，以及构造体/龙/花形意象；发色和幼态只作为辅助。
+- 工具返回 `confirmed / likely / possible / unlikely / not_self`，由 Maisaka planner/reply prompt 决定自然回复语气。
+- 本地 `bot_config.toml` 和 `data/custom_prompts/zh-CN/*` 已调整为：需要自我图像判断时优先调用工具；单凭银发/幼态不强认，但多项核心视觉锚点接近时不再因为缺少标题文字直接否定。
+
+**合并策略**：主程序上游合并时不应把这项当成核心 runtime 分歧；它是本地插件仓库分支能力。若 upstream 后续提供官方视觉 identity stage，可以把 prompt 调用迁移到官方能力，并保留 `self_image` 图库作为参考数据源。
 
 ---
 
