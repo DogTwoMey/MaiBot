@@ -217,8 +217,8 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 **fork 方案**：在 `plugins/sengokucola_self-identity-plugin/` 的 `codex/self-visual-identity` 分支上扩展插件工具，而不是改主程序视觉链路：
 
 - 新增 `identify_self_in_image` 工具：先对目标图与 `self_image/` 原图做 SHA1 精确匹配，再分批调用 VLM 与图库缩略图比对。
-- VLM prompt 主要比较二次元角色设计锚点：发型轮廓、刘海遮挡、侧马尾/双马尾/发束结构、发饰位置、服装剪影、饰件位置、主配色，以及构造体/龙/花形意象；发色和幼态只作为辅助。
-- 工具返回 `confirmed / likely / possible / unlikely / not_self`，由 Maisaka planner/reply prompt 决定自然回复语气。
+- VLM prompt 必须分别输出三项评分：发型/发色/发饰、瞳色、服装/装束结构；闭眼或低清时瞳色不可编造，普通战术服、枪械、兔主题、银白发和幼态只作为弱辅助或负向区分线索。
+- 工具返回 `confirmed / likely / possible / unlikely / not_self`，并携带 `component_scores`；插件侧会按分项阈值二次收紧模型结论，避免单项相似被抬高成确认。
 - 本地 `bot_config.toml` 和 `data/custom_prompts/zh-CN/*` 已调整为：需要自我图像判断时优先调用工具；单凭银发/幼态不强认，但多项核心视觉锚点接近时不再因为缺少标题文字直接否定。
 
 **合并策略**：主程序上游合并时不应把这项当成核心 runtime 分歧；它是本地插件仓库分支能力。若 upstream 后续提供官方视觉 identity stage，可以把 prompt 调用迁移到官方能力，并保留 `self_image` 图库作为参考数据源。
