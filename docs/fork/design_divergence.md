@@ -47,6 +47,7 @@
 | [D12](#d12-启发自-fork-但上游已官方支持的项) | 启发自 fork、但上游已官方支持的项 | 多处 | 合并时需转用上游方案 |
 | [D13](#d13-已收敛的表达与黑话学习开关修复) | 已收敛的表达与黑话学习开关修复 | `src/maisaka/runtime.py` | 已转用 upstream 拆分方案 |
 | [D14](#d14-德蕾琪娜自我视觉识别插件分支) | 德蕾琪娜自我视觉识别插件分支 | `plugins/sengokucola_self-identity-plugin/` | 插件分支落地 |
+| [D15](#d15-消息合批静默窗口与最大等待上限) | 消息合批静默窗口与最大等待上限 | `src/maisaka/runtime.py` + `ChatReplyTimingConfig` | 已落地 |
 
 ---
 
@@ -222,6 +223,23 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 - 本地 `bot_config.toml` 和 `data/custom_prompts/zh-CN/*` 已调整为：需要自我图像判断时优先调用工具；单凭银发/幼态不强认，但多项核心视觉锚点接近时不再因为缺少标题文字直接否定。
 
 **合并策略**：主程序上游合并时不应把这项当成核心 runtime 分歧；它是本地插件仓库分支能力。若 upstream 后续提供官方视觉 identity stage，可以把 prompt 调用迁移到官方能力，并保留 `self_image` 图库作为参考数据源。
+
+---
+
+## D15: 消息合批静默窗口与最大等待上限
+
+**起因**：用户连续发送“图片/链接/卡片 + 补充文字”时，上游默认会在第一条消息到达后立即进入 Planner，容易把补充说明放到下一轮处理。典型表现是先对无文字图片做自我辨识或猜测，随后才看到用户紧跟的角色名、出处或问题。
+
+**fork 方案**：在 [`src/maisaka/runtime.py`](../../src/maisaka/runtime.py) 为消息触发的 Planner 轮次增加可配置的合批等待：
+
+- `message_debounce_seconds`：最后一条消息后安静多久再进入 Planner，默认 `4.0` 秒。
+- `message_debounce_max_seconds`：同一波连续发言最多等待多久，默认 `10.0` 秒，避免群聊高活跃时静默窗口被无限刷新导致 bot 无暇回复。
+- 第一条唤醒消息也会标记静默等待，不再只在运行中被打断时等待。
+- 等待状态清理时同步清除 `_message_debounce_started_at`，防止下一波消息继承旧时间戳。
+
+**前端配置**：两个字段都维护在 [`ChatReplyTimingConfig`](../../src/config/official_configs.py) 中，并带有 `json_schema_extra`，WebUI 通过配置 schema 自动展示在“聊天 / 什么时候发言”的高级设置里。`pytests/webui/test_config_schema.py` 覆盖了字段、控件类型、图标和约束范围。
+
+**合并策略**：如果 upstream 后续实现了类似消息批处理机制，优先复用 upstream 调度入口，但保留“静默窗口 + 最大等待上限”的双阈值语义；不要退回只按最后一条消息无限刷新等待的实现。
 
 ---
 
