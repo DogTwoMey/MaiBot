@@ -557,6 +557,46 @@ class ChatReplyTimingConfig(ConfigBase):
     )
     """控制新消息何时进入 Planner。"""
 
+    message_debounce_seconds: float = Field(
+        default=4.0,
+        ge=0,
+        le=30,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "消息静默窗口",
+                "en_US": "Message quiet window",
+                "ja_JP": "メッセージ静穏待機",
+            },
+            "x-widget": "input",
+            "x-icon": "timer",
+            "x-layout": "inline-right",
+            "x-input-width": "7.5rem",
+            "x-description-display": "icon",
+            "advanced": True,
+        },
+    )
+    """收到新消息后等待多少秒没有新消息再进入 Planner，用于合并连续发送的图片、补充说明和链接。"""
+
+    message_debounce_max_seconds: float = Field(
+        default=10.0,
+        ge=0,
+        le=120,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "消息合并最长等待",
+                "en_US": "Max message merge wait",
+                "ja_JP": "メッセージ統合の最長待機",
+            },
+            "x-widget": "input",
+            "x-icon": "timer-reset",
+            "x-layout": "inline-right",
+            "x-input-width": "7.5rem",
+            "x-description-display": "icon",
+            "advanced": True,
+        },
+    )
+    """连续有人发言时，最多等待多少秒就进入 Planner，避免消息静默窗口被无限刷新。"""
+
     planner_interrupt_max_consecutive_count: int = Field(
         default=0,
         ge=0,

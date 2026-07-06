@@ -170,8 +170,8 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         self._internal_loop_task: Optional[asyncio.Task] = None
         self._message_turn_scheduled = False
         self._deferred_message_turn_task: Optional[asyncio.Task[None]] = None
-        self._message_debounce_seconds = 1.0
         self._message_debounce_required = False
+        self._message_debounce_started_at: Optional[float] = None
         self._last_message_received_at = 0.0
         self._last_external_message_received_at: Optional[float] = None
         self._talk_frequency_adjust = 1.0
@@ -846,8 +846,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             asyncio.create_task(self._reply_effect_tracker.observe_user_message(message))
         if not self._should_continue_after_focus_gate(message):
             return
-        if self._agent_state == self._STATE_RUNNING:
-            self._mark_message_debounce_required()
+        self._mark_message_debounce_required()
         self._request_planner_interrupt_for_message(message)
         if self._running:
             self._schedule_message_turn()
@@ -1164,12 +1163,15 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
     def _mark_message_debounce_required(self) -> None:
         """标记下一轮消息处理前需要等待静默窗口。"""
 
+        if not self._message_debounce_required:
+            self._message_debounce_started_at = time.time()
         self._message_debounce_required = True
 
     def _clear_message_debounce_required(self) -> None:
         """清理消息静默窗口等待标记。"""
 
         self._message_debounce_required = False
+        self._message_debounce_started_at = None
 
     async def _schedule_deferred_message_turn(self, delay_seconds: float) -> None:
         """在预计满足空窗补偿条件时再次检查是否应触发循环。"""
@@ -1667,16 +1669,23 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         if not self._message_debounce_required:
             return
 
-        if self._message_debounce_seconds <= 0:
+        debounce_seconds = max(0.0, float(global_config.chat.reply_timing.message_debounce_seconds))
+        if debounce_seconds <= 0:
             self._clear_message_debounce_required()
             return
 
+        max_wait_seconds = max(0.0, float(global_config.chat.reply_timing.message_debounce_max_seconds))
         while self._running:
-            elapsed = time.time() - self._last_message_received_at
-            remaining = self._message_debounce_seconds - elapsed
-            if remaining <= 0:
+            now = time.time()
+            quiet_remaining = debounce_seconds - (now - self._last_message_received_at)
+            if max_wait_seconds > 0 and self._message_debounce_started_at is not None:
+                max_wait_remaining = max_wait_seconds - (now - self._message_debounce_started_at)
+                if max_wait_remaining <= 0:
+                    break
+                quiet_remaining = min(quiet_remaining, max_wait_remaining)
+            if quiet_remaining <= 0:
                 break
-            await asyncio.sleep(remaining)
+            await asyncio.sleep(quiet_remaining)
 
         self._clear_message_debounce_required()
 

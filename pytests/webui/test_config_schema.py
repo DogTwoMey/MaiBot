@@ -98,6 +98,29 @@ def test_config_subtab_metadata_is_exposed():
     assert jargon_schema.get("uiSubLabel") == "黑话"
 
 
+def test_message_debounce_fields_are_exposed_to_webui():
+    """消息合批时间应通过配置 schema 暴露给前端。"""
+    schema = ConfigSchemaGenerator.generate_schema(ChatConfig)
+    fields = {field["name"]: field for field in _get_reply_timing_schema(schema)["fields"]}
+
+    quiet_window = fields["message_debounce_seconds"]
+    max_wait = fields["message_debounce_max_seconds"]
+
+    assert quiet_window["type"] == "number"
+    assert quiet_window.get("x-widget") == "input"
+    assert quiet_window.get("x-icon") == "timer"
+    assert quiet_window.get("advanced") is True
+    assert quiet_window["minValue"] == 0
+    assert quiet_window["maxValue"] == 30
+
+    assert max_wait["type"] == "number"
+    assert max_wait.get("x-widget") == "input"
+    assert max_wait.get("x-icon") == "timer-reset"
+    assert max_wait.get("advanced") is True
+    assert max_wait["minValue"] == 0
+    assert max_wait["maxValue"] == 120
+
+
 def test_field_without_extra_metadata():
     """Test that fields without json_schema_extra still generate valid schema."""
     class PlainExampleConfig(ConfigBase):

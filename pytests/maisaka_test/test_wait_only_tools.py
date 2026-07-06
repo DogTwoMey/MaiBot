@@ -17,6 +17,7 @@ from src.common.data_models.message_component_data_model import AtComponent, Tex
 from src.config.config import global_config
 from src.core.tooling import ToolAvailabilityContext, ToolInvocation
 
+import src.maisaka.runtime as maisaka_runtime_module
 import src.maisaka.turn_scheduler as turn_scheduler_module
 from src.maisaka.builtin_tool import reply as reply_tool_module
 from src.maisaka.builtin_tool import get_builtin_tools
@@ -27,6 +28,7 @@ from src.maisaka.builtin_tool.wait import handle_tool as handle_wait_tool
 from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.mode_policy import is_idle_cycle_reason, is_reply_necessity_trigger_enabled
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
+from src.maisaka.runtime import MaisakaHeartFlowChatting
 from src.maisaka.turn_scheduler import MessageTurnScheduler
 
 
@@ -546,3 +548,35 @@ async def test_wait_tool_rejects_after_consecutive_limit(monkeypatch) -> None:
     assert result.metadata.get("wait_limit_reached") is True
     assert result.metadata.get("wait_rest") is True
     assert result.metadata.get("consecutive_wait_count") == 5
+
+
+@pytest.mark.asyncio
+async def test_message_debounce_has_max_wait_cap(monkeypatch) -> None:
+    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_seconds", 4.0, raising=False)
+    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_max_seconds", 10.0, raising=False)
+
+    runtime = MaisakaHeartFlowChatting.__new__(MaisakaHeartFlowChatting)
+    runtime._running = True
+    runtime._message_debounce_required = True
+    runtime._message_debounce_started_at = 0.0
+    runtime._last_message_received_at = 9.0
+
+    now = 9.0
+    sleeps: list[float] = []
+
+    def fake_time() -> float:
+        return now
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    monkeypatch.setattr(maisaka_runtime_module.time, "time", fake_time)
+    monkeypatch.setattr(maisaka_runtime_module.asyncio, "sleep", fake_sleep)
+
+    await runtime._wait_for_message_quiet_period()
+
+    assert sleeps == [1.0]
+    assert runtime._message_debounce_required is False
+    assert runtime._message_debounce_started_at is None
