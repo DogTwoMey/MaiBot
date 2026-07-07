@@ -14,6 +14,7 @@ from src.common.logger import get_logger
 from src.common.prompt_i18n import load_prompt
 from src.common.utils.utils_config import ChatConfigUtils
 from src.config.config import global_config
+from src.config.official_configs import build_personality_emotion_suffix
 from src.core.tooling import ToolAvailabilityContext, ToolRegistry
 from src.llm_models.model_client.base_client import BaseClient
 from src.llm_models.payload_content.message import Message, MessageBuilder, RoleType
@@ -30,7 +31,9 @@ from src.plugin_runtime.hook_schema_utils import build_object_schema
 from src.plugin_runtime.host.hook_spec_registry import HookSpec, HookSpecRegistry
 from src.services.llm_service import LLMServiceClient
 
+from src.maisaka.attention_drift import build_attention_drift_prompt_block
 from src.maisaka.builtin_tool import get_builtin_tools
+from src.maisaka.context.history import normalize_tool_call_result_pairs
 from src.maisaka.context.messages import (
     AssistantMessage,
     LLMContextMessage,
@@ -604,6 +607,9 @@ class MaisakaChatLoopService:
                 identity_line = f"{bot_name}是{prompt_personality}"
 
             prompt_lines = [identity_line]
+            emotion_suffix = build_personality_emotion_suffix(global_config.experimental.emotion_trait)
+            if emotion_suffix:
+                prompt_lines.append(emotion_suffix)
             if alias_names:
                 prompt_lines.append(f"{bot_name}的昵称还有{','.join(alias_names)}")
             return "\n".join(prompt_lines)
