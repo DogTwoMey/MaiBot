@@ -6,6 +6,8 @@ from .models import MigrationExecutionContext
 
 logger = get_logger("database_migration")
 
+MAI_MESSAGES_PLATFORM_MESSAGE_ID_INDEX = "ix_mai_messages_platform_message_id"
+
 
 def migrate_v35_to_v36(context: MigrationExecutionContext) -> None:
     """创建 ``maisaka_monitor_events`` 表，用于支持麦麦观察离线补漏。"""
@@ -65,4 +67,13 @@ def create_maisaka_monitor_events_table(context: MigrationExecutionContext) -> N
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_maisaka_monitor_events_created_at "
         "ON maisaka_monitor_events (created_at)"
+    )
+
+
+def create_mai_messages_platform_message_id_index(context: MigrationExecutionContext) -> None:
+    """创建消息平台与消息 ID 复合索引，避免按平台索引回表扫描大量消息。"""
+
+    context.connection.exec_driver_sql(
+        f"CREATE INDEX IF NOT EXISTS {MAI_MESSAGES_PLATFORM_MESSAGE_ID_INDEX} "
+        "ON mai_messages (platform, message_id)"
     )
