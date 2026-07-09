@@ -46,12 +46,16 @@ vi.mock('@/lib/plugin-api', () => ({
   getPluginConfigSchema: vi.fn(),
   getPluginConfig: vi.fn(),
   getPluginConfigRaw: vi.fn(),
+  getPluginConfigBundle: vi.fn(),
   updatePluginConfig: vi.fn(),
   updatePluginConfigRaw: vi.fn(),
   resetPluginConfig: vi.fn(),
   togglePlugin: vi.fn(),
   uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),
+  getLocalPluginChangelog: vi.fn(),
+  getLocalPluginReadme: vi.fn(),
+  getPluginRuntimeComponents: vi.fn(),
 }))
 
 function makePlugin(id: string, name: string) {
@@ -72,17 +76,35 @@ function makePlugin(id: string, name: string) {
   }
 }
 
+function mockConfigBundle(
+  schema: Record<string, unknown>,
+  config: Record<string, unknown>,
+  rawConfig = 'key = "value"\n'
+) {
+  vi.mocked(pluginApi.getPluginConfigBundle).mockResolvedValue({
+    schema,
+    config,
+    rawConfig,
+  } as never)
+}
+
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn()
   vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([makePlugin('test.emoji', 'Emoji Plugin')] as never)
   vi.mocked(pluginApi.fetchPluginList).mockResolvedValue([] as never)
-  vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+  const defaultSchema = {
     plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' }, sections: {}, layout: { type: 'auto' },
-  } as never)
+  }
+  vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue(defaultSchema as never)
   vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({} as never)
   vi.mocked(pluginApi.getPluginConfigRaw).mockResolvedValue('key = "value"\n' as never)
+  mockConfigBundle(defaultSchema, {})
   vi.mocked(pluginApi.updatePluginConfigRaw).mockResolvedValue({ success: true, message: 'ok' } as never)
   vi.mocked(pluginApi.updatePluginConfig).mockResolvedValue({ success: true, message: 'ok' } as never)
   vi.mocked(pluginApi.togglePlugin).mockResolvedValue({ success: true, enabled: false, message: '已禁用插件' } as never)
+  vi.mocked(pluginApi.getLocalPluginChangelog).mockResolvedValue(null as never)
+  vi.mocked(pluginApi.getLocalPluginReadme).mockResolvedValue(null as never)
+  vi.mocked(pluginApi.getPluginRuntimeComponents).mockResolvedValue([] as never)
 })
 
 describe('PluginConfigPage 特征化', () => {
@@ -103,9 +125,7 @@ describe('PluginConfigPage 特征化', () => {
     render(<PluginConfigPage />)
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
 
-    await waitFor(() => expect(pluginApi.getPluginConfigSchema).toHaveBeenCalledWith('test.emoji'))
-    expect(pluginApi.getPluginConfig).toHaveBeenCalledWith('test.emoji')
-    expect(pluginApi.getPluginConfigRaw).toHaveBeenCalledWith('test.emoji')
+    await waitFor(() => expect(pluginApi.getPluginConfigBundle).toHaveBeenCalledWith('test.emoji'))
     expect(await screen.findByRole('button', { name: /保存/ })).toBeInTheDocument()
   })
 
@@ -113,7 +133,7 @@ describe('PluginConfigPage 特征化', () => {
     const user = userEvent.setup()
     render(<PluginConfigPage />)
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('button', { name: /禁用/ }))
+    await user.click(await screen.findByRole('switch', { name: /禁用插件/ }))
     await waitFor(() => expect(pluginApi.togglePlugin).toHaveBeenCalledWith('test.emoji'))
   })
 
@@ -132,7 +152,7 @@ describe('PluginConfigPage 特征化', () => {
 
   it('可视化模式下将 multiple=true 的 select 字段保存为字符串数组', async () => {
     const user = userEvent.setup()
-    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+    const schema = {
       plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' },
       sections: {
         batch: {
@@ -159,10 +179,13 @@ describe('PluginConfigPage 特征化', () => {
         },
       },
       layout: { type: 'auto', tabs: [] },
-    } as never)
-    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({
+    }
+    const config = {
       batch: { push_format: [] },
-    } as never)
+    }
+    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue(schema as never)
+    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue(config as never)
+    mockConfigBundle(schema, config)
 
     render(<PluginConfigPage />)
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
@@ -181,7 +204,7 @@ describe('PluginConfigPage 特征化', () => {
   })
 
   it('可视化模式下将 disabled 的多选字段渲染为禁用态', async () => {
-    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+    const schema = {
       plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' },
       sections: {
         batch: {
@@ -208,10 +231,13 @@ describe('PluginConfigPage 特征化', () => {
         },
       },
       layout: { type: 'auto', tabs: [] },
-    } as never)
-    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({
+    }
+    const config = {
       batch: { push_format: ['image'] },
-    } as never)
+    }
+    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue(schema as never)
+    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue(config as never)
+    mockConfigBundle(schema, config)
 
     render(<PluginConfigPage />)
     await userEvent.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))

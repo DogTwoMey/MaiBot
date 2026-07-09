@@ -53,6 +53,7 @@ logger = get_logger("replyer")
 
 REPLYER_MAX_HOOK_RETRIES = 3
 TOOL_RESULT_MEDIA_SOURCE_KIND = "tool_result_media"
+DUPLICATE_TARGET_REPLY_REMINDER_ARG = "_duplicate_target_reply_reminder"
 
 
 @dataclass
@@ -546,6 +547,7 @@ class BaseMaisakaReplyGenerator:
         reply_reason: str,
         expression_habits: str = "",
         stream_id: Optional[str] = None,
+        reference_info: str = "",
     ) -> str:
         del reply_message
         del reply_reason
@@ -628,6 +630,11 @@ class BaseMaisakaReplyGenerator:
         target_message_block = self._build_target_message_block(reply_message)
         if target_message_block:
             sections.append(target_message_block)
+        duplicate_target_reply_reminder = str(
+            (reply_tool_args or {}).get(DUPLICATE_TARGET_REPLY_REMINDER_ARG) or ""
+        ).strip()
+        if duplicate_target_reply_reminder:
+            sections.append(duplicate_target_reply_reminder)
         reply_reference_lines = self._build_reply_reference_lines(
             reply_reason=reply_reason,
             reply_guide=reply_guide,
@@ -713,6 +720,7 @@ class BaseMaisakaReplyGenerator:
             reply_reason=reply_reason,
             expression_habits=expression_habits,
             stream_id=stream_id,
+            reference_info=str((reply_tool_args or {}).get("reference_info") or ""),
         )
         final_user_message = self._build_final_user_message(
             chat_history=chat_history,
