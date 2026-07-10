@@ -9,6 +9,8 @@ import * as pluginApi from '@/lib/plugin-api'
 
 const toastMock = vi.fn()
 
+Element.prototype.scrollIntoView = vi.fn()
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -43,6 +45,7 @@ vi.mock('@/components/ListFieldEditor', () => ({ ListFieldEditor: () => <div dat
 vi.mock('@/lib/plugin-api', () => ({
   getInstalledPlugins: vi.fn(),
   fetchPluginList: vi.fn(),
+  getPluginConfigBundle: vi.fn(),
   getPluginConfigSchema: vi.fn(),
   getPluginConfig: vi.fn(),
   getPluginConfigRaw: vi.fn(),
@@ -75,9 +78,15 @@ function makePlugin(id: string, name: string) {
 beforeEach(() => {
   vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([makePlugin('test.emoji', 'Emoji Plugin')] as never)
   vi.mocked(pluginApi.fetchPluginList).mockResolvedValue([] as never)
-  vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+  const defaultSchema = {
     plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' }, sections: {}, layout: { type: 'auto' },
+  }
+  vi.mocked(pluginApi.getPluginConfigBundle).mockResolvedValue({
+    schema: defaultSchema,
+    config: {},
+    rawConfig: 'key = "value"\n',
   } as never)
+  vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue(defaultSchema as never)
   vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({} as never)
   vi.mocked(pluginApi.getPluginConfigRaw).mockResolvedValue('key = "value"\n' as never)
   vi.mocked(pluginApi.updatePluginConfigRaw).mockResolvedValue({ success: true, message: 'ok' } as never)
@@ -103,17 +112,15 @@ describe('PluginConfigPage 特征化', () => {
     render(<PluginConfigPage />)
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
 
-    await waitFor(() => expect(pluginApi.getPluginConfigSchema).toHaveBeenCalledWith('test.emoji'))
-    expect(pluginApi.getPluginConfig).toHaveBeenCalledWith('test.emoji')
-    expect(pluginApi.getPluginConfigRaw).toHaveBeenCalledWith('test.emoji')
-    expect(await screen.findByRole('button', { name: /保存/ })).toBeInTheDocument()
+    await waitFor(() => expect(pluginApi.getPluginConfigBundle).toHaveBeenCalledWith('test.emoji'))
+    expect(await screen.findByRole('heading', { name: /Emoji Plugin/ })).toBeInTheDocument()
   })
 
   it('编辑器内启停插件调用 togglePlugin', async () => {
     const user = userEvent.setup()
     render(<PluginConfigPage />)
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('button', { name: /禁用/ }))
+    await user.click(await screen.findByRole('switch'))
     await waitFor(() => expect(pluginApi.togglePlugin).toHaveBeenCalledWith('test.emoji'))
   })
 
@@ -132,7 +139,7 @@ describe('PluginConfigPage 特征化', () => {
 
   it('可视化模式下将 multiple=true 的 select 字段保存为字符串数组', async () => {
     const user = userEvent.setup()
-    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+    const schema = {
       plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' },
       sections: {
         batch: {
@@ -159,9 +166,11 @@ describe('PluginConfigPage 特征化', () => {
         },
       },
       layout: { type: 'auto', tabs: [] },
-    } as never)
-    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({
-      batch: { push_format: [] },
+    }
+    vi.mocked(pluginApi.getPluginConfigBundle).mockResolvedValue({
+      schema,
+      config: { batch: { push_format: [] } },
+      rawConfig: 'key = "value"\n',
     } as never)
 
     render(<PluginConfigPage />)
@@ -181,7 +190,7 @@ describe('PluginConfigPage 特征化', () => {
   })
 
   it('可视化模式下将 disabled 的多选字段渲染为禁用态', async () => {
-    vi.mocked(pluginApi.getPluginConfigSchema).mockResolvedValue({
+    const schema = {
       plugin_info: { name: 'Emoji Plugin', version: '1.0.0', description: 'desc' },
       sections: {
         batch: {
@@ -208,9 +217,11 @@ describe('PluginConfigPage 特征化', () => {
         },
       },
       layout: { type: 'auto', tabs: [] },
-    } as never)
-    vi.mocked(pluginApi.getPluginConfig).mockResolvedValue({
-      batch: { push_format: ['image'] },
+    }
+    vi.mocked(pluginApi.getPluginConfigBundle).mockResolvedValue({
+      schema,
+      config: { batch: { push_format: ['image'] } },
+      rawConfig: 'key = "value"\n',
     } as never)
 
     render(<PluginConfigPage />)
