@@ -13,7 +13,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 import json
 import re
@@ -629,7 +629,11 @@ class PluginManifest(_StrictManifestModel):
     capabilities: List[str] = Field(description="插件声明的能力请求")
     i18n: ManifestI18n = Field(description="国际化配置")
     id: str = Field(description="稳定插件 ID")
-    plugin_type: str = Field(default="extension", description="插件类型")
+    plugin_type: str = Field(
+        default="extension",
+        validation_alias=AliasChoices("plugin_type", "type"),
+        description="插件类型",
+    )
     display: Optional[ManifestDisplay] = Field(default=None, description="插件展示元信息")
     changelog: Optional[str] = Field(default=None, description="更新日志地址或插件内相对路径")
 
