@@ -772,12 +772,14 @@ class ChatSummaryWritebackService:
         私聊节奏短、消息数本身就少，使用较低阈值（默认 4）确保私聊里
         提到的事实能尽快被 SummaryImporter 抽取并入库。群聊沿用较高阈值。
         """
+        default_threshold = max(1, int(global_config.a_memorix.integration.chat_summary_writeback_message_threshold))
         if message is not None and not cls._extract_session_group_id(message):
-            return max(
+            private_threshold = max(
                 1,
                 int(getattr(global_config.a_memorix.integration, "chat_summary_writeback_private_threshold", 4) or 4),
             )
-        return max(1, int(global_config.a_memorix.integration.chat_summary_writeback_message_threshold))
+            return min(default_threshold, private_threshold)
+        return default_threshold
 
     @staticmethod
     def _context_length() -> int:

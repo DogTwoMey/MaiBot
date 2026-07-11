@@ -755,8 +755,8 @@ class SummaryImporter:
             decoded = json.loads(f'"{summary}"')
             if isinstance(decoded, str) and decoded.strip():
                 summary = decoded
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"summary 字段反转义失败，保留原始抽取结果: {exc}")
         return {"summary": summary, "entities": [], "relations": []}
 
     async def _execute_import(

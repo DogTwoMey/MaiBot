@@ -204,6 +204,54 @@ class SearchExecutionService:
         return hashlib.sha1(payload_json.encode("utf-8")).hexdigest()
 
     @staticmethod
+    def _preserve_exact_content_matches(
+        original: List[RetrievalResult],
+        filtered: List[RetrievalResult],
+        query: str,
+    ) -> List[RetrievalResult]:
+        clean_query = str(query or "").strip()
+        if len(clean_query) < 4:
+            return filtered
+
+        folded_query = clean_query.casefold()
+        query_terms = [part.casefold() for part in clean_query.split() if len(part.strip()) >= 4]
+        original_order = {
+            (str(item.hash_value or ""), str(item.result_type or ""), str(item.source or "")): index
+            for index, item in enumerate(original)
+        }
+
+        def match_weight(item: RetrievalResult) -> int:
+            content = str(item.content or "").casefold()
+            weight = 1 if folded_query in content else 0
+            if query_terms:
+                weight += sum(1 for term in query_terms if term in content)
+            return weight
+
+        preserved = list(filtered)
+        seen = {
+            (str(item.hash_value or ""), str(item.result_type or ""), str(item.source or ""))
+            for item in preserved
+        }
+        for item in original:
+            key = (str(item.hash_value or ""), str(item.result_type or ""), str(item.source or ""))
+            if key in seen:
+                continue
+            if match_weight(item) <= 0:
+                continue
+            preserved.append(item)
+            seen.add(key)
+        return sorted(
+            preserved,
+            key=lambda item: (
+                -match_weight(item),
+                original_order.get(
+                    (str(item.hash_value or ""), str(item.result_type or ""), str(item.source or "")),
+                    len(original_order),
+                ),
+            ),
+        )
+
+    @staticmethod
     async def execute(
         *,
         retriever: Any,
@@ -320,7 +368,12 @@ class SearchExecutionService:
                     should_apply_threshold = False
 
                 if should_apply_threshold:
-                    retrieved = threshold_filter.filter(retrieved)
+                    pre_threshold_results = list(retrieved)
+                    retrieved = SearchExecutionService._preserve_exact_content_matches(
+                        original=pre_threshold_results,
+                        filtered=threshold_filter.filter(retrieved),
+                        query=query,
+                    )
 
                 if (
                     reinforce_access
