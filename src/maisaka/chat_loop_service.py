@@ -8,13 +8,13 @@ import asyncio
 import time
 
 from rich.console import RenderableType
+
 from src.common.data_models.llm_service_data_models import LLMGenerationOptions
 from src.common.i18n import get_locale
 from src.common.logger import get_logger
 from src.common.prompt_i18n import load_prompt
 from src.common.utils.utils_config import ChatConfigUtils
 from src.config.config import global_config
-from src.config.official_configs import build_personality_emotion_suffix
 from src.core.tooling import ToolAvailabilityContext, ToolRegistry
 from src.llm_models.model_client.base_client import BaseClient
 from src.llm_models.payload_content.message import Message, MessageBuilder, RoleType
@@ -502,10 +502,10 @@ class MaisakaChatLoopService:
         self._llm_chat_clients: dict[str, LLMServiceClient] = {}
 
     @property
-    def personality_prompt(self) -> str:
-        """返回当前人格提示词。"""
+    def behavior_style_prompt(self) -> str:
+        """返回 Planner 使用的行为风格提示词。"""
 
-        return self._build_personality_prompt()
+        return global_config.personality.behavior_style.strip()
 
     @staticmethod
     def _resolve_llm_request_type(request_kind: str) -> str:
@@ -612,6 +612,32 @@ class MaisakaChatLoopService:
             return "\n".join(prompt_lines)
         except Exception:
             return "麦麦是人类。"
+    @staticmethod
+    def _log_prompt_cache_usage(
+        *,
+        request_kind: str,
+        prompt_tokens: int,
+        prompt_cache_hit_tokens: int,
+        prompt_cache_miss_tokens: int,
+    ) -> None:
+        """记录模型 KV cache 命中情况。"""
+
+        if prompt_cache_miss_tokens == 0 and prompt_cache_hit_tokens > 0:
+            prompt_cache_miss_tokens = max(prompt_tokens - prompt_cache_hit_tokens, 0)
+        prompt_cache_total_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens
+        prompt_cache_hit_rate = (
+            prompt_cache_hit_tokens / prompt_cache_total_tokens * 100
+            if prompt_cache_total_tokens > 0
+            else 0
+        )
+        logger.info(
+            "Planner缓存："
+            f"{request_kind}, "
+            f"命中={prompt_cache_hit_tokens}, "
+            f"miss_tokens={prompt_cache_miss_tokens}, "
+            f"hit_rate={prompt_cache_hit_rate:.2f}%, "
+            f"prompt_tokens={prompt_tokens}"
+        )
 
     async def ensure_chat_prompt_loaded(self, tools_section: str = "") -> None:
         """确保主聊天提示词已经加载完成。
@@ -625,10 +651,7 @@ class MaisakaChatLoopService:
     def _build_chat_system_prompt(self, tools_section: str = "") -> str:
         """基于当前配置实时构造主聊天系统提示词。"""
 
-        try:
-            return load_prompt(self._get_chat_prompt_name(), **self.build_prompt_template_context(tools_section))
-        except Exception:
-            return f"{self.personality_prompt}\n\nYou are a helpful AI assistant."
+        return load_prompt(self._get_chat_prompt_name(), **self.build_prompt_template_context(tools_section))
 
     @staticmethod
     def _build_planner_final_assistant_reminder() -> str:
@@ -648,9 +671,9 @@ class MaisakaChatLoopService:
 
         return {
             "bot_name": global_config.bot.nickname,
+            "behavior_style": self.behavior_style_prompt,
             "file_tools_section": tools_section,
             "group_chat_attention_block": self._build_group_chat_attention_block(),
-            "identity": self.personality_prompt,
             "planner_idle_focus_rule": self._build_planner_idle_focus_rule(),
             "query_memory_rule": self._build_query_memory_rule(),
         }
