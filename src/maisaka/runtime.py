@@ -377,13 +377,17 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         last_context_time = restored_history[-1].timestamp
         elapsed_seconds = max(0.0, (now - last_context_time).total_seconds())
         elapsed_text = MaisakaHeartFlowChatting._format_context_restore_elapsed(elapsed_seconds)
-        wakeup_text = MaisakaHeartFlowChatting._build_context_restore_wakeup_text(elapsed_seconds, elapsed_text)
+        restore_status_text = MaisakaHeartFlowChatting._build_context_restore_status_text(
+            elapsed_seconds,
+            elapsed_text,
+        )
         content = (
             "这是启动时恢复的历史上下文提醒，不代表当前用户刚刚发来新消息。\n"
             f"距离上次关机前最后一条可恢复聊天记录已经过去 {elapsed_text}。\n"
-            f"{wakeup_text}\n"
+            f"{restore_status_text}\n"
             "前面恢复出来的历史消息是你上次关机前记得的聊天内容；"
-            "回复时请结合实际间隔，短间隔自然续聊，长间隔可以表现出刚醒来或重新上线后的状态。"
+            "回复时优先处理当前消息。只有用户询问在线状态、离线间隔，或当前话题确实需要解释时间差时，"
+            "才自然提到刚才系统离线过；不要把这段离线间隔演成睡眠、苏醒或头脑不清醒的状态。"
         )
         return ReferenceMessage(
             content=content,
@@ -422,18 +426,18 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         return f"{days} 天 {hours} 小时"
 
     @staticmethod
-    def _build_context_restore_wakeup_text(elapsed_seconds: float, elapsed_text: str) -> str:
-        """根据离线间隔生成不同强度的恢复描述。"""
+    def _build_context_restore_status_text(elapsed_seconds: float, elapsed_text: str) -> str:
+        """根据离线间隔生成中性的恢复描述。"""
 
         if elapsed_seconds < CONTEXT_RESTORE_SHORT_RESTART_SECONDS:
             return "你只是短暂重启了一下，几乎没有明显中断，可以自然接上刚才的话题。"
         if elapsed_seconds < CONTEXT_RESTORE_SHORT_OFFLINE_SECONDS:
-            return f"你短暂离线了 {elapsed_text}，仍然清楚记得刚才的聊天内容。"
+            return f"系统短暂离线了 {elapsed_text}，仍可参考刚才的聊天内容。"
         if elapsed_seconds < CONTEXT_RESTORE_LONG_SLEEP_SECONDS:
-            return f"你离线休息了 {elapsed_text}，醒来后仍记得上次关机前的聊天内容。"
+            return f"系统离线了 {elapsed_text}，仍可参考上次关机前的聊天内容。"
         if elapsed_seconds < CONTEXT_RESTORE_DAY_SECONDS:
-            return f"你沉睡了 {elapsed_text}，重新上线后仍记得上次关机前的聊天内容。"
-        return f"你已经离线了 {elapsed_text}，像沉睡了一段时间；恢复后仍记得上次关机前的聊天内容。"
+            return f"系统离线了 {elapsed_text}，恢复后仍可参考上次关机前的聊天内容。"
+        return f"系统已经离线 {elapsed_text}；恢复后仍可参考上次关机前的聊天内容。"
 
     @staticmethod
     def _resolve_restored_message_source_kind(message: SessionMessage) -> str:
@@ -926,11 +930,8 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
     def _get_effective_reply_frequency(self) -> float:
         """返回当前会话生效的回复频率。"""
-        if self._is_focus_mode_active_for_current_chat():
-            return 1.0
-
         base_talk_value = self._get_base_reply_frequency()
-        if base_talk_value <= 0 or self._talk_frequency_adjust <= 0:
+        if base_talk_value <= 0:
             return 0.0
 
         talk_value = float(
@@ -940,6 +941,10 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             )
         )
         if talk_value <= 0:
+            return 0.0
+        if self._is_focus_mode_active_for_current_chat():
+            return 1.0
+        if self._talk_frequency_adjust <= 0:
             return 0.0
         return max(0.0, talk_value * self._talk_frequency_adjust)
 

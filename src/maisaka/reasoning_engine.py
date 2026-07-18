@@ -96,51 +96,6 @@ BEHAVIOR_SCENARIO_CONSTRAINT_TEXT = (
     "other_traits 表示他人的特点和态度，输出 tag_name、tag_aliases 数组；"
     "不要输出 kind、phase、risk、tags、name 或 cluster_key。"
 )
-MAX_PLANNER_NO_TOOL_REPLY_RETRIES = 1
-PLANNER_REPLY_INTENT_KEYWORDS = (
-    "立即回复",
-    "需要回复",
-    "应该回复",
-    "可以回复",
-    "要回复",
-    "回复她",
-    "回复他",
-    "回复ta",
-    "回复TA",
-    "回复对方",
-    "回复用户",
-    "回复这条",
-    "回她",
-    "回他",
-    "回一下",
-    "回应她",
-    "回应他",
-    "接住她",
-    "接住他",
-    "调用 reply",
-    "调用reply",
-)
-PLANNER_NO_REPLY_INTENT_KEYWORDS = (
-    "不回复",
-    "不用回复",
-    "无需回复",
-    "不需要回复",
-    "不该回复",
-    "不要回复",
-    "暂时不回复",
-    "暂时不回",
-    "先不回复",
-    "先不回",
-    "保持沉默",
-    "不调用工具",
-)
-PLANNER_NO_TOOL_REPLY_HINT = (
-    "你上一轮判断需要回复，但没有调用任何工具，所以用户看不到回复。\n"
-    "如果仍然需要回复，请必须调用 `reply` 工具，并填写要回复的消息 `msg_id`；"
-    "不要只在思考文本里写“立即回复”。\n"
-    "如果重新判断后不需要回复，请不要调用工具并明确结束。"
-)
-
 
 @dataclass(frozen=True, slots=True)
 class CycleEnd:
@@ -632,51 +587,14 @@ class MaisakaReasoningEngine:
             if not self._is_planner_no_tool_hint_message(message)
         ]
 
-    @staticmethod
-    def _planner_text_has_reply_intent(planner_text: str) -> bool:
-        """判断 Planner 文本是否明确表达了回复意图。"""
-
-        normalized_text = " ".join(str(planner_text or "").split()).strip()
-        if not normalized_text:
-            return False
-
-        lower_text = normalized_text.lower()
-        if any(keyword.lower() in lower_text for keyword in PLANNER_NO_REPLY_INTENT_KEYWORDS):
-            return False
-        return any(keyword.lower() in lower_text for keyword in PLANNER_REPLY_INTENT_KEYWORDS)
-
-    def _append_planner_no_tool_reply_hint(self) -> None:
-        """追加一次性提示，要求 Planner 用 reply 工具完成可见回复。"""
-
-        self._runtime._chat_history.append(
-            ReferenceMessage(
-                content=PLANNER_NO_TOOL_REPLY_HINT,
-                timestamp=datetime.now(),
-                reference_type=ReferenceMessageType.PLANNER_TOOL_HINT,
-                remaining_uses_value=1,
-                display_prefix="[Planner 工具调用提示]",
-            )
-        )
-
     def _handle_planner_no_tool_retry(
         self,
         planner_no_tool_count: int,
         planner_extra_lines: list[str],
-        planner_text: str = "",
     ) -> tuple[int, CycleEnd, bool]:
         """处理 Planner 未调用工具时的终止策略。"""
 
         planner_no_tool_count += 1
-        if (
-            planner_no_tool_count <= MAX_PLANNER_NO_TOOL_REPLY_RETRIES
-            and self._planner_text_has_reply_intent(planner_text)
-        ):
-            self._append_planner_no_tool_reply_hint()
-            cycle_end = CycleEnd("planner_no_tool_retry", "Planner 表达回复意图但未调用工具，已追加提示并重试。")
-            planner_extra_lines.append("状态：未调用工具但检测到回复意图，已追加工具提示并重试")
-            logger.info(f"{self._runtime.log_prefix} Planner 表达回复意图但未调用工具，已追加提示并重试")
-            return planner_no_tool_count, cycle_end, False
-
         cycle_end = CycleEnd("planner_no_tool_end", "Planner本轮思考结束。")
         self._end_planner_no_tool_cycle(
             planner_extra_lines,
@@ -746,7 +664,6 @@ class MaisakaReasoningEngine:
         planner_no_tool_count, cycle_end, should_end_after_no_tool = self._handle_planner_no_tool_retry(
             planner_no_tool_count,
             planner_extra_lines,
-            reasoning_content,
         )
         state.cycle_end = cycle_end
         state.tool_result_summaries = []

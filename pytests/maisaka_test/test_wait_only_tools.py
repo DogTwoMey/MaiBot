@@ -13,17 +13,17 @@ from src.common.data_models.message_component_data_model import AtComponent, Tex
 from src.config.config import global_config
 from src.core.tooling import ToolAvailabilityContext, ToolInvocation
 
-import src.maisaka.runtime as maisaka_runtime_module
 import src.maisaka.turn_scheduler as turn_scheduler_module
 from src.maisaka.builtin_tool import reply as reply_tool_module
 from src.maisaka.builtin_tool import get_builtin_tools
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 from src.maisaka.builtin_tool.wait import handle_tool as handle_wait_tool
-from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.mode_policy import is_idle_cycle_reason, is_reply_necessity_trigger_enabled
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
 from src.maisaka.runtime import MaisakaHeartFlowChatting
 from src.maisaka.turn_scheduler import MessageTurnScheduler
+
+import src.maisaka.runtime as maisaka_runtime_module
 
 
 def _tool_names(tool_definitions: list[dict]) -> set[str]:
@@ -40,6 +40,40 @@ def _availability_context() -> ToolAvailabilityContext:
         stream_id="session-1",
         is_group_chat=True,
     )
+
+
+def test_focus_reply_frequency_respects_silent_talk_value(monkeypatch) -> None:
+    runtime = SimpleNamespace(
+        session_id="session-1",
+        chat_stream=SimpleNamespace(is_group_session=True),
+        _talk_frequency_adjust=1.0,
+    )
+    runtime._get_base_reply_frequency = lambda: 1.0
+    runtime._is_focus_mode_active_for_current_chat = lambda: True
+    monkeypatch.setattr(maisaka_runtime_module.ChatConfigUtils, "get_talk_value", lambda *args, **kwargs: 0.0)
+
+    assert MaisakaHeartFlowChatting._get_effective_reply_frequency(runtime) == 0.0
+
+
+def test_focus_reply_frequency_keeps_full_frequency_when_talk_value_allows(monkeypatch) -> None:
+    runtime = SimpleNamespace(
+        session_id="session-1",
+        chat_stream=SimpleNamespace(is_group_session=True),
+        _talk_frequency_adjust=0.1,
+    )
+    runtime._get_base_reply_frequency = lambda: 1.0
+    runtime._is_focus_mode_active_for_current_chat = lambda: True
+    monkeypatch.setattr(maisaka_runtime_module.ChatConfigUtils, "get_talk_value", lambda *args, **kwargs: 0.2)
+
+    assert MaisakaHeartFlowChatting._get_effective_reply_frequency(runtime) == 1.0
+
+
+def test_context_restore_status_uses_neutral_system_language() -> None:
+    status_text = MaisakaHeartFlowChatting._build_context_restore_status_text(86_400, "1 天")
+
+    assert "系统" in status_text
+    assert "醒" not in status_text
+    assert "沉睡" not in status_text
 
 
 def test_planner_exposes_wait_without_no_action_or_finish() -> None:
@@ -290,90 +324,6 @@ def test_planner_no_tool_ends_cycle() -> None:
     assert runtime.ended is True
     assert runtime.stopped is True
     assert runtime.wait_reset_reason == "planner_no_tool_end"
-
-
-def test_planner_no_tool_with_reply_intent_retries_once() -> None:
-    class DummyRuntime:
-        log_prefix = "[test]"
-
-        def __init__(self) -> None:
-            self._chat_history = []
-            self.ended = False
-            self.stopped = False
-            self.wait_reset_reason = ""
-
-        def _end_planner_continuation(self) -> None:
-            self.ended = True
-
-        def _reset_consecutive_wait_count(self, reason: str) -> None:
-            self.wait_reset_reason = reason
-
-        def _enter_stop_state(self) -> None:
-            self.stopped = True
-
-    runtime = DummyRuntime()
-    engine = MaisakaReasoningEngine.__new__(MaisakaReasoningEngine)
-    engine._runtime = runtime
-    planner_extra_lines: list[str] = []
-
-    count, cycle_end, should_end = engine._handle_planner_no_tool_retry(
-        0,
-        planner_extra_lines,
-        '兔兔在撒娇，我需要接住她的情绪。立即回复她。',
-    )
-
-    assert count == 1
-    assert cycle_end.reason == "planner_no_tool_retry"
-    assert should_end is False
-    assert runtime.ended is False
-    assert runtime.stopped is False
-    assert runtime.wait_reset_reason == ""
-    assert planner_extra_lines == ["状态：未调用工具但检测到回复意图，已追加工具提示并重试"]
-    assert len(runtime._chat_history) == 1
-    hint_message = runtime._chat_history[0]
-    assert isinstance(hint_message, ReferenceMessage)
-    assert hint_message.reference_type == ReferenceMessageType.PLANNER_TOOL_HINT
-    assert "reply" in hint_message.content
-    assert "msg_id" in hint_message.content
-
-
-def test_planner_no_tool_reply_intent_retry_has_single_attempt_limit() -> None:
-    class DummyRuntime:
-        log_prefix = "[test]"
-
-        def __init__(self) -> None:
-            self._chat_history = []
-            self.ended = False
-            self.stopped = False
-            self.wait_reset_reason = ""
-
-        def _end_planner_continuation(self) -> None:
-            self.ended = True
-
-        def _reset_consecutive_wait_count(self, reason: str) -> None:
-            self.wait_reset_reason = reason
-
-        def _enter_stop_state(self) -> None:
-            self.stopped = True
-
-    runtime = DummyRuntime()
-    engine = MaisakaReasoningEngine.__new__(MaisakaReasoningEngine)
-    engine._runtime = runtime
-    planner_extra_lines: list[str] = []
-
-    count, cycle_end, should_end = engine._handle_planner_no_tool_retry(
-        1,
-        planner_extra_lines,
-        "还是需要回复她。",
-    )
-
-    assert count == 2
-    assert cycle_end.reason == "planner_no_tool_end"
-    assert should_end is True
-    assert runtime.ended is True
-    assert runtime.stopped is True
-    assert runtime.wait_reset_reason == "planner_no_tool_end"
-    assert runtime._chat_history == []
 
 
 def test_reply_necessity_trigger_is_optional(monkeypatch) -> None:
