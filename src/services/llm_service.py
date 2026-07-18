@@ -276,13 +276,13 @@ class LLMServiceClient:
         """
         active_options = self._normalize_image_options(options)
         original_image_base64_size = len(image_base64)
-        image_base64, image_format, resized_for_model = ImageUtils.normalize_image_base64_for_model(
+        image_base64, image_format, adjusted_for_model = ImageUtils.normalize_image_base64_for_model(
             image_base64,
             image_format,
         )
-        if resized_for_model:
+        if adjusted_for_model:
             logger.info(
-                "图片尺寸低于视觉模型常见最小识别限制，已使用最近邻整数放大后再请求模型: "
+                "图片已按视觉模型输入约束重新编码或缩放后再请求模型: "
                 f"request_type={self.request_type}, "
                 f"original_base64_size={original_image_base64_size}, normalized_base64_size={len(image_base64)}"
             )

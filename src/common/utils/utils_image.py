@@ -14,6 +14,8 @@ logger = get_logger("image_utils")
 
 MODEL_MIN_IMAGE_SIDE = 64
 MODEL_MAX_UPSCALED_IMAGE_SIDE = 2048
+MODEL_MAX_IMAGE_SIDE = 1600
+MODEL_STRIP_METADATA_KEYS = {"exif", "icc_profile", "mp", "mpoffset", "xmp"}
 
 
 class ImageUtils:
@@ -24,6 +26,7 @@ class ImageUtils:
         *,
         min_side: int = MODEL_MIN_IMAGE_SIDE,
         max_upscaled_side: int = MODEL_MAX_UPSCALED_IMAGE_SIDE,
+        max_side: int = MODEL_MAX_IMAGE_SIDE,
     ) -> tuple[str, str, bool]:
         """确保发给视觉模型的图片不低于常见最小识别尺寸。"""
         if min_side <= 0:
@@ -35,7 +38,9 @@ class ImageUtils:
             width, height = normalized_image.size
             if width <= 0 or height <= 0:
                 raise ValueError("图片尺寸无效，无法发送给视觉模型")
-            if width >= min_side and height >= min_side:
+            should_strip_metadata = bool(MODEL_STRIP_METADATA_KEYS.intersection(image.info.keys()))
+            should_downscale = max_side > 0 and max(width, height) > max_side
+            if width >= min_side and height >= min_side and not should_strip_metadata and not should_downscale:
                 return image_base64, image_format, False
 
             if normalized_image.mode in ("RGBA", "LA") or (
@@ -49,14 +54,25 @@ class ImageUtils:
                 canvas_mode = "RGB"
                 background_color = (255, 255, 255)
 
-            scale = max(1, ceil(min_side / min(width, height)))
-            if max_upscaled_side > 0:
+            scale = 1.0
+            adjusted_for_model = should_strip_metadata
+            if min(width, height) < min_side:
+                scale = max(1, ceil(min_side / min(width, height)))
+                adjusted_for_model = True
+            if max_upscaled_side > 0 and scale > 1:
                 max_scale = max(1, max_upscaled_side // max(width, height))
                 scale = min(scale, max_scale)
+            if should_downscale:
+                scale = min(scale, max_side / max(width, height))
+                adjusted_for_model = True
 
-            resized_width = max(1, width * scale)
-            resized_height = max(1, height * scale)
-            resized_image = working_image.resize((resized_width, resized_height), PILImage.Resampling.NEAREST)
+            resized_width = max(1, int(round(width * scale)))
+            resized_height = max(1, int(round(height * scale)))
+            if (resized_width, resized_height) == working_image.size:
+                resized_image = working_image
+            else:
+                resampling = PILImage.Resampling.NEAREST if scale > 1 else PILImage.Resampling.LANCZOS
+                resized_image = working_image.resize((resized_width, resized_height), resampling)
 
             canvas_width = max(min_side, resized_width)
             canvas_height = max(min_side, resized_height)
@@ -70,9 +86,14 @@ class ImageUtils:
                 resized_image = canvas
 
             output_buffer = io.BytesIO()
-            resized_image.save(output_buffer, format="PNG")
+            if resized_image.mode == "RGBA":
+                resized_image.save(output_buffer, format="PNG", optimize=True)
+                resized_format = "png"
+            else:
+                resized_image.save(output_buffer, format="JPEG", quality=85, optimize=True)
+                resized_format = "jpeg"
             resized_base64 = base64.b64encode(output_buffer.getvalue()).decode("utf-8")
-            return resized_base64, "png", True
+            return resized_base64, resized_format, adjusted_for_model
 
     @staticmethod
     def gif_2_static_image(gif_bytes: bytes, similarity_threshold: float = 1000.0, max_frames: int = 15) -> bytes:

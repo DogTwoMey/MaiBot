@@ -81,6 +81,10 @@ logger = get_logger("llm_models")
 SUPPORTED_OPENAI_IMAGE_FORMATS = {"jpeg", "png", "webp"}
 """OpenAI 兼容图片输入稳定支持的格式集合。"""
 
+QWEN_VL_IMAGE_MIN_PIXELS = 28 * 28
+QWEN_VL_IMAGE_MAX_PIXELS = 1024 * 1024
+DASHSCOPE_COMPATIBLE_HOST_SUFFIX = "dashscope.aliyuncs.com"
+
 THINK_CONTENT_PATTERN = re.compile(
     r"<think>(?P<think>.*?)</think>(?P<content>.*)|<think>(?P<think_unclosed>.*)|(?P<content_only>.+)",
     re.DOTALL,
@@ -232,7 +236,40 @@ def _build_text_content_part(text: str) -> ChatCompletionContentPartTextParam:
     }
 
 
-def _build_image_content_part(part: ImageMessagePart) -> ChatCompletionContentPartImageParam:
+def _should_use_qwen_vl_image_options(base_url: str, model_identifier: str) -> bool:
+    """判断当前请求是否需要附加 DashScope qwen-vl 图片解析参数。"""
+    hostname = (urlparse(base_url).hostname or "").lower()
+    normalized_model = model_identifier.lower()
+    return hostname.endswith(DASHSCOPE_COMPATIBLE_HOST_SUFFIX) and "qwen" in normalized_model and "-vl" in normalized_model
+
+
+def _build_image_url_content_part(
+    image_format: str,
+    image_base64: str,
+    *,
+    use_qwen_vl_image_options: bool = False,
+) -> ChatCompletionContentPartImageParam:
+    """构造 OpenAI-compatible 的图片 URL 片段。"""
+    image_url: dict[str, Any] = {
+        "url": f"data:image/{image_format};base64,{image_base64}",
+    }
+    if use_qwen_vl_image_options:
+        image_url["min_pixels"] = QWEN_VL_IMAGE_MIN_PIXELS
+        image_url["max_pixels"] = QWEN_VL_IMAGE_MAX_PIXELS
+    return cast(
+        ChatCompletionContentPartImageParam,
+        {
+            "type": "image_url",
+            "image_url": image_url,
+        },
+    )
+
+
+def _build_image_content_part(
+    part: ImageMessagePart,
+    *,
+    use_qwen_vl_image_options: bool = False,
+) -> ChatCompletionContentPartImageParam:
     """构建图片内容片段。
 
     Args:
@@ -246,12 +283,11 @@ def _build_image_content_part(part: ImageMessagePart) -> ChatCompletionContentPa
         raise ValueError("图片数据无效，无法构建图片消息片段")
 
     image_format, image_base64 = normalized_image
-    return {
-        "type": "image_url",
-        "image_url": {
-            "url": f"data:image/{image_format};base64,{image_base64}",
-        },
-    }
+    return _build_image_url_content_part(
+        image_format,
+        image_base64,
+        use_qwen_vl_image_options=use_qwen_vl_image_options,
+    )
 
 
 def _normalize_image_part_for_openai(part: ImageMessagePart) -> Tuple[str, str] | None:
@@ -372,7 +408,11 @@ def _convert_text_only_message_content(
     return content
 
 
-def _convert_user_message_content(message: Message) -> str | List[ChatCompletionContentPartParam]:
+def _convert_user_message_content(
+    message: Message,
+    *,
+    use_qwen_vl_image_options: bool = False,
+) -> str | List[ChatCompletionContentPartParam]:
     """将用户消息转换为 OpenAI 兼容内容。
 
     Args:
@@ -398,12 +438,11 @@ def _convert_user_message_content(message: Message) -> str | List[ChatCompletion
 
         image_format, image_base64 = normalized_image
         content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/{image_format};base64,{image_base64}",
-                },
-            }
+            _build_image_url_content_part(
+                image_format,
+                image_base64,
+                use_qwen_vl_image_options=use_qwen_vl_image_options,
+            )
         )
     if not content:
         return ""
@@ -461,7 +500,11 @@ def _sanitize_messages_for_toolless_request(messages: List[Message]) -> List[Mes
     return sanitized_messages
 
 
-def _convert_messages(messages: List[Message]) -> List[ChatCompletionMessageParam]:
+def _convert_messages(
+    messages: List[Message],
+    *,
+    use_qwen_vl_image_options: bool = False,
+) -> List[ChatCompletionMessageParam]:
     """将内部消息列表转换为 OpenAI 兼容消息列表。
 
     Args:
@@ -483,7 +526,10 @@ def _convert_messages(messages: List[Message]) -> List[ChatCompletionMessagePara
         if message.role == RoleType.User:
             user_payload: ChatCompletionUserMessageParam = {
                 "role": "user",
-                "content": _convert_user_message_content(message),
+                "content": _convert_user_message_content(
+                    message,
+                    use_qwen_vl_image_options=use_qwen_vl_image_options,
+                ),
             }
             converted_messages.append(user_payload)
             continue
@@ -1383,7 +1429,13 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 if request.tool_options
                 else _sanitize_messages_for_toolless_request(request.message_list)
             )
-            messages_payload: List[ChatCompletionMessageParam] = _convert_messages(request_messages)
+            messages_payload: List[ChatCompletionMessageParam] = _convert_messages(
+                request_messages,
+                use_qwen_vl_image_options=_should_use_qwen_vl_image_options(
+                    self.api_provider.base_url,
+                    model_info.model_identifier,
+                ),
+            )
             tools_payload: List[ChatCompletionToolParam] | None = (
                 _convert_tool_options(request.tool_options) if request.tool_options else None
             )
