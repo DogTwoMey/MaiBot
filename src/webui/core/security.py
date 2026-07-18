@@ -57,11 +57,7 @@ class TokenManager:
                         config["token_source"] = token_source
                         self._save_config(config)
 
-                    if token_source == TOKEN_SOURCE_TEMPORARY:
-                        logger.info("WebUI 尚未配置固定 Token，正在重新生成本次启动临时 Token")
-                        self._create_new_token(preserve_setup_state=True)
-                    else:
-                        logger.info(f"WebUI Token 已加载: {config['access_token'][:8]}...")
+                    logger.info(f"WebUI Token 已加载: {config['access_token'][:8]}...")
             except Exception as e:
                 logger.error(f"读取 WebUI 配置文件失败: {e}，正在重新创建")
                 self._create_new_token()
