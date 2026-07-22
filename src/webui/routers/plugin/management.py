@@ -1,11 +1,14 @@
+from contextlib import contextmanager
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from threading import Lock
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, ParamSpec, TypeVar
 
 import json
 import shutil
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Cookie, HTTPException
 import tomlkit
 
 from src.common.logger import get_logger
@@ -33,6 +36,98 @@ from .support import (
 logger = get_logger("webui.plugin_routes")
 
 router = APIRouter()
+
+PluginOperationRequest = InstallPluginRequest | UninstallPluginRequest | UpdatePluginRequest
+_PluginOperationParams = ParamSpec("_PluginOperationParams")
+_PluginOperationResult = TypeVar("_PluginOperationResult")
+_PLUGIN_OPERATION_MUTEX = Lock()
+_ACTIVE_PLUGIN_OPERATIONS: Dict[str, object] = {}
+_PLUGIN_OPERATION_LABELS = {
+    "install": "安装",
+    "uninstall": "卸载",
+    "update": "更新",
+}
+
+
+def _get_plugin_operation_keys(plugin_id: str) -> set[str]:
+    """生成插件操作资源键，使清单 ID、目录名和新旧目录格式指向同一把锁。"""
+
+    keys = {f"id:{plugin_id.casefold()}"}
+    target_path, old_format_path = get_plugin_candidate_paths(plugin_id)
+    keys.update(
+        {
+            f"path:{str(target_path.resolve()).casefold()}",
+            f"path:{str(old_format_path.resolve()).casefold()}",
+        }
+    )
+    installed_path = resolve_installed_plugin_path(plugin_id)
+    if installed_path is not None:
+        keys.add(f"path:{str(installed_path.resolve()).casefold()}")
+    return keys
+
+
+@contextmanager
+def _reserve_plugin_operation(plugin_id: str, operation: str) -> Iterator[None]:
+    """为单个插件保留操作权；冲突操作立即返回 409，不等待也不覆盖原进度。"""
+
+    operation_keys = _get_plugin_operation_keys(plugin_id)
+    with _PLUGIN_OPERATION_MUTEX:
+        conflicting_operation = next(
+            (
+                _ACTIVE_PLUGIN_OPERATIONS[key]
+                for key in operation_keys
+                if key in _ACTIVE_PLUGIN_OPERATIONS
+            ),
+            None,
+        )
+        if conflicting_operation is not None:
+            active_operation = str(conflicting_operation)
+            active_label = _PLUGIN_OPERATION_LABELS.get(active_operation, active_operation)
+            raise HTTPException(
+                status_code=409,
+                detail=f"插件 {plugin_id} 正在执行{active_label}操作，请等待完成后重试",
+            )
+        for key in operation_keys:
+            _ACTIVE_PLUGIN_OPERATIONS[key] = operation
+
+    try:
+        yield
+    finally:
+        with _PLUGIN_OPERATION_MUTEX:
+            for key in operation_keys:
+                if _ACTIVE_PLUGIN_OPERATIONS.get(key) == operation:
+                    _ACTIVE_PLUGIN_OPERATIONS.pop(key, None)
+
+
+def _exclusive_plugin_operation(
+    operation: str,
+) -> Callable[
+    [Callable[_PluginOperationParams, Awaitable[_PluginOperationResult]]],
+    Callable[_PluginOperationParams, Awaitable[_PluginOperationResult]],
+]:
+    """为插件变更接口增加统一的按插件互斥保护。"""
+
+    def decorator(
+        func: Callable[_PluginOperationParams, Awaitable[_PluginOperationResult]],
+    ) -> Callable[_PluginOperationParams, Awaitable[_PluginOperationResult]]:
+        @wraps(func)
+        async def wrapper(
+            *args: _PluginOperationParams.args,
+            **kwargs: _PluginOperationParams.kwargs,
+        ) -> _PluginOperationResult:
+            request = kwargs.get("request")
+            if request is None and args:
+                request = args[0]
+            if not isinstance(request, (InstallPluginRequest, UninstallPluginRequest, UpdatePluginRequest)):
+                raise RuntimeError("插件操作接口缺少有效请求参数")
+
+            plugin_id = validate_plugin_id(request.plugin_id)
+            with _reserve_plugin_operation(plugin_id, operation):
+                return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def _read_manifest_plugin_id(manifest: Dict[str, Any]) -> str:
@@ -305,8 +400,9 @@ async def _release_plugin_runtime_before_delete(plugin_id: str, plugin_path: Pat
 
 
 @router.post("/install")
-async def install_plugin(request: InstallPluginRequest, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+@_exclusive_plugin_operation("install")
+async def install_plugin(request: InstallPluginRequest, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
     logger.info(f"收到安装插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -400,17 +496,12 @@ async def install_plugin(request: InstallPluginRequest, http_request: Request) -
         try:
             with open(manifest_path, "r", encoding="utf-8") as file_obj:
                 manifest = json.load(file_obj)
-            for field in ["manifest_version", "name", "version", "author"]:
+            for field in ["manifest_version", "id", "name", "version", "author"]:
                 if field not in manifest:
                     raise ValueError(f"缺少必需字段: {field}")
             manifest_plugin_id = _read_manifest_plugin_id(manifest)
-            if not manifest_plugin_id:
-                manifest["id"] = plugin_id
-                manifest_plugin_id = plugin_id
-                with open(manifest_path, "w", encoding="utf-8") as file_obj:
-                    json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
-                    file_obj.write("\n")
-            validate_plugin_id(manifest_plugin_id)
+            if manifest_plugin_id != plugin_id:
+                raise ValueError(f"插件 ID 不匹配：期望 {plugin_id}，实际 {manifest_plugin_id}")
         except Exception as e:
             remove_tree(target_path)
             await update_progress(
@@ -449,10 +540,11 @@ async def install_plugin(request: InstallPluginRequest, http_request: Request) -
 
 
 @router.post("/uninstall")
+@_exclusive_plugin_operation("uninstall")
 async def uninstall_plugin(
-    request: UninstallPluginRequest, http_request: Request
+    request: UninstallPluginRequest, maibot_session: Optional[str] = Cookie(None)
 ) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+    require_plugin_token(maibot_session)
     logger.info(f"收到卸载插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -534,8 +626,9 @@ async def uninstall_plugin(
 
 
 @router.post("/update")
-async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+@_exclusive_plugin_operation("update")
+async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
     logger.info(f"收到更新插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -667,8 +760,8 @@ async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> 
 
 
 @router.get("/installed")
-async def get_installed_plugins(http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
     logger.info("收到获取已安装插件列表请求")
 
     try:
@@ -750,8 +843,8 @@ async def get_installed_plugins(http_request: Request) -> Dict[str, Any]:
 
 
 @router.get("/local-readme/{plugin_id}")
-async def get_local_plugin_readme(plugin_id: str, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def get_local_plugin_readme(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
     logger.info(f"获取本地插件 README: {plugin_id}")
 
     try:
@@ -770,8 +863,8 @@ async def get_local_plugin_readme(plugin_id: str, http_request: Request) -> Dict
 
 
 @router.get("/local-changelog/{plugin_id}")
-async def get_local_plugin_changelog(plugin_id: str, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def get_local_plugin_changelog(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
     logger.info(f"获取本地插件更新日志: {plugin_id}")
 
     try:

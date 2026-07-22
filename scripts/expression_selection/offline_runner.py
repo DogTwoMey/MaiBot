@@ -18,12 +18,12 @@ from random import Random
 from sys import path as sys_path
 from typing import Any, List, Sequence
 
-from json_repair import repair_json
-
 import argparse
 import asyncio
 import json
 import sys
+
+from json_repair import repair_json
 
 ROOT_PATH = Path(__file__).resolve().parents[2]
 if str(ROOT_PATH) not in sys_path:
