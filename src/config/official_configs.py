@@ -3034,6 +3034,12 @@ class AMemorixThresholdConfig(ConfigBase):
     """是否启用自动阈值调整"""
 
 
+    def model_post_init(self, context: Optional[dict] = None) -> None:
+        if self.min_threshold >= self.max_threshold:
+            raise ValueError("min_threshold 必须小于 max_threshold")
+        return super().model_post_init(context)
+
+
 class AMemorixRetrievalSubtypeFilterConfig(ConfigBase):
     """A_Memorix 跨聊天流检索结果分类型过滤配置"""
 
