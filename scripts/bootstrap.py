@@ -3,7 +3,7 @@
 After `git clone --recurse-submodules` (or a plain clone), run this once to:
   1. Ensure submodules are initialized & fetched.
   2. Add the `upstream` remote to each submodule (only if missing).
-  3. Run `uv sync` in the main repo and in each Python submodule (adapter).
+  3. Run `uv sync` in the main repo.
   4. Copy launcher.toml.example -> launcher.toml if missing.
 
 Usage (first-time clone may not yet have a .venv; uv creates it on demand):
@@ -26,13 +26,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # submodule path -> upstream URL (kept here because `.gitmodules` only stores origin)
 UPSTREAMS: dict[str, str] = {
-    "external/adapter":     "git@github.com:Mai-with-u/MaiBot-Napcat-Adapter.git",
     "external/napcat-src":  "git@github.com:NapNeko/NapCatQQ.git",
 }
-
-# submodules that are Python projects and need `uv sync`
-PYTHON_SUBMODULES = ("external/adapter",)
-
 
 def run(cmd: list[str], cwd: Path, check: bool = True) -> int:
     print(f"[bootstrap] $ (cd {cwd.relative_to(REPO_ROOT) if cwd != REPO_ROOT else '.'}) {' '.join(cmd)}")
@@ -77,22 +72,11 @@ def step_upstream_remotes() -> None:
 
 
 def step_uv_sync() -> None:
-    print("\n==> [3/4] uv sync (main + python submodules)")
+    print("\n==> [3/4] uv sync (main)")
     uv = shutil.which("uv") or shutil.which("uv.exe")
     if not uv:
         raise SystemExit("[bootstrap] `uv` not found in PATH. Install uv first: https://docs.astral.sh/uv/")
     run([uv, "sync"], cwd=REPO_ROOT)
-    for rel in PYTHON_SUBMODULES:
-        sub = REPO_ROOT / rel
-        if not (sub / "pyproject.toml").exists():
-            print(f"[bootstrap] {rel}: no pyproject.toml — skip uv sync")
-            continue
-        rc = run([uv, "sync"], cwd=sub, check=False)
-        if rc != 0:
-            print(f"[bootstrap] WARNING: uv sync failed for {rel} (exit {rc}).")
-            print(f"[bootstrap]   This is usually caused by a stale .pyd lock.")
-            print(f"[bootstrap]   You can fix it later: cd {rel} && uv sync")
-            print(f"[bootstrap]   Continuing with remaining steps...")
 
 
 def step_launcher_toml() -> None:

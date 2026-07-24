@@ -1,336 +1,148 @@
-# MaiBot 统一工作区 · 部署文档
+# MaiBot 统一工作区部署文档
 
-> 一个仓库部署 MaiBot 主程序 + Napcat Adapter + NapCatQQ 三个组件。
-> 适用对象：新机器首次部署、日常运维、从上游同步。
+> 一个仓库部署 MaiBot、默认 NapCat Adapter 插件与 NapCatQQ。
+> 适用于新机器首次部署、日常启停、备份和上游同步。
 
----
+## 0. 本 fork 的工程层改动
 
-## 0. 本 fork 相对 upstream 的改动 · 工程层
+| 项目 | 本 fork 状态 |
+|---|---|
+| NapCat Adapter | 位于 `src/plugins/built_in/napcat_adapter/`，作为默认插件随 MaiBot 启动，不再维护独立进程、Python 环境或 Git 子模块 |
+| NapCatQQ 源码 | `external/napcat-src` 子模块，构建产物写入 `runtime/napcat/` |
+| 私有文档 | `docs/private` 子模块，设置 `update = none` |
+| 初始化 | `scripts/bootstrap.py` 初始化子模块、同步主环境并创建启动器配置 |
+| 启停 | `scripts/launcher.py` 统一管理 NapCat 与 MaiBot；Adapter 由插件运行时管理 |
+| 备份 | `scripts/backup.ps1` 备份主程序、插件和 NapCat 用户状态 |
 
-> 本节只列**工程/部署层**的改动。**业务/代码层**的长期设计分歧（path_utils、本地 dist、@ 保活、KV cache 日志 revert、孤儿 tool call 兜底、talk_value 精度等）见 [`design_divergence.md`](design_divergence.md)——**合并 upstream 之前务必读那份文档的"合并前/后必做清单"**。
-
-以下是 `DogTwoMey/MaiBot` 相对 `Mai-with-u/MaiBot` 在工程/部署层的新增/改造：
-
-| 项目 | upstream 状态 | 本 fork 状态 |
-|------|---------------|-------------|
-| 仓库结构 | 单仓 MaiBot | 主仓 + 3 个 submodule：`external/adapter`（Napcat Adapter）、`external/napcat-src`（NapCatQQ 源码）、`docs/private`（私有文档，`update=none`） |
-| 启动方式 | 各仓单独跑 `python bot.py`、`python main.py`、`run.bat` | [scripts/launcher.py](../../scripts/launcher.py) 统一启停三件套（顺序启动 + 端口探活）|
-| NapCat 发布 | 使用上游 release 二进制 | [scripts/build_napcat.py](../../scripts/build_napcat.py) 从源码构建到 `runtime/napcat/` |
-| Python 运行 | 随意 | 强制用 uv 管理的 venv（`uv run --no-sync python ...`）|
-| 初始化流程 | 手工 `pip install` + 手动拷 config | [scripts/bootstrap.py](../../scripts/bootstrap.py) 一键 clone 后初始化（submodule + upstream remote + uv sync + launcher.toml）|
-| 上游同步 | 手工 `git merge upstream/main` | [scripts/sync_upstream.py](../../scripts/sync_upstream.py) 批量处理主仓 + 子仓 |
-| PyCharm 运行配置 | 无 | [.run/](../../.run/) 下若干共享 run config（启动/停止/构建 NapCat/同步 upstream/apisource 切档）|
-| API Source 切换 | 手工改 model_config.toml | [apisource/manage.py](../../apisource/manage.py) + 预置 Aliyun/DeepSeek 多档模板 |
-| 插件 manifest 兼容 | 只支持当前 manifest 版本 | [`src/plugin_runtime/manifest_compat/`](../../src/plugin_runtime/manifest_compat/) + [scripts/migrate_plugin_manifests.py](../../scripts/migrate_plugin_manifests.py) 提供 v1→v2 自动迁移 |
-| 备份脚本 | 无 | [scripts/backup.ps1](../../scripts/backup.ps1) PowerShell 备份 data/config |
-| 文档私有化 | — | `docs/private/` 指向独立私库，`update=none` 让路人 clone 时自动 skip 无权限错误 |
-
-**业务层**：fork 维持了若干主动改造（后端路径、本地 dist、@ 保活、KV cache revert、孤儿 tool call 兜底、talk_value 精度、Visual Hook 等）。这些改动**不是工程层的**，会被 upstream 的正常开发周期性触及——详见 [`design_divergence.md`](design_divergence.md)。
-
----
+业务层的长期分歧见 [design_divergence.md](design_divergence.md)。
 
 ## 1. 项目结构
 
-```
-MaiBot/                              # 主仓库（origin: DogTwoMey/MaiBot, upstream: Mai-with-u/MaiBot）
-├── bot.py                           # 主程序入口
-├── pyproject.toml / uv.lock         # MaiBot 的 uv 项目
-├── config/                          # MaiBot 配置（bot_config.toml / model_config.toml / ...）
-├── dashboard/                       # WebUI 前端（pnpm build → dashboard/dist）
-├── apisource/                       # LLM 供应商切档脚本与模板
-│   ├── manage.py                    # 主调度：apisource/manage.py --provider <x> --tier <y> --apply
-│   ├── _common.py
-│   ├── aliyun/                      # 阿里云百炼：provider.py / tiers/*.toml / response_cn_*.json
-│   └── deepseek/                    # DeepSeek：provider.py / models.toml
-├── external/                        # 子仓库挂载点（submodule，各自独立 .git）
-│   ├── adapter/                     # DogTwoMey/MaiBot-Napcat-Adapter (upstream: Mai-with-u/...)
-│   │   ├── main.py
-│   │   ├── config.toml              # ← 适配器配置（gitignored）
-│   │   └── data/NapcatAdapter.db    # ← 适配器 SQLite（gitignored）
-│   └── napcat-src/                  # DogTwoMey/NapCatQQ (upstream: NapNeko/NapCatQQ) —— 只做构建源码
-├── runtime/                         # 运行时产物，整个 gitignored
-│   ├── napcat/                      # build_napcat.py 的输出：NapCat 可运行的 shell
-│   │   ├── launcher-win10.bat
-│   │   ├── NapCatWinBootMain.exe, NapCatWinBootHook.dll, napcat.mjs, ...
-│   │   └── config/                  # NapCat 登录态、插件、WebUI 配置（napcat_<QQ>.json 等）
-│   └── launcher-logs/               # launcher 的 .pid 与隐藏模式日志
-├── scripts/
-│   ├── bootstrap.py                 # 一键 clone 后初始化
-│   ├── build_napcat.py              # 编译 NapCat 源码 → runtime/napcat
-│   ├── launcher.py                  # 统一启停三件套
-│   ├── launcher.toml.example        # 配置模板（入库）
-│   ├── launcher.toml                # 本机配置（gitignored）
-│   ├── sync_upstream.py             # 批量从 upstream 同步到 origin
-│   ├── migrate_plugin_manifests.py  # v1→v2 插件 manifest 迁移工具
-│   └── backup.ps1                   # PowerShell 备份脚本（data + config）
-├── src/plugin_runtime/manifest_compat/  # v1/v2 插件兼容层（fork 自建，上游无）
-└── docs/
-    ├── fork/                        # 本 fork 专属文档
-    │   ├── deployment.md            # 本文档 · 工程/部署层
-    │   └── design_divergence.md     # 业务/代码层设计分歧（合并 upstream 前必读）
-    ├── private/                     # submodule → DogTwoMey/PrivateDocuments，update=none（路人自动 skip）
-    │   ├── reviews/                 # 各次 upstream 合并的处理记录
-    │   └── personas/                # 人格定义本地备份
-    └── *.md                         # 上游原生文档（README_CN/README_EN/i18n/a_memorix 等，随 sync_upstream 更新）
+```text
+MaiBot/
+├── bot.py
+├── pyproject.toml / uv.lock
+├── config/
+├── data/
+├── plugins/                              # 用户安装的第三方插件
+├── src/plugins/built_in/
+│   ├── plugin_management/
+│   └── napcat_adapter/                   # 随主程序发布的默认 Adapter 插件
+│       ├── plugin.py
+│       ├── _manifest.json
+│       └── config.toml                   # 本机配置，受插件目录 .gitignore 保护
+├── external/
+│   └── napcat-src/                       # NapCatQQ 源码子模块
+├── runtime/
+│   ├── napcat/                           # NapCat 构建产物与登录状态
+│   └── launcher-logs/
+└── scripts/
+    ├── bootstrap.py
+    ├── build_napcat.py
+    ├── launcher.py
+    ├── launcher.toml.example
+    ├── sync_upstream.py
+    └── backup.ps1
 ```
 
-组件 = 四个独立 git 仓库：
-- 主仓库 MaiBot
-- `external/adapter` 子模块
-- `external/napcat-src` 子模块（只是构建源码；真正运行的 shell 在 `runtime/napcat/`）
-- `docs/private` 子模块（私有文档，`update = none` 让路人 clone 时自动 skip，避免无权限错误）
-
-每个代码子模块 `.gitmodules` 里钉了 `branch = main`，`upstream` remote 通过 [scripts/bootstrap.py](../../scripts/bootstrap.py) 在首次部署时补齐，不随仓库发布。私有文档 submodule 要自己用时再显式拉：
-```bash
-git submodule update --init docs/private --checkout
-```
-
----
+主仓、`external/napcat-src` 和 `docs/private` 是各自独立的 Git 边界。Adapter 源码属于主仓，不再单独同步或提交指针。
 
 ## 2. 环境要求
 
 | 工具 | 版本 | 用途 |
-|------|------|------|
-| Git | 任意近版 | 拉代码、submodule |
-| Python | 3.11+ | 运行 MaiBot/adapter/脚本 |
-| **uv** | 最新 | 所有 Python 命令的入口（venv 管理） |
-| Node.js | ≥ 18 | NapCatQQ 构建 |
-| **pnpm** | 最新 | NapCatQQ workspace 构建 |
-| Windows | 10/11 | NapCat 依赖 Windows 原生注入 |
-| psutil（Python） | — | 由 `uv sync` 安装到 MaiBot 主 venv |
+|---|---|---|
+| Git | 近版 | 拉取主仓和子模块 |
+| Python | 3.11+ | 运行 MaiBot 和工具脚本 |
+| uv | 最新 | 管理主仓 Python 环境 |
+| Node.js | 18+ | 构建 NapCatQQ |
+| pnpm | 最新 | 构建 NapCatQQ workspace |
+| Windows | 10/11 | 运行 NapCatQQ |
 
-安装提示（首次）：
-```powershell
-# uv（官方安装器）
-irm https://astral.sh/uv/install.ps1 | iex
-# pnpm（若已有 Node）
-npm install -g pnpm
-```
+Adapter 使用主仓已有的插件 SDK、Pydantic 与标准库依赖，不再拥有独立 `requirements.txt`、`pyproject.toml`、`uv.lock` 或 `.venv`。
 
-> **运行原则**：所有 Python 命令必须用 `uv run python ...` 在 uv 构造的 `.venv` 中执行。主仓库和 `external/adapter` **各自**拥有独立 `.venv`。
-
----
-
-## 3. 新机器部署（三步）
+## 3. 新机器部署
 
 ```powershell
-# 3.1 克隆（带上 --recurse-submodules 自动拉所有 submodule；无私库权限的用户 docs/private 会被 skip）
-rtk git clone --recurse-submodules git@github.com:DogTwoMey/MaiBot.git
-cd MaiBot
+git clone --recurse-submodules git@github.com:DogTwoMey/MaiBot.git
+Set-Location MaiBot
 
-# 3.2 一键 bootstrap：补 upstream remote + uv sync 主仓+adapter + 拷 launcher.toml
-rtk uv run python scripts/bootstrap.py
-
-# 3.3 构建 NapCat shell（需要先装好 Node.js 和 pnpm）
-rtk uv run python scripts/build_napcat.py
+uv run python scripts/bootstrap.py --build-napcat
 ```
 
-或用一条命令替代 3.2 + 3.3：
+`bootstrap.py` 会同步主仓依赖、初始化仍在使用的子模块，并在缺失时从 `scripts/launcher.toml.example` 创建 `scripts/launcher.toml`。
 
-```powershell
-rtk uv run python scripts/bootstrap.py --build-napcat
+## 4. 配置
+
+### 4.1 MaiBot
+
+- `config/bot_config.toml`
+- `config/model_config.toml`
+- `.env`
+
+这些是本机运行配置，不应提交密钥或账号信息。
+
+### 4.2 默认 NapCat Adapter 插件
+
+配置文件为：
+
+```text
+src/plugins/built_in/napcat_adapter/config.toml
 ```
 
-[scripts/bootstrap.py](../../scripts/bootstrap.py) 幂等，可重复运行；[scripts/build_napcat.py](../../scripts/build_napcat.py) 会保留 `runtime/napcat/{config,cache,logs,plugins}` 下的用户状态不被覆盖。
+常用配置：
 
----
+- `napcat_server.host` / `napcat_server.port`：NapCat OneBot WebSocket 地址。
+- `chat.group_list_type` / `chat.group_list`：群聊名单策略。
+- `plugin.enabled`：是否启用默认 Adapter。
 
-## 4. 配置文件清单
+插件由 MaiBot 的内置插件 Supervisor 加载。不要再创建 `external/adapter` Python 环境，也不要单独运行 `main.py`。
 
-所有用户状态都不入库（在各自 `.gitignore` 里）。首次部署需要你填的东西：
+### 4.3 NapCatQQ
 
-### 4.1 MaiBot 主程序
+NapCat 用户状态位于 `runtime/napcat/config/`。确保 OneBot WebSocket 监听地址与 Adapter 插件的 `napcat_server` 配置一致。
 
-| 文件 | 说明 |
-|------|------|
-| [config/bot_config.toml](../config/bot_config.toml) | bot 主配置（监听端口等） |
-| [config/model_config.toml](../config/model_config.toml) | LLM 模型配置 |
-| `.env` | 环境变量（HOST/PORT 等；被 adapter 的 maibot_server 段引用） |
+### 4.4 启动器
 
-### 4.2 Adapter（`external/adapter/`）
-
-| 文件 | 说明 |
-|------|------|
-| `config.toml` | 连接 NapCat/MaiBot 的 WS 参数、群白名单、debug 等级 |
-| `data/NapcatAdapter.db` | 适配器 SQLite；会话状态 |
-| `template/template_config.toml` | 模板（入库，不动） |
-
-首次复制模板：
-```powershell
-Copy-Item d:/Toy/MaiBot/external/adapter/template/template_config.toml `
-          -Destination d:/Toy/MaiBot/external/adapter/config.toml
-```
-
-**关键字段**（参考现有值）：
-- `[napcat_server].host/port` = `localhost` / `8095`，必须与 NapCat WS 监听一致
-- `[maibot_server].host/port` = `localhost` / `8000`，必须与 bot `.env` 一致
-- `[chat].group_list_type` + `group_list`：群聊白/黑名单
-
-### 4.3 NapCat（`runtime/napcat/config/`）
-
-首次运行 NapCat 会生成：
-- `napcat_<QQ>.json` — OneBot WS 服务器端口、token
-- `napcat_protocol_<QQ>.json` — QQ 协议伪装参数
-- `onebot11_<QQ>.json` — OneBot 11 标准配置
-- `webui.json` — WebUI 端口和密码
-
-确保 `napcat_<QQ>.json` 里 OneBot WS 端口 = adapter 的 `napcat_server.port`（默认 8095）。
-
-### 4.4 启动器（`scripts/launcher.toml`）
-
-由 bootstrap 从 [launcher.toml.example](../../scripts/launcher.toml.example) 拷出。**必须修改**：
+`scripts/launcher.toml` 只配置 NapCat 与 Bot：
 
 ```toml
-[napcat]
-launcher  = "launcher-win10.bat"   # Win10 用这个；更新版 Windows 可用 launcher.bat
-qq_number = "2460714978"           # 填你的 QQ 号；留空 "" 则扫码登录
-extra_args = []                    # 额外 positional args 转发给 launcher bat
+[paths]
+napcat = "runtime/napcat"
+bot_root = "."
 
-[adapter]
-argv          = ["uv", "run", "python", "main.py"]
-ready_port    = 18002              # adapter 监听端口；launcher 用它做就绪探测
-ready_timeout = 30
-
-[bot]
-argv          = ["uv", "run", "python", "bot.py"]
+[startup]
+order = ["napcat", "bot"]
 ```
 
-> `qq_number` 取代了旧 `run.bat` 里硬编码的 `./launcher-win10.bat 2460714978`。空串走二维码登录，等价于老 `launcher-win10.bat` 不带参数调用。
-
----
-
-## 5. 启动与停止
-
-所有命令从 MaiBot 根目录执行。
-
-Windows 一键脚本会在启动 Bot 前先执行 Dashboard 构建；构建失败时不会继续启动组件。`node_modules` 不存在、依赖缺失或与 `dashboard/package-lock.json` 不一致时，脚本会先执行一次 `npm ci` 修复依赖树。
+## 5. 启停
 
 ```powershell
-# Windows 一键入口
-.\start-all.bat
-.\restart-all.bat
-.\stop-all.bat
+# 启动 NapCat 与 MaiBot；Adapter 随 Bot 加载
+uv run python scripts/launcher.py start
+
+# 查看日志
+uv run python scripts/launcher.py logs bot
+
+# 停止
+uv run python scripts/launcher.py stop
 ```
-
-直接调用 `scripts/launcher.py` 不会自动构建 Dashboard，适合已确认 `dashboard/dist` 为最新产物的调试场景：
-
-```powershell
-# 启动（默认：三个独立 cmd 窗口各显各的日志）
-rtk uv run python scripts/launcher.py start
-
-# 只起某个组件
-rtk uv run python scripts/launcher.py start adapter
-
-# 启动但隐藏某个组件的窗口（输出走到 runtime/launcher-logs/<name>.log）
-rtk uv run python scripts/launcher.py start --hide napcat
-rtk uv run python scripts/launcher.py start --hide napcat --hide adapter
-
-# 停止（反向顺序：bot → adapter → napcat）
-rtk uv run python scripts/launcher.py stop
-rtk uv run python scripts/launcher.py stop adapter
-
-# 重启
-rtk uv run python scripts/launcher.py restart
-rtk uv run python scripts/launcher.py restart bot --hide bot
-
-# 查看隐藏模式的日志
-rtk uv run python scripts/launcher.py logs napcat --tail 200
-```
-
-**启动顺序**（`[startup].order` 配）：`napcat` → `adapter` → `bot`，中间用 TCP 端口探活做就绪门槛（`ready_port` / `ready_timeout`）。
-
-**探活规则**（默认全部关闭，fire-and-forget）：
-- 三个组件的 `ready_port` 默认都是 `0` —— `launcher.py start` 依次 spawn 三个窗口，不等任何一个就绪，三个 cmd 窗口几乎同时出现
-- 各组件自己有 retry 逻辑：adapter 连不上 bot/napcat 会循环重连，bot 连不上 adapter 不影响自身启动
-- 如需重新启用探活（比如想让 adapter 在 NapCat 真正 listen 后再启动），把 `[napcat].ready_port` 改回 `8095` + `ready_timeout = 30` 即可；当探活的进程中途退出，launcher 会立即短路不再死等
-
-**管理员权限**：NapCat 必须以管理员身份运行（QQ 进程注入需要）。launcher 提供两种路径：
-
-| 策略 | 配置 | 行为 |
-|------|------|------|
-| **让 launcher 自己提权（默认）** | `[napcat].elevate = true` | 若当前非 admin，launcher 主动调用 Windows `ShellExecuteEx('runas')` 弹 UAC 起 NapCat，返回真实的 admin PID，`stop/status` 照常工作 |
-| **外层已经是 admin** | `[napcat].elevate = false` | 完全跳过提权逻辑；需要你用"以管理员身份运行" 启动 PyCharm 或终端后再跑 launcher |
-
-⚠️ 绝对**不要**用 `elevate = false` 从非 admin shell 启动 —— 届时 `launcher-win10.bat` 会自己再次 `Start-Process -Verb runAs` 弹出一个独立 admin 窗口，launcher 追踪不到真正干活的 PID，`stop` 也杀不到它。症状就是看到控制台输出 `Please run this script in administrator mode.`。
-
----
-
-## 5.1 PyCharm 运行配置
-
-仓库在 [.run/](../../.run/) 下内置了 8 个即用的 PyCharm Run Configuration（PyCharm / IntelliJ 系会自动发现该目录）。首次使用需要做一次解释器绑定：
-
-### 步骤一：把 `.venv` 绑为项目解释器（**必须是 Virtualenv 类型，不要选 uv 类型**）
-
-1. **File → Settings → Project: MaiBot → Python Interpreter**
-2. 齿轮图标 → **Add Interpreter → Add Local Interpreter → Select existing**
-3. **Type 选 Virtualenv Environment**（⚠ 不要选 uv）
-4. Interpreter 填 `D:/Toy/MaiBot/.venv/Scripts/python.exe`（`uv sync` 创建的 venv）
-5. 确认 `.run/` 里 run configs 的 `Use specified interpreter` 指向该 SDK
-6. 可把旧的 "uv (MaiBot)" SDK 移除，防止误选
-
-> **为什么不选 uv 类型**：PyCharm 的 uv 解释器每次 Run 都包一层 `uv run <python> <script>`，uv 默认要 `uv sync` 一次 —— 当前仓库有在跑的进程持有 `.venv/Lib/.../_rust.pyd` 时，sync 会失败（`Access Denied`）。
->
-> 选 Virtualenv 类型则 PyCharm 直接调 `.venv\Scripts\python.exe`，零 sync 干扰。依赖管理仍用 uv（手动 `rtk uv sync` 即可），两者互不冲突。
-
-（可选）给 `external/adapter/` 单独添加一个 Project 或把它作为独立 module 指向 `external/adapter/.venv/Scripts/python.exe`——如果你要在 PyCharm 里直接 debug adapter 源码。日常启停不需要。
-
-### 步骤二：在 Run/Debug Configurations 下拉里就能看到下列条目
-
-| Run Config | 等价命令 | 用途 |
-|------------|---------|------|
-| `Bootstrap` | `scripts/bootstrap.py` | 首次部署后一键补 upstream + uv sync |
-| `Build NapCat` | `scripts/build_napcat.py` | 构建 NapCat shell |
-| `Launcher: Start All` | `scripts/launcher.py start` | 启动三件套，开 3 个 cmd 窗口 |
-| `Launcher: Stop All` | `scripts/launcher.py stop` | 按反向顺序停 |
-| `Launcher: Restart All` | `scripts/launcher.py restart` | 停后重启 |
-| `Sync Upstream` | `scripts/sync_upstream.py --apply` | merge + push 主仓和所有子仓 |
-| `ApiSource: Aliyun High` | `apisource/manage.py --provider aliyun --tier high --apply` | 把阿里云 high 档写入 `config/model_config.toml` |
-| `ApiSource: DeepSeek High` | `apisource/manage.py --provider deepseek --tier high --apply` | 把 DeepSeek high 档写入配置 |
-
-**注**：没预置单组件启动（Bot/Adapter/NapCat Only）、`--clean` 重建 —— 需要时在 PyCharm 里 **Copy Configuration** 改 `Parameters` 即可，保持 `.run/` 清爽。
-
-所有配置都以 `$PROJECT_DIR$` 为工作目录，开启 `EMULATE_TERMINAL=true`（输出带颜色），环境变量 `PYTHONUNBUFFERED=1`（日志实时）。
-
-### 需要 debug MaiBot 本体
-
-上面的 `Launcher: Start All` 适合日常启动，但**不是 debug 入口**——它派生子进程到独立 cmd 窗口，PyCharm 拦不到断点。如需 debug：
-
-1. 手动用 `Launcher: Start NapCat Only` + `Launcher: Start Adapter Only` 起前置两件
-2. 对 `bot.py` 直接建一个 **Python** run config：
-   - Script path: `$PROJECT_DIR$/bot.py`
-   - Working dir: `$PROJECT_DIR$`
-   - Interpreter: 项目 `.venv`
-3. Debug 这个 config 即可命中 bot 侧断点。adapter 同理——在 `external/adapter/main.py` 上建一个 run config，解释器指向 `external/adapter/.venv/Scripts/python.exe`。
-
-### 自定义参数
-
-最方便的方式是在 PyCharm 里 **Run → Edit Configurations → Copy Configuration** 一份出来再改 `Parameters`。例如想要 `start --hide napcat --hide adapter`，直接改参数即可。改好的配置会落到 `.idea/workspace.xml`（你个人的），不影响 `.run/` 里的共享版本。
-
-### 关于 `.run/` 目录的仓库策略
-
-[.run/](../../.run/) 现在入库，方便多机共享 PyCharm 运行配置。
-
----
 
 ## 6. 日常维护
 
-### 6.1 从上游同步
+### 6.1 同步上游
 
 ```powershell
-# 干跑：看每个仓库 upstream 领先了几个 commit
-rtk uv run python scripts/sync_upstream.py
+# 预览
+uv run python scripts/sync_upstream.py
 
-# merge + push 所有代码仓库（主仓 + external/adapter + external/napcat-src；docs/private 不走此脚本）
-rtk uv run python scripts/sync_upstream.py --apply
+# 同步主仓与仍存在的子模块
+uv run python scripts/sync_upstream.py --apply
 
-# 仅同步 adapter
-rtk uv run python scripts/sync_upstream.py --apply --only adapter
-
-# 用 rebase 而非 merge
-rtk uv run python scripts/sync_upstream.py --apply --rebase
+# 仅同步 NapCatQQ 源码
+uv run python scripts/sync_upstream.py --apply --only napcat-src
 ```
 
-`sync_upstream.py` 用于日常按仓库配置同步。需要把 MaiBot upstream 的 `main` 与 `dev` 都整合到当前 fork 时，使用完整远端引用并为两次合并分别提交：
+需要直接合并 MaiBot 上游时使用完整远端引用，避免同名本地分支歧义：
 
 ```powershell
 git fetch upstream --prune
@@ -338,200 +150,61 @@ git merge --no-ff refs/remotes/upstream/main
 git merge --no-ff refs/remotes/upstream/dev
 ```
 
-不要简写为 `upstream/main` 或 `upstream/dev`：本仓库历史上存在同名本地分支，Git 会产生歧义警告甚至解析到错误分支。合并后必须执行 [`design_divergence.md` 的检查清单](design_divergence.md#-合并前必做清单)，并单独确认数据库迁移版本、Maisaka 工具调用兜底、Talk Value Rules 可视化 Hook 和 A_Memorix 实现归属。
-
-同步 submodule 后，主仓会显示 submodule 指针前进，提交：
+### 6.2 重建 NapCatQQ
 
 ```powershell
-rtk git -C d:/Toy/MaiBot add external/adapter external/napcat-src
-rtk git -C d:/Toy/MaiBot commit -m "chore: bump submodules"
-rtk git -C d:/Toy/MaiBot push
+uv run python scripts/build_napcat.py --clean
 ```
 
-### 6.2 NapCat 重建
-
-上游 NapCatQQ 更新后：
+### 6.3 备份
 
 ```powershell
-# 1. sync napcat-src submodule 到 upstream
-rtk uv run python scripts/sync_upstream.py --apply --only napcat-src
-
-# 2. 重新构建；--clean 会清掉旧产物（但保留 config/cache/logs/plugins）
-rtk uv run python scripts/build_napcat.py --clean
-```
-
-### 6.3 备份 / 迁移到新机器
-
-[scripts/backup.ps1](../../scripts/backup.ps1) 把统一工作区所有用户状态打成一个 tar.gz：
-
-| 包含（默认）| 跳过（默认）|
-|--|--|
-| `config/`, `data/`（MaiBot 主程序）| `data/a-memorix/web_import_*`、`temp/`、`__pycache__` |
-| `scripts/launcher.toml`（如存在）| `logs/`（加 `-IncludeLogs` 开启）|
-| `external/adapter/config.toml`, `external/adapter/data/` | `runtime/napcat/node_modules` / 各类构建产物（目标机 `build_napcat.py` 重出）|
-| `runtime/napcat/config/`（NapCat 登录 token + onebot 配置）| `runtime/napcat/cache/`（加 `-IncludeNapcatCache` 开启）|
-| `runtime/napcat/plugins/`（可选加 `-NoNapcatPlugins` 跳过）| |
-
-备份前**必须**先 stop 三件套（脚本会检查 `MaiBot.db` / `NapcatAdapter.db` 是否被占）：
-
-```powershell
-rtk uv run python scripts/launcher.py stop
+uv run python scripts/launcher.py stop
 .\scripts\backup.ps1
-# 或包含更多内容：
-.\scripts\backup.ps1 -IncludeLogs -IncludeNapcatCache
-# 或指定输出：
-.\scripts\backup.ps1 -Output D:\transfer\maibot.tar.gz
 ```
 
-**还原到新机器**：
+默认备份主程序配置和数据、第三方插件、默认 Adapter 插件配置，以及 NapCat 登录状态。运行时构建产物和依赖环境不进入备份。
+
+### 6.4 升级依赖
 
 ```powershell
-rtk git clone --recurse-submodules git@github.com:DogTwoMey/MaiBot.git
-cd MaiBot
-tar -xzf maibot-workspace-XXXX.tar.gz
-rtk uv run python scripts/bootstrap.py --build-napcat
-rtk uv run python scripts/launcher.py start
+uv sync --upgrade
+pnpm -C external/napcat-src install
 ```
 
-### 6.4 依赖升级
+Adapter 已使用主仓环境，不再执行单独的依赖同步。
 
-```powershell
-# MaiBot 主仓
-rtk uv -C d:/Toy/MaiBot sync --upgrade
-# Adapter
-rtk uv -C d:/Toy/MaiBot/external/adapter sync --upgrade
-# NapCat 源（pnpm）
-pnpm -C d:/Toy/MaiBot/external/napcat-src install
-```
+## 7. Git 与迁移规则
 
-### 6.5 切换 LLM 服务商（apisource）
+| 路径 | 入库 | 说明 |
+|---|---|---|
+| `src/plugins/built_in/napcat_adapter/` | 是 | 默认 Adapter 源码 |
+| `src/plugins/built_in/napcat_adapter/config.toml` | 否 | 本机插件配置 |
+| `external/napcat-src` | gitlink | NapCatQQ 源码子模块 |
+| `runtime/` | 否 | 构建产物、日志、PID 与登录状态 |
+| `scripts/launcher.toml` | 否 | 本机启动器配置 |
+| `scripts/launcher.toml.example` | 是 | 启动器模板 |
 
-[apisource/manage.py](../../apisource/manage.py) 可把预设的 provider + tier 合并进 `config/model_config.toml`。每次 apply 会自动备份当前 config（带时间戳后缀）。
-
-**推荐用法**：使用 `--provider all` 一次性配置所有 provider：
-
-```powershell
-# 推荐：统一配置到 high 档（DeepSeek + Aliyun + DZMM）
-python apisource/manage.py --provider all --tier high --apply
-
-# 预览改动
-python apisource/manage.py --provider all --tier high --apply --dry-run
-```
-
-**档位说明**（`--provider all`）：
-
-| 档位 | 对话（DeepSeek） | 多模态（Aliyun） | 补充 replyer（DZMM） |
-|------|-----------------|-----------------|---------------------|
-| low | flash | Aliyun low | dzmm-chat |
-| mid | flash-think + flash | Aliyun low | dzmm-chat |
-| high | pro-nonthink + flash-think | Aliyun high | dzmm-chat |
-| ultra | pro-think + pro-nonthink | Aliyun high | dzmm-chat |
-
-多模态档位映射：low/mid 用 Aliyun low（轻量模型），high/ultra 用 Aliyun high（高质量模型）。
-
-**单独配置某个 provider**（高级用法）：
-
-```powershell
-python apisource/manage.py --provider deepseek --tier high --apply
-python apisource/manage.py --provider aliyun   --tier high --apply
-python apisource/manage.py --provider dzmm     --tier high --apply
-```
-
-终端会打印 `[apply] <slot> 替换剔除: [...]` 告诉你每个功能位丢掉了哪些旧条目，供核对。
-
-可用 tier：`low / mid / high / ultra`（`free` 仅限单个 provider 使用）。
-
-仓库只内置了 `high` 档的 PyCharm run config。需要其他档位时在 PyCharm 里 **Copy Configuration** 改 `Parameters` 里的 `--tier high` 为目标 tier 即可。
-
----
-
-## 7. 目录与 gitignore 规则
-
-| 目录/文件 | 入库？ | 说明 |
-|-----------|--------|------|
-| `external/` | 以 submodule 条目形式入库 | `.gitmodules` 管理 |
-| `external/adapter/config.toml` | 否 | 由 adapter 仓的 `.gitignore` 忽略 |
-| `external/adapter/data/` | 否 | 同上 |
-| `runtime/` | 否 | 主仓 `.gitignore` 已排除整个目录 |
-| `scripts/launcher.toml` | 否 | 主仓 `.gitignore` 已排除 |
-| `scripts/launcher.toml.example` | 是 | 模板随仓库走 |
-| `.run/` | 是 | PyCharm 共享运行配置，随仓库走 |
-| `.idea/` | 否 | PyCharm 私有工作区 |
-
----
+从旧布局升级时，把 `plugins/maibot-team_napcat-adapter/config.toml` 或 `external/adapter/config.toml` 中仍需保留的选项迁移到内置插件配置。确认新插件正常运行后，旧目录只作为本地备份保留，不应重新加入主仓或启动流程。
 
 ## 8. 故障排查
 
-### 8.1 NapCat 的 QQ.exe 残留
+### Adapter 未加载
 
-`launcher.py stop napcat` 只杀 launcher bat 启动的进程树。QQ.exe 通过 DLL 注入启动，可能残留：
+1. 检查 `src/plugins/built_in/napcat_adapter/_manifest.json` 是否存在。
+2. 检查插件配置中的 `plugin.enabled`。
+3. 检查是否仍在 `plugins/` 下保留了同 ID 的旧 Adapter；重复插件 ID 会阻止安全加载。
+4. 查看 Bot 日志中的 `plugin.maibot-team.napcat-adapter`。
 
-```powershell
-Stop-Process -Name QQ -Force -ErrorAction SilentlyContinue
-```
+### NapCat 无法连接
 
-或直接用 NapCat 自带的 `runtime/napcat/KillQQ.bat`。
+对照 NapCat OneBot WebSocket 监听地址与插件的 `napcat_server` 配置，并检查启动器配置中的 NapCat 路径。
 
-### 8.2 Submodule 指针漂移
+### 子模块指针漂移
 
-子模块内 checkout 新 commit 后，主仓 `git status` 会显示 `modified: external/adapter (new commits)`。**必须** `git add external/adapter && git commit` 才会记录这个指针，否则 push 上去别人 pull 不到新版本。
-
-### 8.3 `_rust.pyd: 拒绝访问 (os error 5)` / 其他 `Access Denied`
-
-症状：bot 或 adapter 启动时在 cmd 窗口里打印 `failed to remove file ... _rust.pyd: 拒绝访问` 然后立刻退出。
-
-原因：有孤立的旧 Python 进程（上次启动残留）还占着 `.venv` 下的 DLL；`uv run` 默认启动时要同步环境，尝试替换该文件失败。两个成因：
-
-1. launcher 的 PID 文件指向的 cmd 已退出，但孙子进程 python 还活着 —— `stop` 杀不到它
-2. `uv run` 每次运行都会 `uv sync` 一次（哪怕 lockfile 没变），启动更慢且和在跑的 Python 抢文件
-
-项目现已：
-- 默认使用 `uv run --no-sync` 调 Python（见 [launcher.toml](../../scripts/launcher.toml) 的 `[adapter].argv` 与 `[bot].argv`），绕过启动时 sync
-- 依赖变化时手动跑 `rtk uv sync` 即可
-
-应急清理：
-```powershell
-# 找到并杀掉残留的 MaiBot Python
-Get-Process | Where-Object { $_.Path -like '*MaiBot*' -and $_.ProcessName -eq 'python' } | Stop-Process -Force
-# 清理陈旧 PID 文件
-Remove-Item d:/Toy/MaiBot/runtime/launcher-logs/*.pid -Force -ErrorAction SilentlyContinue
-```
-
-### 8.4 NapCat admin 窗口启动后报 `ERR_MODULE_NOT_FOUND: Cannot find package 'express'`
-
-原因：`runtime/napcat/` 下缺 `node_modules/`。NapCat 的 `napcat.mjs` 在运行时 import `express`、`ws` 等 —— 这些是 vite 构建不打进 bundle 的外部依赖。
-
-修复：现 [scripts/build_napcat.py](../../scripts/build_napcat.py) 构建末尾会自动跑 `npm install --omit=dev` 填充 `runtime/napcat/node_modules/`。如果是老构建产物，补一次即可：
+Adapter 已不是子模块。当前需要单独提交指针的只有仍使用 gitlink 的目录，例如：
 
 ```powershell
-cd d:/Toy/MaiBot/runtime/napcat
-npm install --omit=dev --no-audit --no-fund
+git add external/napcat-src
+git commit -m "chore: update napcat source"
 ```
-
-或跑一次完整重建：`rtk uv run python scripts/build_napcat.py --clean`。想跳过 node 依赖安装（已有 cache）：加 `--no-runtime-deps`。
-
-### 8.5 NapCat 管理员窗口弹出但 `'launcher-win10.bat' 不是内部或外部命令`
-
-原因：UAC 提权后的 cmd 默认工作目录是 `C:\Windows\system32`，`ShellExecuteEx` 的 `lpDirectory` 在跨 UAC 边界时被 Windows 安全策略忽略。[scripts/launcher.py](../../scripts/launcher.py) 的 `start_napcat` 已把 `cd /d "<napcat path>"` 显式嵌入 cmd 参数修复此问题。若仍出现，检查 `[paths].napcat` 是否正确指向有 `launcher-win10.bat` 的目录。
-
-### 8.6 adapter 启动后立刻退出
-
-多半是 `config.toml` 缺失或 `[napcat_server].port` 与 NapCat 实际端口不匹配。先看 `runtime/launcher-logs/adapter.log`（隐藏模式）或 adapter 的 cmd 窗口输出。
-
-### 8.7 bootstrap 跑失败
-
-- `uv` 找不到：先装 uv 并确保在 PATH 里
-- submodule 没拉下来：手动跑 `git submodule update --init --recursive`
-- upstream 已存在：bootstrap 会跳过这一步（幂等）
-
-### 8.8 跨平台
-
-launcher 的"三个 cmd 窗口"行为依赖 Windows 的 `CREATE_NEW_CONSOLE`，非 Windows 环境下退化为在当前终端前台运行（且 NapCat 本身只支持 Windows）。
-
----
-
-## 9. 相关文档
-
-- [`design_divergence.md`](design_divergence.md) — fork 业务/代码层与 upstream 的长期分歧（合并 upstream 前必读）
-- [`../private/reviews/`](../private/reviews/) — 各次 upstream 合并的具体处理记录（私库 submodule，路人不可见）
-- 上游原生文档索引见 [`../README.md`](../README.md)

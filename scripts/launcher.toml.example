@@ -4,7 +4,6 @@
 [paths]
 # All paths are relative to the repo root (parent of this scripts/ dir).
 napcat   = "runtime/napcat"
-adapter  = "external/adapter"
 bot_root = "."
 
 [napcat]
@@ -28,19 +27,6 @@ ready_timeout = 0
 # Extra window title shown in the spawned cmd window.
 title         = "NapCatQQ"
 
-[adapter]
-# argv is spawned with cwd = paths.adapter. `uv run --no-sync` uses that cwd's .venv
-# without attempting to re-sync (bootstrap.py already did that). Skipping sync avoids
-# Access-Denied errors when a stale Python is still holding a .pyd from the old run.
-# Override to an absolute venv python if you don't want uv in the loop, e.g.
-#   argv = [".venv/Scripts/python.exe", "main.py"]
-argv          = ["uv", "run", "--no-sync", "python", "main.py"]
-# Adapter is outbound-only: connects to NapCat :8095 and MaiBot :8000.
-# It does NOT listen on any port, so port-probe would always time out — keep 0.
-ready_port    = 0
-ready_timeout = 0
-title         = "MaiBot-Napcat-Adapter"
-
 [bot]
 argv          = ["uv", "run", "--no-sync", "python", "bot.py"]
 title         = "MaiBot"
@@ -50,4 +36,4 @@ dir = "runtime/launcher-logs"          # stdout/stderr when running hidden; alwa
 
 [startup]
 # Order matters: earlier ones start first. Readiness probe gates the next one.
-order = ["napcat", "adapter", "bot"]
+order = ["napcat", "bot"]

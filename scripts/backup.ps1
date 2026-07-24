@@ -10,7 +10,7 @@
     ▸ 用户插件    plugins/（第三方插件代码 + config.toml + data/）
     ▸ 启动器配置  scripts/launcher.toml
     ▸ API 源产物  apisource/*/output/, apisource/aliyun/response_cn_*.json
-    ▸ Adapter     external/adapter/config.toml + data/
+    ▸ Adapter     src/plugins/built_in/napcat_adapter/config.toml
     ▸ NapCat      runtime/napcat/config/ + plugins/
     ▸ 前端产物    dashboard/dist/（可选，-IncludeDist）
     ▸ 私有文档    docs/private/（可选，-IncludePrivateDocs）
@@ -36,9 +36,6 @@
 
 .PARAMETER NoNapcatPlugins
   跳过 runtime/napcat/plugins/。
-
-.PARAMETER NoAdapter
-  跳过 Napcat Adapter 用户态。
 
 .PARAMETER NoNapcatRuntime
   跳过 runtime/napcat/ 整体。
@@ -68,7 +65,6 @@ param(
     [switch]$IncludePrivateDocs,
     [switch]$IncludeNapcatCache,
     [switch]$NoNapcatPlugins,
-    [switch]$NoAdapter,
     [switch]$NoNapcatRuntime,
     [switch]$NoPlugins,
     [string]$Output
@@ -94,13 +90,12 @@ foreach ($required in @('config', 'data')) {
 }
 
 # Optional components
-$adapterRoot = 'external/adapter'
-$napcatRoot  = 'runtime/napcat'
-$includeAdapter = (-not $NoAdapter)          -and (Test-Path $adapterRoot)
-$includeNapcat  = (-not $NoNapcatRuntime)    -and (Test-Path $napcatRoot)
+$adapterConfig = 'src/plugins/built_in/napcat_adapter/config.toml'
+$napcatRoot = 'runtime/napcat'
+$includeNapcat = (-not $NoNapcatRuntime) -and (Test-Path $napcatRoot)
 
-if ($NoAdapter -or -not (Test-Path $adapterRoot)) {
-    Write-Host "[backup] adapter: skipped (NoAdapter=$NoAdapter, exists=$((Test-Path $adapterRoot)))" -ForegroundColor DarkYellow
+if (-not (Test-Path $adapterConfig)) {
+    Write-Host "[backup] adapter config: skipped (not found)" -ForegroundColor DarkYellow
 }
 if ($NoNapcatRuntime -or -not (Test-Path $napcatRoot)) {
     Write-Host "[backup] napcat runtime: skipped" -ForegroundColor DarkYellow
@@ -110,9 +105,6 @@ if ($NoNapcatRuntime -or -not (Test-Path $napcatRoot)) {
 # 3. Check if any SQLite DB is locked (warn but don't block)
 $dbsToCheck = @()
 $dbsToCheck += @{ Path = 'data\MaiBot.db'; Owner = 'bot.py' }
-if ($includeAdapter) {
-    $dbsToCheck += @{ Path = 'external\adapter\data\NapcatAdapter.db'; Owner = 'adapter main.py' }
-}
 
 foreach ($db in $dbsToCheck) {
     if (-not (Test-Path $db.Path)) { continue }
@@ -194,13 +186,9 @@ foreach ($providerDir in (Get-ChildItem -Path 'apisource' -Directory -ErrorActio
     }
 }
 
-# Adapter user state
-if ($includeAdapter) {
-    if (Test-Path "$adapterRoot/config.toml") { $includePaths += "$adapterRoot/config.toml" }
-    if (Test-Path "$adapterRoot/data")        { $includePaths += "$adapterRoot/data" }
-    if ($IncludeLogs -and (Test-Path "$adapterRoot/logs")) {
-        $includePaths += "$adapterRoot/logs"
-    }
+# Adapter plugin config
+if (Test-Path $adapterConfig) {
+    $includePaths += $adapterConfig
 }
 
 # NapCat runtime user state

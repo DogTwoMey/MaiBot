@@ -1,16 +1,15 @@
-"""Unified launcher for MaiBot + Adapter + NapCatQQ.
+"""Unified launcher for MaiBot + NapCatQQ.
 
-Default behavior: open three separate cmd windows (bot / adapter / napcat),
+The NapCat adapter is loaded by MaiBot's plugin runtime and is not a separate process.
+Default behavior: open two separate cmd windows (bot / napcat),
 each showing its own live log. Flags control which components are hidden
 (run in background with output redirected to log files).
 
 Commands:
-    python scripts/launcher.py start              # start all (three visible windows)
+    python scripts/launcher.py start              # start all (two visible windows)
     python scripts/launcher.py start --hide napcat
-    python scripts/launcher.py start --hide napcat --hide adapter
     python scripts/launcher.py start bot          # start only bot
     python scripts/launcher.py stop               # stop all
-    python scripts/launcher.py stop adapter
     python scripts/launcher.py restart [target]
     python scripts/launcher.py logs <name> [--tail N]
 
@@ -21,7 +20,6 @@ Requires: Python 3.11+ (tomllib) and psutil.
 from __future__ import annotations
 
 import argparse
-import os
 import socket
 import subprocess
 import sys
@@ -58,6 +56,9 @@ CREATE_NEW_PROCESS_GROUP = 0x00000200
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 SW_HIDE = 0
 SW_SHOWNORMAL = 1
+
+_CMD_PROCESS_NAMES = frozenset({"cmd", "cmd.exe"})
+_CONSOLE_HELPER_PROCESS_NAMES = frozenset({"conhost", "conhost.exe", "openconsole", "openconsole.exe"})
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,34 @@ def is_alive(pid: int | None) -> bool:
         return proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE
     except psutil.NoSuchProcess:
         return False
+
+
+def is_component_running(pid: int | None) -> bool:
+    """判断 PID 对应的组件是否仍在运行，而不只判断可见 cmd 窗口是否存在。"""
+    if not is_alive(pid):
+        return False
+    try:
+        process = psutil.Process(pid)
+        if process.name().casefold() not in _CMD_PROCESS_NAMES:
+            return True
+        children = process.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return False
+    except psutil.AccessDenied:
+        # 提权后的 NapCat 进程树可能不可见；此时不能据此启动重复实例。
+        return True
+
+    for child in children:
+        try:
+            if (
+                child.is_running()
+                and child.status() != psutil.STATUS_ZOMBIE
+                and child.name().casefold() not in _CONSOLE_HELPER_PROCESS_NAMES
+            ):
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return False
 
 
 def kill_tree(pid: int, timeout: float = 5.0) -> None:
@@ -350,7 +379,7 @@ def start_napcat(cfg: dict[str, Any], hidden: bool) -> int:
             inner += " " + " ".join(tail_args)
         # /k keeps the window open for logs (visible mode); SW_HIDE handles hidden.
         params = f'/k "{inner}"'
-        print(f"[launcher] napcat: requesting admin elevation via UAC...")
+        print("[launcher] napcat: requesting admin elevation via UAC...")
         return spawn_elevated_windows("cmd.exe", params, str(cwd), hidden)
 
     # Already-admin shell (or non-Windows): normal spawn.
@@ -365,12 +394,6 @@ def _resolve_argv(cfg: dict[str, Any], section: str, default: list[str]) -> list
     return [str(x) for x in argv]
 
 
-def start_adapter(cfg: dict[str, Any], hidden: bool) -> int:
-    cwd = resolve(cfg, "adapter")
-    argv = _resolve_argv(cfg, "adapter", ["uv", "run", "python", "main.py"])
-    return spawn(cfg, "adapter", argv, cwd, hidden)
-
-
 def start_bot(cfg: dict[str, Any], hidden: bool) -> int:
     cwd = resolve(cfg, "bot_root")
     argv = _resolve_argv(cfg, "bot", ["uv", "run", "python", "bot.py"])
@@ -379,7 +402,6 @@ def start_bot(cfg: dict[str, Any], hidden: bool) -> int:
 
 STARTERS = {
     "napcat": start_napcat,
-    "adapter": start_adapter,
     "bot": start_bot,
 }
 
@@ -388,14 +410,15 @@ STARTERS = {
 # Commands
 
 def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> int:
-    order = cfg.get("startup", {}).get("order", ["napcat", "adapter", "bot"])
+    order = cfg.get("startup", {}).get("order", ["napcat", "bot"])
     to_start = [t for t in order if t in targets]
     rc = 0
     for name in to_start:
         existing = read_pid(cfg, name)
-        if is_alive(existing):
+        if is_component_running(existing):
             print(f"[launcher] {name} already running (pid={existing})")
             continue
+        clear_pid(cfg, name)
         hidden = name in hidden_set
         print(f"[launcher] starting {name} ({'hidden' if hidden else 'window'})...")
         pid = STARTERS[name](cfg, hidden)
@@ -410,7 +433,6 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
             # Note: for elevated NapCat, `pid` is the admin cmd — checking its liveness
             # is fine but child QQ.exe may keep running after cmd exits. Acceptable tradeoff.
             if not probe_port(port, timeout, pid=pid):
-                elapsed = time.monotonic() - t0
                 if not is_alive(pid):
                     print(f"[launcher]   ERR: {name} process exited during startup — continuing")
                 else:
@@ -423,7 +445,7 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
 
 def cmd_stop(cfg: dict[str, Any], targets: list[str]) -> int:
     # Reverse of startup order.
-    order = cfg.get("startup", {}).get("order", ["napcat", "adapter", "bot"])
+    order = cfg.get("startup", {}).get("order", ["napcat", "bot"])
     for name in reversed(order):
         if name not in targets:
             continue
@@ -459,7 +481,7 @@ def cmd_logs(cfg: dict[str, Any], name: str, tail: int) -> int:
 
 def parse_targets(raw: list[str]) -> list[str]:
     if not raw or raw == ["all"]:
-        return ["napcat", "adapter", "bot"]
+        return ["napcat", "bot"]
     unknown = [t for t in raw if t not in STARTERS]
     if unknown:
         raise SystemExit(f"[launcher] unknown target(s): {unknown}. Valid: {list(STARTERS)}")
@@ -472,7 +494,7 @@ def main() -> int:
 
     sp = sub.add_parser("start", help="Start components")
     sp.add_argument("targets", nargs="*", default=["all"],
-                    help="Any of: all, napcat, adapter, bot (default: all)")
+                    help="Any of: all, napcat, bot (default: all)")
     sp.add_argument("--hide", action="append", default=[], choices=list(STARTERS),
                     help="Run the named component hidden (no window). Repeatable.")
 

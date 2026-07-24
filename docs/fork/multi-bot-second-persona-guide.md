@@ -25,7 +25,7 @@
 3. 第二个账号的接入链能够向 MaiBot 上报 `self_id` 或 `account_id`。
 4. 同一平台多账号使用支持账号级 `RouteKey` 的 Platform IO 驱动。
 
-如果仍使用当前单实例 `start-all.bat` 加外置 `external/adapter`，只能启动一组 NapCatQQ 和 Adapter。此时可以先准备第二人格配置，但第二人格不会生效，直到第二账号的入站和出站路由完成接入。
+当前单实例 `start-all.bat` 会启动一组 NapCatQQ，默认 Adapter 插件也只维护一条传输连接。此时可以先准备第二人格配置，但第二人格不会生效，直到第二账号的入站和出站路由完成接入。
 
 ## 3. 备份配置
 
