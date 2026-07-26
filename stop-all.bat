@@ -17,7 +17,7 @@ echo +----------------------------------------------+
 echo.
 
 :: Step 1: 停止 MaiBot 组件
-echo [1/2] 停止 MaiBot 组件...
+echo [STEP 1 OF 2] 停止 MaiBot 组件...
 echo -----------------------------------------------
 
 if not exist "%REPO_ROOT%.venv\Scripts\python.exe" (
@@ -33,7 +33,7 @@ if errorlevel 1 (
 echo.
 
 :: Step 2: 停止本地依赖服务
-echo [2/2] 停止本地依赖服务...
+echo [STEP 2 OF 2] 停止本地依赖服务...
 echo -----------------------------------------------
 
 if not exist "%REPO_ROOT%scripts\start_services.py" (
