@@ -516,8 +516,8 @@ async def test_wait_tool_rejects_after_consecutive_limit(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_message_debounce_has_max_wait_cap(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_seconds", 4.0, raising=False)
-    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_max_seconds", 10.0, raising=False)
+    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_seconds", 4.0)
+    monkeypatch.setattr(global_config.chat.reply_timing, "message_debounce_max_seconds", 10.0)
 
     runtime = MaisakaHeartFlowChatting.__new__(MaisakaHeartFlowChatting)
     runtime._running = True

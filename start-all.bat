@@ -32,7 +32,7 @@ if errorlevel 1 (
 )
 
 :: Step 1: 构建 Dashboard
-echo [1/3] 构建 Dashboard...
+echo [STEP 1 OF 3] 构建 Dashboard...
 echo -----------------------------------------------
 call :build_dashboard
 if errorlevel 1 (
@@ -44,13 +44,13 @@ if errorlevel 1 (
 echo.
 
 :: Step 2: 启动本地依赖服务
-echo [2/3] 启动本地依赖服务...
+echo [STEP 2 OF 3] 启动本地依赖服务...
 echo -----------------------------------------------
 call "%REPO_ROOT%start-services.bat"
 echo.
 
 :: Step 3: 启动 MaiBot 组件 (NapCat + Bot；Adapter 由 Bot 插件运行时加载)
-echo [3/3] 启动 MaiBot 组件...
+echo [STEP 3 OF 3] 启动 MaiBot 组件...
 echo -----------------------------------------------
 
 :: 调用 launcher.py start
