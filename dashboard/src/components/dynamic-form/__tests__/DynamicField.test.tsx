@@ -499,7 +499,9 @@ describe('DynamicField', () => {
 
       render(<DynamicField schema={schema} value="" onChange={onChange} />)
 
-      expect(screen.getByText('Test Icon')).toBeInTheDocument()
+      const label = screen.getByText('Test Icon').closest('label')
+      expect(label).toBeInTheDocument()
+      expect(label?.querySelector('svg')).toBeInTheDocument()
     })
 
     it('renders required indicator', () => {
@@ -517,20 +519,21 @@ describe('DynamicField', () => {
       expect(screen.getByText('*')).toBeInTheDocument()
     })
 
-    it('renders description', () => {
+    it('renders description in the default label tooltip', async () => {
       const schema: FieldSchema = {
         name: 'test_desc',
         type: 'string',
         label: 'Test Description',
         description: 'This is a description',
         required: false,
-        'x-description-display': 'inline',
       }
       const onChange = vi.fn()
+      const user = userEvent.setup()
 
       render(<DynamicField schema={schema} value="" onChange={onChange} />)
 
-      expect(screen.getByText('This is a description')).toBeInTheDocument()
+      await user.hover(screen.getByText('Test Description'))
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('This is a description')
     })
   })
 
@@ -557,7 +560,7 @@ describe('DynamicField', () => {
       expect(slider).toHaveAttribute('aria-valuemax', '50')
       expect(slider).toHaveAttribute('aria-valuenow', '25')
 
-      const input = screen.getByRole('spinbutton')
+      const input = screen.getByRole('spinbutton', { name: 'Test Slider Props 数值' })
       expect(input).toHaveAttribute('min', '10')
       expect(input).toHaveAttribute('max', '50')
       expect(input).toHaveAttribute('step', '5')

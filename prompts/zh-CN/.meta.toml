@@ -132,3 +132,8 @@ description = "用于根据用户的自然语言修改描述和候选记忆，�
 display_name = "中期聊天摘要"
 advanced = true
 description = "用于在上下文裁切时，将被移出的聊天记录概括成 long_summary、brief 和 keywords。"
+
+[webui_ai_search]
+display_name = "WebUI AI 搜索"
+advanced = true
+description = "用于根据自然语言意图从 WebUI 提供的真实页面与配置候选中选择搜索结果。"

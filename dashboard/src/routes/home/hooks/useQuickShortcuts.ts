@@ -12,7 +12,6 @@
  * - 插件快捷入口的纯函数 helper（id 编解码、schema 解析等）随 hook 一并下沉。
  */
 import {
-  BarChart3,
   ClipboardCheck,
   FileText,
   HardDrive,
@@ -40,8 +39,6 @@ const DEFAULT_QUICK_SHORTCUT_IDS = [
   'action:expression-review',
   'route:logs',
   'route:plugin-market',
-  'route:settings',
-  'external:statistics',
 ]
 
 function loadQuickShortcutIds(): string[] {
@@ -58,7 +55,9 @@ function loadQuickShortcutIds(): string[] {
   try {
     const parsed = JSON.parse(stored)
     if (Array.isArray(parsed)) {
-      const ids = parsed.filter((item): item is string => typeof item === 'string' && item.length > 0)
+      const ids = parsed.filter(
+        (item): item is string => typeof item === 'string' && item.length > 0
+      )
       return ids.length > 0 ? Array.from(new Set(ids)) : fallback
     }
   } catch {
@@ -302,7 +301,8 @@ export function useQuickShortcuts({
         description: t('home.quickActions.descriptions.expressionReview'),
         icon: ClipboardCheck,
         action: onOpenReviewer,
-        badge: uncheckedCount > 0 ? (uncheckedCount > 99 ? '99+' : String(uncheckedCount)) : undefined,
+        badge:
+          uncheckedCount > 0 ? (uncheckedCount > 99 ? '99+' : String(uncheckedCount)) : undefined,
       },
       {
         id: 'route:logs',
@@ -327,14 +327,6 @@ export function useQuickShortcuts({
         description: t('home.quickActions.descriptions.pluginConfig'),
         icon: Settings,
         href: '/plugin-config',
-      },
-      {
-        id: 'route:settings',
-        category: 'system',
-        label: t('home.quickActions.systemSettings'),
-        description: t('home.quickActions.descriptions.systemSettings'),
-        icon: Settings,
-        href: '/settings',
       },
       {
         id: 'route:settings-appearance',
@@ -400,15 +392,6 @@ export function useQuickShortcuts({
         icon: MessageSquare,
         href: '/resource/expression',
       },
-      {
-        id: 'external:statistics',
-        category: 'external',
-        label: t('home.quickActions.statistics'),
-        description: t('home.quickActions.descriptions.statistics'),
-        icon: BarChart3,
-        href: '/maibot_statistics.html',
-        external: true,
-      },
       ...pluginShortcuts,
     ],
     [handleRestart, isRestarting, onOpenReviewer, pluginShortcuts, t, uncheckedCount]
@@ -447,7 +430,9 @@ export function useQuickShortcuts({
   const toggleQuickShortcut = useCallback(
     (id: string, checked: boolean) => {
       updateQuickShortcutIds(
-        checked ? [...quickShortcutIds, id] : quickShortcutIds.filter((shortcutId) => shortcutId !== id)
+        checked
+          ? [...quickShortcutIds, id]
+          : quickShortcutIds.filter((shortcutId) => shortcutId !== id)
       )
     },
     [quickShortcutIds, updateQuickShortcutIds]

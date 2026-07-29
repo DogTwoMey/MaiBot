@@ -1562,6 +1562,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="chat.completions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise
@@ -1574,6 +1575,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="chat.completions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = NetworkConnectionError(str(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1587,6 +1589,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="chat.completions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = RespNotOkException(exc.status_code, _build_api_status_message(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1604,6 +1607,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="chat.completions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise
@@ -1658,6 +1662,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="embeddings.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = NetworkConnectionError(str(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1671,6 +1676,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="embeddings.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = RespNotOkException(exc.status_code, _build_api_status_message(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1686,6 +1692,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="embeddings.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise
@@ -1701,6 +1708,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="embeddings.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise exc
@@ -1764,6 +1772,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="audio.transcriptions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = NetworkConnectionError(str(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1777,6 +1786,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="audio.transcriptions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             wrapped_error = RespNotOkException(exc.status_code, _build_api_status_message(exc))
             attach_request_snapshot(wrapped_error, snapshot_path)
@@ -1792,6 +1802,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="audio.transcriptions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise
@@ -1808,6 +1819,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 model_info=model_info,
                 operation="audio.transcriptions.create",
                 provider_request=snapshot_provider_request,
+                trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise exc
