@@ -5696,8 +5696,13 @@ class MCPAuthorizationConfig(ConfigBase):
     mode: Literal["none", "bearer"] = Field(
         default="none",
         json_schema_extra={
+            "label": {"zh_CN": "认证方式"},
             "x-widget": "select",
             "x-icon": "shield",
+            "x-option-labels": {
+                "none": "无认证",
+                "bearer": "Bearer Token",
+            },
         },
     )
     """MCP HTTP 认证方式；none 表示不认证。"""
@@ -5705,26 +5710,12 @@ class MCPAuthorizationConfig(ConfigBase):
     bearer_token: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "Bearer Token"},
             "x-widget": "password",
             "x-icon": "key",
         },
     )
     """Bearer 认证令牌，只在 mode 为 bearer 时使用。"""
-
-    def model_post_init(self, context: Optional[dict] = None) -> None:
-        """验证 MCP 认证配置。
-
-        Args:
-            context: Pydantic 传入的上下文对象。
-
-        Returns:
-            None
-        """
-
-        if self.mode == "bearer" and not self.bearer_token.strip():
-            raise ValueError("MCP 使用 bearer 认证时必须填写 bearer_token")
-        return super().model_post_init(context)
-
 
 class MCPRootItemConfig(ConfigBase):
     """单个 MCP Root 配置。"""
@@ -5732,6 +5723,7 @@ class MCPRootItemConfig(ConfigBase):
     enabled: bool = Field(
         default=True,
         json_schema_extra={
+            "label": {"zh_CN": "启用 Root"},
             "x-widget": "switch",
             "x-icon": "power",
         },
@@ -5741,6 +5733,7 @@ class MCPRootItemConfig(ConfigBase):
     uri: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "Root URI"},
             "x-widget": "input",
             "x-icon": "folder",
         },
@@ -5750,6 +5743,7 @@ class MCPRootItemConfig(ConfigBase):
     name: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "显示名称"},
             "x-widget": "input",
             "x-icon": "tag",
         },
@@ -5777,6 +5771,7 @@ class MCPRootsConfig(ConfigBase):
     enable: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "启用 Roots"},
             "x-widget": "switch",
             "x-icon": "folder-tree",
         },
@@ -5786,6 +5781,7 @@ class MCPRootsConfig(ConfigBase):
     items: list[MCPRootItemConfig] = Field(
         default_factory=lambda: [],
         json_schema_extra={
+            "label": {"zh_CN": "Root 列表"},
             "x-widget": "custom",
             "x-icon": "folder",
         },
@@ -5799,6 +5795,7 @@ class MCPSamplingConfig(ConfigBase):
     enable: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "启用 Sampling"},
             "x-widget": "switch",
             "x-icon": "brain",
         },
@@ -5808,6 +5805,7 @@ class MCPSamplingConfig(ConfigBase):
     task_name: str = Field(
         default="planner",
         json_schema_extra={
+            "label": {"zh_CN": "模型任务"},
             "x-widget": "input",
             "x-icon": "sparkles",
         },
@@ -5817,8 +5815,10 @@ class MCPSamplingConfig(ConfigBase):
     include_context_support: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "携带上下文（暂未支持）"},
             "x-widget": "switch",
             "x-icon": "layers",
+            "advanced": True,
         },
     )
     """是否允许 Sampling 请求带上下文。"""
@@ -5826,6 +5826,7 @@ class MCPSamplingConfig(ConfigBase):
     tool_support: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "允许 Sampling 使用工具"},
             "x-widget": "switch",
             "x-icon": "wrench",
         },
@@ -5839,8 +5840,10 @@ class MCPElicitationConfig(ConfigBase):
     enable: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "启用 Elicitation（暂未支持）"},
             "x-widget": "switch",
             "x-icon": "message-circle-question",
+            "advanced": True,
         },
     )
     """是否声明支持 MCP Elicitation。"""
@@ -5848,8 +5851,10 @@ class MCPElicitationConfig(ConfigBase):
     allow_form: bool = Field(
         default=True,
         json_schema_extra={
+            "label": {"zh_CN": "允许表单请求"},
             "x-widget": "switch",
             "x-icon": "form-input",
+            "advanced": True,
         },
     )
     """是否允许 MCP 服务器请求填写表单。"""
@@ -5857,8 +5862,10 @@ class MCPElicitationConfig(ConfigBase):
     allow_url: bool = Field(
         default=False,
         json_schema_extra={
+            "label": {"zh_CN": "允许 URL 请求"},
             "x-widget": "switch",
             "x-icon": "link",
+            "advanced": True,
         },
     )
     """是否允许 MCP 服务器请求打开 URL。"""
@@ -5884,8 +5891,10 @@ class MCPClientConfig(ConfigBase):
     client_name: str = Field(
         default="MaiBot",
         json_schema_extra={
+            "label": {"zh_CN": "客户端名称"},
             "x-widget": "input",
             "x-icon": "bot",
+            "advanced": True,
         },
     )
     """对 MCP 服务器展示的客户端名称。"""
@@ -5893,19 +5902,30 @@ class MCPClientConfig(ConfigBase):
     client_version: str = Field(
         default="1.0.0",
         json_schema_extra={
+            "label": {"zh_CN": "客户端版本"},
             "x-widget": "input",
             "x-icon": "info",
+            "advanced": True,
         },
     )
     """对 MCP 服务器展示的客户端版本。"""
 
-    roots: MCPRootsConfig = Field(default_factory=MCPRootsConfig)
+    roots: MCPRootsConfig = Field(
+        default_factory=MCPRootsConfig,
+        json_schema_extra={"label": {"zh_CN": "Roots 能力"}, "advanced": True},
+    )
     """是否向 MCP 服务器提供可访问的文件根目录。"""
 
-    sampling: MCPSamplingConfig = Field(default_factory=MCPSamplingConfig)
+    sampling: MCPSamplingConfig = Field(
+        default_factory=MCPSamplingConfig,
+        json_schema_extra={"label": {"zh_CN": "Sampling 能力"}, "advanced": True},
+    )
     """是否允许 MCP 服务器请求麦麦调用模型。"""
 
-    elicitation: MCPElicitationConfig = Field(default_factory=MCPElicitationConfig)
+    elicitation: MCPElicitationConfig = Field(
+        default_factory=MCPElicitationConfig,
+        json_schema_extra={"label": {"zh_CN": "Elicitation 能力"}, "advanced": True},
+    )
     """是否允许 MCP 服务器向麦麦请求补充信息。"""
 
 
@@ -5915,6 +5935,7 @@ class MCPServerItemConfig(ConfigBase):
     name: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "服务名称"},
             "x-widget": "input",
             "x-icon": "tag",
         },
@@ -5924,6 +5945,7 @@ class MCPServerItemConfig(ConfigBase):
     enabled: bool = Field(
         default=True,
         json_schema_extra={
+            "label": {"zh_CN": "启用服务"},
             "x-widget": "switch",
             "x-icon": "power",
         },
@@ -5933,8 +5955,14 @@ class MCPServerItemConfig(ConfigBase):
     transport: Literal["stdio", "streamable_http", "sse"] = Field(
         default="stdio",
         json_schema_extra={
+            "label": {"zh_CN": "传输方式"},
             "x-widget": "select",
             "x-icon": "shuffle",
+            "x-option-labels": {
+                "stdio": "本地命令（stdio）",
+                "streamable_http": "远程 HTTP",
+                "sse": "旧版 SSE",
+            },
         },
     )
     """连接方式；本地命令通常用 stdio，远程服务用 HTTP/SSE。"""
@@ -5942,6 +5970,7 @@ class MCPServerItemConfig(ConfigBase):
     command: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "启动命令"},
             "x-widget": "input",
             "x-icon": "terminal",
         },
@@ -5951,6 +5980,7 @@ class MCPServerItemConfig(ConfigBase):
     args: list[str] = Field(
         default_factory=lambda: [],
         json_schema_extra={
+            "label": {"zh_CN": "命令参数"},
             "x-widget": "custom",
             "x-icon": "list",
         },
@@ -5960,6 +5990,7 @@ class MCPServerItemConfig(ConfigBase):
     env: dict[str, str] = Field(
         default_factory=lambda: {},
         json_schema_extra={
+            "label": {"zh_CN": "环境变量"},
             "x-widget": "custom",
             "x-icon": "variable",
         },
@@ -5969,6 +6000,7 @@ class MCPServerItemConfig(ConfigBase):
     url: str = Field(
         default="",
         json_schema_extra={
+            "label": {"zh_CN": "服务 URL"},
             "x-widget": "input",
             "x-icon": "link",
         },
@@ -5978,6 +6010,7 @@ class MCPServerItemConfig(ConfigBase):
     headers: dict[str, str] = Field(
         default_factory=lambda: {},
         json_schema_extra={
+            "label": {"zh_CN": "请求 Headers"},
             "x-widget": "custom",
             "x-icon": "file-json",
         },
@@ -5988,6 +6021,7 @@ class MCPServerItemConfig(ConfigBase):
         default=30.0,
         gt=0,
         json_schema_extra={
+            "label": {"zh_CN": "HTTP 请求超时"},
             "x-widget": "number",
             "x-icon": "clock-3",
         },
@@ -5998,13 +6032,17 @@ class MCPServerItemConfig(ConfigBase):
         default=300.0,
         gt=0,
         json_schema_extra={
+            "label": {"zh_CN": "会话读取超时"},
             "x-widget": "number",
             "x-icon": "timer",
         },
     )
     """连接建立后，等服务器消息的最长时间。"""
 
-    authorization: MCPAuthorizationConfig = Field(default_factory=MCPAuthorizationConfig)
+    authorization: MCPAuthorizationConfig = Field(
+        default_factory=MCPAuthorizationConfig,
+        json_schema_extra={"label": {"zh_CN": "远程认证"}},
+    )
     """HTTP/SSE 连接的认证设置。"""
 
     def model_post_init(self, context: Optional[dict] = None) -> None:
@@ -6016,6 +6054,9 @@ class MCPServerItemConfig(ConfigBase):
         Returns:
             None
         """
+
+        if not self.enabled:
+            return super().model_post_init(context)
 
         if not self.name.strip():
             raise ValueError("MCPServerItemConfig.name 不能为空")
@@ -6029,6 +6070,9 @@ class MCPServerItemConfig(ConfigBase):
         if self.transport == "sse" and not self.url.strip():
             raise ValueError(f"MCP 服务器 {self.name} 使用 sse 时必须填写 url")
 
+        if self.authorization.mode == "bearer" and not self.authorization.bearer_token.strip():
+            raise ValueError(f"MCP 服务器 {self.name} 使用 bearer 认证时必须填写 bearer_token")
+
         return super().model_post_init(context)
 
 
@@ -6040,18 +6084,23 @@ class MCPConfig(ConfigBase):
     enable: bool = Field(
         default=True,
         json_schema_extra={
+            "label": {"zh_CN": "启用 MCP"},
             "x-widget": "switch",
             "x-icon": "zap",
         },
     )
     """是否启用 MCP 工具接入能力。"""
 
-    client: MCPClientConfig = Field(default_factory=MCPClientConfig)
+    client: MCPClientConfig = Field(
+        default_factory=MCPClientConfig,
+        json_schema_extra={"label": {"zh_CN": "客户端高级能力"}, "advanced": True},
+    )
     """麦麦作为 MCP 客户端时声明的能力。"""
 
     servers: list[MCPServerItemConfig] = Field(
         default_factory=lambda: [],
         json_schema_extra={
+            "label": {"zh_CN": "MCP 服务"},
             "x-widget": "custom",
             "x-icon": "server",
         },
@@ -6068,7 +6117,7 @@ class MCPConfig(ConfigBase):
             None
         """
 
-        server_names = [server.name.strip() for server in self.servers if server.name.strip()]
+        server_names = [server.name.strip() for server in self.servers if server.enabled and server.name.strip()]
         if len(server_names) != len(set(server_names)):
             raise ValueError("MCP 配置中的服务器名称不能重复")
         return super().model_post_init(context)

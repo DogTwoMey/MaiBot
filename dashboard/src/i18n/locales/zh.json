@@ -23,7 +23,7 @@
       "overview": "概览",
       "botConfig": "麦麦配置编辑",
       "botResources": "麦麦资源管理",
-      "extensionsMonitor": "插件与扩展",
+      "extensionsMonitor": "扩展与维护",
       "system": "系统"
     },
     "menu": {
@@ -45,6 +45,8 @@
       "configTemplate": "配置模板市场",
       "pluginConfig": "插件管理",
       "mcpSettings": "MCP 设置",
+      "dataTransfer": "数据迁移",
+      "statistics": "详细统计数据",
       "logViewer": "日志查看器",
       "reasoningProcess": "推理过程",
       "maisakaMonitor": "麦麦观察",
@@ -62,7 +64,7 @@
   "chat": {
     "botNameFallback": "麦麦",
     "userFallback": "用户",
-    "userNameFallback": "WebUI用户",
+    "userNameFallback": "人类",
     "virtualGroupFallback": "WebUI虚拟群聊",
     "status": {
       "connected": "已连接",
@@ -72,6 +74,7 @@
     "actions": {
       "cancel": "取消",
       "addImage": "添加图片",
+      "openEmojiManager": "用户表情包",
       "reconnect": "重新连接",
       "removeImage": "移除图片",
       "save": "保存",
@@ -104,6 +107,14 @@
     "composer": {
       "hint": "Enter 发送 · Shift + Enter 换行"
     },
+    "emojiManager": {
+      "add": "添加",
+      "delete": "删除表情包",
+      "empty": "还没有用户表情包，点击添加即可使用。",
+      "hint": "点击表情包直接发送",
+      "send": "发送表情包",
+      "title": "我的表情包"
+    },
     "sidebar": {
       "closeConversation": "关闭 {{label}}",
       "conversations": "聊天会话",
@@ -116,8 +127,11 @@
       "title": "聊天",
       "virtualBadge": "虚拟",
       "profileTitle": "我的身份",
+      "editAvatar": "修改头像",
       "editName": "编辑昵称",
-      "saveName": "保存"
+      "saveName": "保存",
+      "savingAvatar": "正在保存头像",
+      "userAvatarAlt": "{{name}} 的头像"
     },
     "dialog": {
       "create": "创建对话",
@@ -150,6 +164,17 @@
       "videoUnsupported": "您的浏览器不支持视频播放"
     },
     "toast": {
+      "avatarSaved": "头像已保存",
+      "avatarSavedDesc": "新头像已经应用到麦麦聊天。",
+      "avatarSaveFailed": "头像保存失败",
+      "avatarSaveFailedDesc": "请稍后重试。",
+      "avatarUnsupported": "无法使用此头像",
+      "avatarUnsupportedDesc": "请选择不超过 5 MB 的 JPG、PNG、WebP、GIF 或 BMP 图片。",
+      "emojiDeleteFailed": "删除表情包失败",
+      "emojiLoadFailed": "加载表情包失败",
+      "emojiSendFailed": "发送表情包失败",
+      "emojiUnsupportedDesc": "请选择不超过 2 MB 的 JPG、PNG、WebP 或 GIF 图片。",
+      "emojiUploadFailed": "添加表情包失败",
       "backendUnavailable": "无法连接到后端服务，请确保 MaiBot 已启动",
       "backendUnavailableShort": "无法连接到后端服务",
       "connectionFailed": "连接失败",
@@ -753,6 +778,29 @@
       }
     }
   },
+  "versionCompatibility": {
+    "checking": "正在检查主程序与 WebUI 版本...",
+    "eyebrow": "版本兼容性警告",
+    "mainProgramVersion": "主程序版本",
+    "webuiVersion": "当前 WebUI 版本",
+    "requiredWebuiVersion": "主程序要求的 WebUI 版本",
+    "updateTargetLabel": "需要更新：{{target}}",
+    "riskWarning": "继续使用不匹配的版本可能导致页面异常、接口不可用或配置错误。建议完成更新后再继续操作。",
+    "countdownHint": "请阅读以上提示，{{seconds}} 秒后可以关闭此页面。",
+    "confirmHint": "你现在可以确认风险并继续使用。",
+    "countdownButton": "{{seconds}} 秒后可确认",
+    "confirmButton": "关闭提示并继续",
+    "webuiOutdated": {
+      "title": "WebUI 版本过低",
+      "description": "当前 WebUI v{{currentVersion}} 低于主程序要求的 v{{requiredVersion}}。请更新 WebUI 静态资源包。",
+      "updateTarget": "WebUI"
+    },
+    "mainProgramOutdated": {
+      "title": "主程序版本过低",
+      "description": "当前主程序 v{{mainVersion}} 仅声明支持 WebUI v{{requiredVersion}}，但正在运行 WebUI v{{webuiVersion}}。请更新 MaiBot 主程序。",
+      "updateTarget": "MaiBot 主程序"
+    }
+  },
   "common": {
     "loading": "加载中...",
     "error": "错误",
@@ -865,6 +913,7 @@
       "statisticsDesc": "查看使用统计",
       "plugins": "插件市场",
       "pluginsDesc": "浏览和安装插件",
+      "dataTransferDesc": "备份、导出或恢复 MaiBot 数据",
       "logs": "日志查看器",
       "logsDesc": "查看系统日志",
       "reasoningProcessDesc": "浏览 Maisaka prompt 推理记录",
@@ -1026,6 +1075,14 @@
   "home": {
     "title": "首页",
     "subtitle": "查看基本信息和快捷入口",
+    "signalDesk": {
+      "eyebrow": "MAIBOT OPERATIONS",
+      "title": "麦麦信号台",
+      "description": "系统运行与数据控制中心",
+      "status": "系统状态",
+      "online": "在线",
+      "standby": "待机"
+    },
     "loading": "加载中...",
     "loadingHint": "加载中...",
     "timeRange": {
@@ -1034,14 +1091,44 @@
       "30d": "30天"
     },
     "autoRefresh": "自动刷新",
+    "hitokoto": {
+      "title": "一言"
+    },
     "cards": {
       "add": "新增卡片",
       "edit": "编辑卡片",
+      "editCard": "编辑卡片：{{title}}",
+      "editContent": "编辑卡片内容",
       "done": "完成编辑",
       "reset": "恢复默认布局",
+      "styles": {
+        "default": {
+          "title": "默认样式",
+          "description": "使用当前主题的标准卡片外观。"
+        },
+        "orange": {
+          "title": "橙色底背景色字",
+          "description": "使用主题橙色作为底色，背景色作为文字颜色。"
+        },
+        "borderless": {
+          "title": "无边框无底纹",
+          "description": "移除卡片边框、底色、底纹和阴影。"
+        }
+      },
+      "styleDialog": {
+        "title": "编辑「{{title}}」",
+        "description": "选择这张卡片在首页中的显示样式。",
+        "done": "完成"
+      },
       "row": {
         "low": "低行",
         "high": "高行"
+      },
+      "categories": {
+        "status": "运行状态",
+        "statistics": "统计图表",
+        "analysis": "模型分析",
+        "plugin": "插件卡片"
       },
       "dialog": {
         "title": "管理首页卡片",
@@ -1056,15 +1143,22 @@
     "botStatus": {
       "title": "麦麦状态",
       "loading": "读取中",
-      "running": "运行中",
+      "running": "活动",
       "stopped": "已停止",
       "unknown": "未知",
+      "uptimeLabel": "运行时间",
       "uptime": "{{time}}",
+      "enabled": "已启用",
+      "disabled": "未启用",
       "visualEnabled": "启用视觉",
       "memoryEnabled": "启用记忆"
     },
     "versionCard": {
       "title": "麦麦版本",
+      "maibotVersion": "MAIBOT",
+      "consoleVersion": "CONSOLE",
+      "updateAvailable": "UPDATE",
+      "mismatch": "版本不匹配",
       "mainVersion": "主程序版本",
       "webuiVersion": "WebUI 版本",
       "stableLatest": "最新版本",
@@ -1150,13 +1244,17 @@
     },
     "stats": {
       "overviewTitle": "统计概览",
+      "overviewDesc": "关键运行指标",
+      "timeRange": "统计时间范围",
       "totalRequests": "总请求数",
       "totalCost": "总花费",
       "tokenUsage": "Token消耗",
+      "inputTokens": "输入",
+      "outputTokens": "输出",
       "avgResponse": "平均响应",
       "avgResponseDesc": "API平均耗时",
       "onlineTime": "在线时长",
-      "messageProcessing": "消息处理",
+      "messageProcessing": "消息",
       "costEfficiency": "成本效率",
       "recentPeriod": "最近{{range}}",
       "perHour": "{{value}}/小时",
@@ -1166,6 +1264,16 @@
       "seconds": "秒",
       "hours": "小时",
       "days": "天"
+    },
+    "cache": {
+      "title": "Prompt缓存",
+      "description": "缓存输入Token的命中情况",
+      "hitRate": "缓存命中率",
+      "all": "全部",
+      "chat": "聊天",
+      "hitTokens": "命中Token",
+      "missTokens": "未命中Token",
+      "eligibleTokens": "参与统计 {{value}} Token"
     },
     "storage": {
       "title": "存储占用",
@@ -1178,6 +1286,10 @@
       "files": "{{count}} 个文件",
       "filesAndRecords": "{{files}} 个文件 · {{records}} 条记录",
       "databaseDetail": "{{files}} 个文件 · {{tables}} 张表",
+      "sizeMode": "大小",
+      "countMode": "数量",
+      "switchDisplay": "切换存储信息显示方式",
+      "countSummary": "{{files}} 文件 · {{records}} 记录 · {{tables}} 表",
       "readingDescription": "正在读取本地存储占用...",
       "unavailable": "暂未获取到本地存储占用",
       "manage": "管理存储"
@@ -1191,18 +1303,22 @@
       },
       "requestTrend": "请求趋势",
       "requestTrendDesc": "最近{{hours}}小时的请求量变化",
+      "requestTrendDescCompact": "分时请求量变化",
       "costTrend": "花费趋势",
       "costTrendDesc": "API调用成本变化",
       "tokenUsage": "Token消耗",
       "tokenUsageDesc": "Token使用量变化",
+      "tokenUsageSplitDesc": "输入与输出Token变化",
       "modelDistribution": "模型花费分布",
       "modelDistributionDesc": "各模型花费占比 (共 {{count}} 个模型)",
+      "modelDistributionCardDesc": "各模型的累计花费占比",
       "modelDetails": "模型详细统计",
       "modelDetailsDesc": "请求数、花费和性能",
-      "recentActivity": "最近活动",
-      "recentActivityDesc": "最新的API调用记录",
+      "modelDetailsTokenDesc": "模型调用、Token、缓存和费用",
       "dailyStats": "每日统计",
       "dailyStatsDesc": "最近7天的数据汇总",
+      "dailyStatsRangeDesc": "所选时段的每日汇总",
+      "date": "日期",
       "requests": "请求数",
       "cost": "花费(¥)",
       "requestCount": "请求数",
@@ -1212,7 +1328,7 @@
       "status": "状态"
     },
     "time": {
-      "hoursMinutes": "{{hours}}小时{{minutes}}分钟"
+      "hoursMinutes": "{{hours}}小时{{minutes}}分"
     },
     "hitokotoFallback": "人生就像一盒巧克力，你永远不知道下一颗是什么味道。",
     "hitokotoFallbackFrom": "阿甘正传",

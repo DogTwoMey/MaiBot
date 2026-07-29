@@ -36,7 +36,6 @@ function shouldSyncRemoteWebUIStyle(): boolean {
 export function ThemeProvider({
   children,
   defaultTheme = 'system',
-  storageKey: _storageKey,
 }: ThemeProviderProps) {
   const [themeMode, setThemeMode] = useState<Theme>(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEYS.MODE) as Theme | null
@@ -77,6 +76,7 @@ export function ThemeProvider({
     root.dataset.dashboardStyle = dashboardStyle
     root.dataset.retroFocusHighlight = futureRetroConfig.focusHighlight ? 'true' : 'false'
     root.dataset.retroPaperTexture = futureRetroConfig.paperTexture ? 'true' : 'false'
+    root.dataset.retroVariant = futureRetroConfig.variant
 
     applyThemePipeline(themeConfig, isDark)
   }, [resolvedTheme, themeConfig])

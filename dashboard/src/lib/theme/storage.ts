@@ -42,7 +42,8 @@ const DEFAULT_THEME_CONFIG: UserThemeConfig = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
-type ImportThemeConfigRecord = Record<string, unknown> & Pick<UserThemeConfig, 'selectedPreset' | 'accentColor'>
+type ImportThemeConfigRecord = Record<string, unknown> &
+  Pick<UserThemeConfig, 'selectedPreset' | 'accentColor'>
 
 function hasRequiredImportThemeFields(
   config: Record<string, unknown>,
@@ -116,6 +117,10 @@ function normalizeStyleBackgroundConfig(value: unknown): StyleBackgroundConfigMa
 function normalizeStyleConfig(value: unknown): DashboardStyleConfig {
   const config = isRecord(value) ? value : {}
   const futureRetro = isRecord(config.futureRetro) ? config.futureRetro : {}
+  const variant =
+    futureRetro.variant === 'classic-signal' || futureRetro.variant === 'paper-console'
+      ? futureRetro.variant
+      : DEFAULT_FUTURE_RETRO_STYLE_CONFIG.variant
 
   return {
     futureRetro: {
@@ -127,6 +132,7 @@ function normalizeStyleConfig(value: unknown): DashboardStyleConfig {
         typeof futureRetro.paperTexture === 'boolean'
           ? futureRetro.paperTexture
           : DEFAULT_FUTURE_RETRO_STYLE_CONFIG.paperTexture,
+      variant,
     },
   }
 }
