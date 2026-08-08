@@ -280,6 +280,9 @@ def spawn_elevated_windows(file: str, params: str, cwd: str, hidden: bool) -> in
 
 def spawn(cfg: dict[str, Any], name: str, argv: list[str], cwd: Path, hidden: bool) -> int:
     """Spawn a component. Visible = new console window; hidden = detached + log file."""
+    child_env = os.environ.copy()
+    child_env.setdefault("PYTHONUTF8", "1")
+    child_env.setdefault("PYTHONIOENCODING", "utf-8")
     if hidden:
         log = open(log_file(cfg, name), "ab", buffering=0)
         proc = subprocess.Popen(
@@ -290,6 +293,7 @@ def spawn(cfg: dict[str, Any], name: str, argv: list[str], cwd: Path, hidden: bo
             stdin=subprocess.DEVNULL,
             creationflags=(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP) if sys.platform == "win32" else 0,
             close_fds=True,
+            env=child_env,
         )
         return proc.pid
     if sys.platform == "win32":
@@ -303,10 +307,11 @@ def spawn(cfg: dict[str, Any], name: str, argv: list[str], cwd: Path, hidden: bo
             cwd=str(cwd),
             creationflags=CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP,
             close_fds=True,
+            env=child_env,
         )
         return proc.pid
     # Non-Windows fallback: just run in foreground of caller's terminal.
-    proc = subprocess.Popen(argv, cwd=str(cwd))
+    proc = subprocess.Popen(argv, cwd=str(cwd), env=child_env)
     return proc.pid
 
 
