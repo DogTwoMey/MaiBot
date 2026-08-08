@@ -496,12 +496,13 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
         try:
             with open(manifest_path, "r", encoding="utf-8") as file_obj:
                 manifest = json.load(file_obj)
-            for field in ["manifest_version", "id", "name", "version", "author"]:
+            for field in ["manifest_version", "name", "version", "author"]:
                 if field not in manifest:
                     raise ValueError(f"缺少必需字段: {field}")
-            manifest_plugin_id = _read_manifest_plugin_id(manifest)
-            if manifest_plugin_id != plugin_id:
-                raise ValueError(f"插件 ID 不匹配：期望 {plugin_id}，实际 {manifest_plugin_id}")
+            if not _read_manifest_plugin_id(manifest):
+                manifest["id"] = plugin_id
+                with open(manifest_path, "w", encoding="utf-8") as file_obj:
+                    json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
         except Exception as e:
             remove_tree(target_path)
             await update_progress(
@@ -799,6 +800,7 @@ async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None)) ->
                     load_status = "loading"
                 circuit_status = circuit_statuses.get(plugin_id)
                 load_error = _lookup_runtime_plugin_value(runtime_failure_reasons, runtime_aliases, "")
+                effective_load_status = load_status if enabled or load_status == "failed" else "disabled"
                 changelog = read_plugin_changelog(plugin_path)
                 installed_plugins.append(
                     {
@@ -807,9 +809,9 @@ async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None)) ->
                         "path": str(plugin_path.absolute()),
                         "enabled": enabled,
                         "disabled": not enabled,
-                        "loaded": load_status == "success",
-                        "load_status": "disabled" if not enabled else load_status,
-                        "load_error": "" if not enabled or load_status != "failed" else load_error,
+                        "loaded": effective_load_status == "success",
+                        "load_status": effective_load_status,
+                        "load_error": load_error if effective_load_status == "failed" else "",
                         "circuit_status": circuit_status,
                         "changelog": changelog,
                     }

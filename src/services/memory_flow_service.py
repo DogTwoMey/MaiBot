@@ -776,7 +776,7 @@ class ChatSummaryWritebackService:
         if message is not None and not cls._extract_session_group_id(message):
             private_threshold = max(
                 1,
-                int(getattr(global_config.a_memorix.integration, "chat_summary_writeback_private_threshold", 4) or 4),
+                int(global_config.a_memorix.integration.chat_summary_writeback_private_threshold),
             )
             return min(default_threshold, private_threshold)
         return default_threshold
@@ -788,22 +788,12 @@ class ChatSummaryWritebackService:
     @staticmethod
     def _idle_trigger_seconds() -> int:
         """空闲兜底触发时长；0 表示禁用。"""
-        raw = getattr(global_config.a_memorix.integration, "chat_summary_writeback_idle_trigger_seconds", 180)
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            return 180
-        return max(0, value)
+        return max(0, int(global_config.a_memorix.integration.chat_summary_writeback_idle_trigger_seconds))
 
     @staticmethod
     def _idle_min_pending_messages() -> int:
         """空闲兜底触发的最少未摘要消息数。"""
-        raw = getattr(global_config.a_memorix.integration, "chat_summary_writeback_idle_min_pending", 2)
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            return 2
-        return max(1, value)
+        return max(1, int(global_config.a_memorix.integration.chat_summary_writeback_idle_min_pending))
 
     @staticmethod
     def _count_messages_until_trigger(*, session_id: str, message_time: float | None) -> int:

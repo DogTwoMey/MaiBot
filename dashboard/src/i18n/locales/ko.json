@@ -2,6 +2,8 @@
   "header": {
     "collapseSidebar": "사이드바 접기",
     "expandSidebar": "사이드바 펼치기",
+    "switchSidebarToFixed": "고정 모드로 전환",
+    "switchSidebarToHover": "호버 모드로 전환",
     "collapseTopbar": "상단 바 접기",
     "expandTopbar": "상단 바 펼치기",
     "toggleConnection": "백엔드 연결 전환",
@@ -45,15 +47,54 @@
       "configTemplate": "설정 템플릿",
       "pluginConfig": "플러그인 관리",
       "mcpSettings": "MCP 설정",
-      "dataTransfer": "데이터 이전",
+      "dataTransfer": "데이터 관리",
       "statistics": "상세 통계 데이터",
+      "replyEffects": "답변 효과",
       "logViewer": "로그 뷰어",
       "reasoningProcess": "추론 과정",
       "maisakaMonitor": "MaiSaka 채팅 모니터",
       "chatManagement": "채팅 관리",
       "localChat": "로컬 채팅",
-      "settings": "설정"
+      "settings": "WebUI 설정"
     }
+  },
+  "statisticsPage": {
+    "title": "상세 통계 데이터",
+    "description": "MaiBot 실행 중의 모델 호출, Token, 비용, 메시지 및 온라인 시간을 확인합니다.",
+    "generatedAt": "통계 기준 시각: {{time}}",
+    "periodRange": "통계 기간: {{start}}부터 {{end}}까지",
+    "empty": "이 기간에는 데이터가 없습니다",
+    "actions": { "refresh": "새로고침", "openHtml": "HTML 버전 열기" },
+    "error": { "title": "상세 통계를 불러오지 못했습니다", "description": "잠시 후 다시 시도해 주세요" },
+    "periods": {
+      "all_time": "배포 이후", "last_30_days": "최근 30일", "last_7_days": "최근 7일", "last_3_days": "최근 3일",
+      "last_24_hours": "최근 1일", "last_3_hours": "최근 3시간", "last_hour": "최근 1시간", "last_15_minutes": "최근 15분"
+    },
+    "tabs": { "trends": "데이터 차트", "metrics": "지표 추이" },
+    "sections": { "breakdowns": "분류 통계", "distributions": "데이터 분포" },
+    "breakdowns": { "models": "모델별", "modules": "모듈별", "requestTypes": "요청 유형별", "chats": "채팅 메시지" },
+    "summary": {
+      "onlineTime": "총 온라인 시간", "messages": "총 메시지 수", "replies": "총 답변 수", "requests": "총 요청 수",
+      "tokens": "총 Token 수", "inputTokens": "입력 Token", "outputTokens": "출력 Token", "cacheHitRate": "Prompt 캐시 적중률",
+      "cacheHitTokens": "캐시 적중 Token", "cacheMissTokens": "캐시 미적중 Token", "totalCost": "총 비용",
+      "costPerMessages": "비용/메시지", "costPerReceivedMessages": "비용/수신 메시지", "costPerReplies": "비용/답변",
+      "costPerHour": "비용/시간", "tokensPerHour": "Token/시간"
+    },
+    "units": { "per100": "100개당", "perHour": "시간당" },
+    "table": {
+      "name": "이름", "requests": "호출 횟수", "inputTokens": "입력 Token", "outputTokens": "출력 Token", "totalTokens": "총 Token",
+      "cacheHitTokens": "캐시 적중 Token", "cacheMissTokens": "캐시 미적중 Token", "cacheHitRate": "캐시 적중률", "cost": "누적 비용",
+      "avgTime": "평균 시간", "stdTime": "시간 표준편차", "callsPerReply": "답변당 호출 수", "tokensPerReply": "답변당 Token",
+      "tokensPerCall": "호출당 Token", "chat": "연락처/그룹", "messages": "메시지 수"
+    },
+    "distributions": {
+      "ownerCosts": "호출 소스 비용 분포", "modelCosts": "모델 비용 분포", "moduleCosts": "모듈 비용 분포",
+      "requestTypeCosts": "요청 유형 비용 분포", "chatMessages": "채팅 메시지 분포", "chatCosts": "채팅 스트림 비용 분포"
+    },
+    "charts": { "timeRange": "시간 범위", "timeScale": "시간 척도", "toggleSeries": "{{name}} 표시 전환" },
+    "ranges": { "6h": "6시간", "12h": "12시간", "24h": "24시간", "48h": "48시간", "7d": "7일", "30d": "30일" },
+    "trends": { "totalCost": "총 비용 추이", "moduleCosts": "모듈별 비용 추이", "modelCosts": "모델별 비용 추이", "chatMessages": "채팅별 메시지 추이" },
+    "metrics": { "costPerMessages": "메시지당 비용 추이", "costPerHour": "시간당 비용 추이", "tokensPerHour": "시간당 Token 추이", "costPerReplies": "답변당 비용 추이" }
   },
   "workspace": {
     "switcherLabel": "MaiBot 작업 공간 전환",
@@ -201,7 +242,7 @@
     "dismiss": "HTTP 보안 알림 닫기"
   },
   "settings": {
-    "title": "설정",
+    "title": "WebUI 설정",
     "description": "앱 환경 설정 관리",
     "tabs": {
       "appearance": "외관",
@@ -295,7 +336,25 @@
       "visualGroup": "시각 효과 (Visual)",
       "layoutGroup": "레이아웃 (Layout)",
       "animationGroup": "애니메이션 (Animation)",
-      "backgroundGroup": "배경 설정 (Backgrounds)"
+      "backgroundGroup": "배경 설정 (Backgrounds)",
+      "retroConfig": "퓨처 레트로 질감",
+      "retroConfigDesc": "종이, 텍스처와 표면 깊이를 조절하고 즉시 미리 봅니다.",
+      "retroPaperWarmth": "종이 온기",
+      "retroPaperWarmthDesc": "순백색부터 현재의 따뜻한 노란 종이까지 조절합니다.",
+      "retroPaperWhite": "순백색",
+      "retroPaperWarm": "따뜻한 노랑",
+      "retroTexture": "종이 텍스처",
+      "retroTextureDesc": "고운 입자, 굵은 입자, 도트 그리드, 줄무늬 또는 없음을 선택합니다.",
+      "retroTextureFine": "고운 입자",
+      "retroTextureCoarse": "굵은 입자",
+      "retroTextureDots": "도트 그리드",
+      "retroTextureRuled": "가로줄",
+      "retroTextureNone": "없음",
+      "retroTextureIntensity": "텍스처 강도",
+      "retroPanelDepth": "패널 깊이",
+      "retroPanelDepthDesc": "오목한 표면과 그림자의 가시성을 조절합니다.",
+      "retroStrokeScale": "외곽선 굵기",
+      "retroStrokeScaleDesc": "카드와 컨트롤의 외곽선 굵기를 조절합니다."
     },
     "security": {
       "currentToken": "현재 액세스 토큰",
@@ -905,12 +964,12 @@
       "statisticsDesc": "사용 통계 보기",
       "plugins": "플러그인 마켓",
       "pluginsDesc": "플러그인 탐색 및 설치",
-      "dataTransferDesc": "MaiBot 데이터 백업, 내보내기 또는 복원",
+      "dataTransferDesc": "로컬 캐시 관리 및 MaiBot 데이터 백업, 내보내기 또는 복원",
       "logs": "로그 뷰어",
       "logsDesc": "시스템 로그 보기",
       "reasoningProcessDesc": "Maisaka prompt 추론 로그 보기",
-      "settings": "설정",
-      "settingsDesc": "시스템 설정 구성"
+      "settings": "WebUI 설정",
+      "settingsDesc": "WebUI 설정 구성"
     }
   },
   "a11y": {
@@ -1067,14 +1126,6 @@
   "home": {
     "title": "실시간 모니터",
     "subtitle": "MaiBot 실행 상태 및 통계 데이터 개요",
-    "signalDesk": {
-      "eyebrow": "MAIBOT OPERATIONS",
-      "title": "MaiBot 시그널 데스크",
-      "description": "시스템 상태 및 데이터 제어 센터",
-      "status": "시스템",
-      "online": "온라인",
-      "standby": "대기"
-    },
     "loading": "통계 데이터를 불러오는 중...",
     "loadingHint": "불러오는 중...",
     "timeRange": {
@@ -1084,7 +1135,26 @@
     },
     "autoRefresh": "자동 새로고침",
     "hitokoto": {
-      "title": "한마디"
+      "title": "한마디",
+      "edit": "한마디 편집",
+      "editor": {
+        "title": "한마디 편집",
+        "description": "홈에 표시할 한마디 출처와 사용자 지정 내용을 관리합니다.",
+        "defaultSource": "기본 한마디 사용",
+        "defaultSourceDescription": "한마디 API에서 가져와 사용자 지정 내용과 번갈아 표시합니다.",
+        "customList": "사용자 지정 내용",
+        "customListDescription": "여러 내용을 추가할 수 있으며 출처는 비워둘 수 있습니다.",
+        "add": "내용 추가",
+        "empty": "사용자 지정 내용이 없습니다. 클릭하여 첫 내용을 추가하세요.",
+        "item": "내용 {{index}}",
+        "remove": "내용 {{index}} 삭제",
+        "content": "내용 {{index}} 본문",
+        "contentPlaceholder": "홈에 표시할 내용을 입력하세요",
+        "source": "내용 {{index}} 출처",
+        "sourcePlaceholder": "출처(선택)",
+        "blankHint": "기본 한마디가 꺼져 있고 사용자 지정 목록이 비어 있어 한마디 영역이 비어 있습니다.",
+        "saving": "저장 중..."
+      }
     },
     "cards": {
       "add": "카드 추가",
@@ -1092,7 +1162,7 @@
       "editCard": "카드 편집: {{title}}",
       "editContent": "카드 내용 편집",
       "done": "완료",
-      "reset": "기본 레이아웃 복원",
+      "reset": "기본값 복원",
       "styles": {
         "default": {
           "title": "기본 스타일",
@@ -1143,7 +1213,15 @@
       "enabled": "켜짐",
       "disabled": "꺼짐",
       "visualEnabled": "비전 활성화",
-      "memoryEnabled": "메모리 활성화"
+      "memoryEnabled": "메모리 활성화",
+      "recentOnline": "최근 온라인",
+      "recentOnlineRange": "최근 24시간",
+      "recentOnlineChart": "최근 24시간 온라인 시간 차트",
+      "recentOnlineTotal": "온라인 {{time}}",
+      "online": "온라인",
+      "clickToReturn": "클릭하여 돌아가기",
+      "showRecentOnline": "최근 온라인 차트 보기",
+      "showStatus": "활동 상태로 돌아가기"
     },
     "versionCard": {
       "title": "MaiBot 버전",
@@ -1172,7 +1250,7 @@
       "expressionReview": "표현 검토",
       "viewLogs": "로그 보기",
       "pluginManage": "플러그인 관리",
-      "systemSettings": "시스템 설정",
+      "systemSettings": "WebUI 설정",
       "pluginConfig": "플러그인 설정",
       "appearanceSettings": "외관 설정",
       "localCache": "로컬 캐시",
@@ -1191,7 +1269,7 @@
         "expressionReview": "표현 학습 검토 대화상자 열기",
         "viewLogs": "WebUI 로그 보기",
         "pluginManage": "플러그인 마켓과 관리 페이지 열기",
-        "systemSettings": "시스템 설정 열기",
+        "systemSettings": "WebUI 설정 열기",
         "pluginConfig": "설치된 플러그인 설정 페이지 열기",
         "appearanceSettings": "설정 / 외관 열기",
         "localCache": "설정 / 로컬 캐시 열기",

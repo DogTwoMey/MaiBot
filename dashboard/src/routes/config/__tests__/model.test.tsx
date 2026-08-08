@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,8 +15,11 @@ afterEach(() => {
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
-  useRouterState: ({ select }: { select: (state: { location: { searchStr: string } }) => string }) =>
-    select({ location: { searchStr: '' } }),
+  useRouterState: ({
+    select,
+  }: {
+    select: (state: { location: { searchStr: string } }) => string
+  }) => select({ location: { searchStr: '' } }),
 }))
 vi.mock('@/lib/restart-context', () => ({
   RestartProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -71,33 +74,36 @@ vi.mock('../model/components', () => ({
     </div>
   ),
   // 唯一的 TaskConfigCard 对应 schema 里的 embedding 字段
-  TaskConfigCard: ({ taskConfig, onChange }: { taskConfig: { model_list?: string[] }; onChange: (f: string, v: string[]) => void }) => (
+  TaskConfigCard: ({
+    taskConfig,
+    onChange,
+  }: {
+    taskConfig: { model_list?: string[] }
+    onChange: (f: string, v: string[]) => void
+  }) => (
     <div data-testid="task-config-card">
       <span data-testid="task-models">{JSON.stringify(taskConfig.model_list ?? [])}</span>
-      <button type="button" onClick={() => onChange('model_list', ['new-embed-model'])}>change-embedding</button>
+      <button type="button" onClick={() => onChange('model_list', ['new-embed-model'])}>
+        change-embedding
+      </button>
     </div>
   ),
 }))
 
-vi.mock('../modelProvider/ProviderForm', () => ({ ProviderForm: () => <div data-testid="provider-form" /> }))
-vi.mock('../modelProvider/ProviderList', () => ({
-  ProviderList: ({ providers, onDelete, onTest }: { providers: { name: string }[]; onDelete: (i: number) => void; onTest: (n: string) => void }) => (
-    <div data-testid="provider-list">
-      {providers.map((p, i) => (
-        <div key={p.name}>
-          <span>{p.name}</span>
-          <button type="button" onClick={() => onTest(p.name)}>{`test-${p.name}`}</button>
-          <button type="button" onClick={() => onDelete(i)}>{`del-provider-${p.name}`}</button>
-        </div>
-      ))}
-    </div>
-  ),
+vi.mock('../modelProvider/ProviderForm', () => ({
+  ProviderForm: () => <div data-testid="provider-form" />,
 }))
-
 function baseConfig() {
   return {
     models: [{ name: 'gpt-4', model_identifier: 'gpt-4', api_provider: 'openai' }],
-    api_providers: [{ name: 'openai', base_url: 'https://api.openai.com/v1', api_key: 'sk-x', client_type: 'openai' }],
+    api_providers: [
+      {
+        name: 'openai',
+        base_url: 'https://api.openai.com/v1',
+        api_key: 'sk-x',
+        client_type: 'openai',
+      },
+    ],
     model_task_config: {
       replyer: { model_list: ['gpt-4'] },
       embedding: { model_list: ['old-embed-model'] },
@@ -147,12 +153,18 @@ beforeEach(() => {
     label: '测试副本',
     active: false,
   } as never)
-  vi.mocked(configApi.switchModelConfigVersion).mockResolvedValue(baseVersions().active_version as never)
+  vi.mocked(configApi.switchModelConfigVersion).mockResolvedValue(
+    baseVersions().active_version as never
+  )
   vi.mocked(configApi.deleteModelConfigVersion).mockResolvedValue(undefined as never)
   vi.mocked(configApi.updateModelConfig).mockResolvedValue(baseConfig() as never)
   vi.mocked(configApi.updateModelConfigSection).mockResolvedValue(baseConfig() as never)
   vi.mocked(configApi.testProviderConnection).mockResolvedValue({
-    network_ok: true, api_key_valid: true, latency_ms: 120, error: null, http_status: 200,
+    network_ok: true,
+    api_key_valid: true,
+    latency_ms: 120,
+    error: null,
+    http_status: 200,
   } as never)
   vi.mocked(configApi.fetchProviderModels).mockResolvedValue([])
 })
@@ -160,7 +172,7 @@ beforeEach(() => {
 async function renderModelPage() {
   render(<ModelConfigPage />)
   // 等待初始加载完成（任意一个 tab 出现）
-  await screen.findByRole('tab', { name: '模型列表' })
+  await screen.findByRole('tab', { name: '模型设置' })
 }
 
 describe('ModelConfigPage 特征化', () => {
@@ -168,7 +180,91 @@ describe('ModelConfigPage 特征化', () => {
     await renderModelPage()
     expect(configApi.getModelConfigCached).toHaveBeenCalled()
     expect(configApi.getModelConfigSchema).toHaveBeenCalled()
-    expect(screen.getByRole('tab', { name: '模型厂商设置' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '模型设置' })).toBeInTheDocument()
+  })
+
+  it('DeepSeek Responses 模型默认缓存，并在高级设置中映射思考与联网参数', async () => {
+    const user = userEvent.setup()
+    const deepSeekConfig = {
+      ...baseConfig(),
+      models: [],
+      api_providers: [
+        {
+          name: '自定义名称',
+          base_url: 'https://api.deepseek.com',
+          api_key: 'sk-deepseek',
+          client_type: 'openai_responses',
+        },
+      ],
+    }
+    vi.mocked(configApi.getModelConfigCached).mockResolvedValue(deepSeekConfig as never)
+    vi.mocked(configApi.getModelConfig).mockResolvedValue(deepSeekConfig as never)
+
+    await renderModelPage()
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
+    const addModelButton = document.querySelector<HTMLButtonElement>(
+      '[data-tour="add-model-button"]'
+    )
+    expect(addModelButton).not.toBeNull()
+    await user.click(addModelButton!)
+
+    const dialog = await screen.findByRole('dialog', { name: '添加模型' })
+    expect(within(dialog).queryByText('支持缓存')).not.toBeInTheDocument()
+    const thinkingSwitch = within(dialog).getByRole('switch', { name: '启用思考' })
+    const effortSelect = within(dialog).getByRole('combobox', { name: '思考力度' })
+    const webSearchSwitch = within(dialog).getByRole('switch', { name: '启用联网搜索' })
+    expect(thinkingSwitch).toBeChecked()
+    expect(effortSelect).toBeEnabled()
+    expect(webSearchSwitch).not.toBeChecked()
+
+    await user.click(webSearchSwitch)
+    await user.click(thinkingSwitch)
+    expect(webSearchSwitch).toBeChecked()
+    expect(thinkingSwitch).not.toBeChecked()
+    expect(effortSelect).toBeDisabled()
+    expect(within(dialog).getByText('已配置 2 个参数')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: '已配置 2 个参数' }))
+    const extraParamsDialog = await screen.findByRole('dialog', { name: '编辑额外参数' })
+    await user.click(within(extraParamsDialog).getByRole('tab', { name: 'JSON 编辑' }))
+    const jsonEditor = within(extraParamsDialog).getByRole('textbox')
+    expect((jsonEditor as HTMLTextAreaElement).value).toContain('"reasoning"')
+    expect((jsonEditor as HTMLTextAreaElement).value).toContain('"effort": "none"')
+
+    fireEvent.change(jsonEditor, {
+      target: {
+        value: JSON.stringify(
+          {
+            reasoning: { effort: 'max' },
+            thinking: { type: 'disabled' },
+            tools: [{ type: 'web_search' }],
+          },
+          null,
+          2
+        ),
+      },
+    })
+    expect(within(extraParamsDialog).getByRole('button', { name: '保存' })).toBeDisabled()
+
+    fireEvent.change(jsonEditor, {
+      target: {
+        value: JSON.stringify(
+          {
+            reasoning: { effort: 'max' },
+            tools: [{ type: 'web_search' }],
+          },
+          null,
+          2
+        ),
+      },
+    })
+    await user.click(within(extraParamsDialog).getByRole('button', { name: '保存' }))
+    expect(thinkingSwitch).toBeChecked()
+    expect(effortSelect).toBeEnabled()
+    expect(effortSelect).toHaveTextContent('最高')
+
+    await user.click(within(dialog).getByRole('button', { name: '高级设置' }))
+    expect(within(dialog).getByRole('switch', { name: '支持缓存' })).toBeChecked()
   })
 
   it('切到任务页可见 embedding 配置卡片', async () => {
@@ -193,7 +289,9 @@ describe('ModelConfigPage 特征化', () => {
 
       // 确认更换
       await user.click(screen.getByRole('button', { name: '确认更换' }))
-      await waitFor(() => expect(screen.getByTestId('task-models')).toHaveTextContent('new-embed-model'))
+      await waitFor(() =>
+        expect(screen.getByTestId('task-models')).toHaveTextContent('new-embed-model')
+      )
     })
 
     it('取消则不应用变更', async () => {
@@ -217,8 +315,8 @@ describe('ModelConfigPage 特征化', () => {
     await user.click(await screen.findByText('change-embedding'))
     await user.click(screen.getByRole('button', { name: '确认更换' }))
 
-    // 保存按钮位于「模型列表」tab
-    await user.click(screen.getByRole('tab', { name: '模型列表' }))
+    // 保存按钮位于「模型设置」tab
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
     const saveButton = await screen.findByRole('button', { name: /保存配置/ })
     await user.click(saveButton)
 
@@ -230,7 +328,7 @@ describe('ModelConfigPage 特征化', () => {
     const user = userEvent.setup()
     await renderModelPage()
 
-    await user.click(screen.getByRole('tab', { name: '模型列表' }))
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
     await user.click(screen.getByText('edit-model-gpt-4'))
     const nameInput = await screen.findByRole('textbox', { name: '模型名称 *' })
     await user.clear(nameInput)
@@ -251,18 +349,52 @@ describe('ModelConfigPage 特征化', () => {
   it('提供商连接测试调用 testProviderConnection', async () => {
     const user = userEvent.setup()
     await renderModelPage()
-    await user.click(screen.getByRole('tab', { name: '模型厂商设置' }))
-    await user.click(await screen.findByText('test-openai'))
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
+    await user.click(await screen.findByRole('button', { name: '测试厂商 openai 连接' }))
     await waitFor(() => expect(configApi.testProviderConnection).toHaveBeenCalledWith('openai'))
+  })
+
+  it('选择左侧厂商后只显示该厂商的模型，选择全部后恢复', async () => {
+    const user = userEvent.setup()
+    const filteredConfig = {
+      ...baseConfig(),
+      models: [
+        { name: 'gpt-4', model_identifier: 'gpt-4', api_provider: 'openai' },
+        { name: 'local-model', model_identifier: 'local-model', api_provider: 'ollama' },
+      ],
+      api_providers: [
+        ...baseConfig().api_providers,
+        {
+          name: 'ollama',
+          base_url: 'http://127.0.0.1:11434/v1',
+          api_key: 'local',
+          client_type: 'openai',
+        },
+      ],
+    }
+    vi.mocked(configApi.getModelConfigCached).mockResolvedValue(filteredConfig as never)
+    vi.mocked(configApi.getModelConfig).mockResolvedValue(filteredConfig as never)
+
+    await renderModelPage()
+    const modelTable = screen.getByTestId('model-table')
+    expect(within(modelTable).getByText('gpt-4')).toBeInTheDocument()
+    expect(within(modelTable).getByText('local-model')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '筛选厂商 ollama' }))
+    expect(within(modelTable).queryByText('gpt-4')).not.toBeInTheDocument()
+    expect(within(modelTable).getByText('local-model')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '全部' }))
+    expect(within(modelTable).getByText('gpt-4')).toBeInTheDocument()
   })
 
   it('删除被模型引用的提供商触发级联确认，确认后连带移除关联模型', async () => {
     const user = userEvent.setup()
     await renderModelPage()
-    await user.click(screen.getByRole('tab', { name: '模型厂商设置' }))
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
 
     // 删除 openai（被 gpt-4 引用）→ 单删确认框
-    await user.click(await screen.findByText('del-provider-openai'))
+    await user.click(await screen.findByRole('button', { name: '删除厂商 openai' }))
     expect(await screen.findByText('确认删除提供商')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除' }))
 

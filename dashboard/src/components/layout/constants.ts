@@ -1,12 +1,12 @@
 import { createElement } from 'react'
 import {
   Activity,
-  ArchiveRestore,
   BarChart3,
   Box,
   Brain,
   Database,
   FileText,
+  HardDrive,
   Hash,
   Home,
   MessageSquare,
@@ -35,8 +35,9 @@ const KnowledgeIcon = createStreamlineIcon('user-sticker-square-remix', Database
 const PluginConfigIcon = createStreamlineIcon('application-add-remix', Puzzle)
 const PluginMarketIcon = createStreamlineIcon('store-2-solid', Store)
 const McpIcon = createStreamlineIcon('router-wifi-network-solid', Wifi)
-const DataTransferIcon = createStreamlineIcon('database-setting-solid', ArchiveRestore)
+const DataTransferIcon: MenuIcon = (props) => createElement(HardDrive, props)
 const StatisticsIcon: MenuIcon = (props) => createElement(BarChart3, props)
+const ReplyEffectsIcon: MenuIcon = (props) => createElement(Activity, props)
 
 export const menuSections: MenuSection[] = [
   {
@@ -116,18 +117,22 @@ export const menuSections: MenuSection[] = [
         path: '/plugins',
         searchDescription: 'search.items.pluginsDesc',
       },
-      { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
       {
         icon: DataTransferIcon,
         label: 'sidebar.menu.dataTransfer',
         path: '/data-transfer',
         searchDescription: 'search.items.dataTransferDesc',
       },
+      { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
+      {
+        icon: ReplyEffectsIcon,
+        label: 'sidebar.menu.replyEffects',
+        path: '/reply-effects',
+      },
       {
         icon: StatisticsIcon,
         label: 'sidebar.menu.statistics',
-        path: '/maibot_statistics.html',
-        external: true,
+        path: '/statistics',
       },
     ],
   },

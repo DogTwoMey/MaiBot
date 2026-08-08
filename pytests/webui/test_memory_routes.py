@@ -636,6 +636,7 @@ def test_webui_memory_timeline_returns_chat_scoped_events(client: TestClient, mo
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -706,6 +707,7 @@ def test_webui_memory_timeline_filters_types_and_limit(client: TestClient, monke
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -759,6 +761,7 @@ def test_webui_memory_timeline_deleted_paragraph_prefers_delete_operation(client
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -789,6 +792,7 @@ def test_webui_memory_timeline_uses_latest_message_snapshot(client: TestClient, 
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id=None,
             user_id="user-1",
             group_name=None,
@@ -843,6 +847,7 @@ def test_webui_memory_timeline_handles_json_bytes_zero_timestamp_and_batches_ite
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -1132,6 +1137,40 @@ def test_import_upload_route(client: TestClient, monkeypatch, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_import_upload_route_uses_runtime_import_staging(client: TestClient, monkeypatch, tmp_path):
+    data_dir = tmp_path / "a-memorix"
+    monkeypatch.setattr(memory_router_module, "STAGING_ROOT", None)
+    monkeypatch.setattr(
+        memory_router_module.a_memorix_host_service,
+        "get_runtime_data_dir",
+        lambda: data_dir,
+    )
+    monkeypatch.setattr(
+        memory_router_module._chat_manager,
+        "get_existing_session_by_session_id",
+        lambda chat_id: SimpleNamespace(session_id=chat_id),
+    )
+
+    async def fake_import_admin(*, action: str, **kwargs):
+        assert action == "create_upload"
+        staged_path = memory_router_module.Path(kwargs["staged_files"][0]["staged_path"])
+        assert staged_path.is_relative_to(data_dir / "imports" / "staging")
+        assert staged_path.is_file()
+        return {"success": True, "task_id": "task-runtime-staging"}
+
+    monkeypatch.setattr(memory_router_module.memory_service, "import_admin", fake_import_admin)
+
+    response = client.post(
+        "/api/import/upload",
+        data={"payload_json": "{\"chat_id\": \"session-1\"}"},
+        files=[("files", ("demo.txt", b"hello world", "text/plain"))],
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "task_id": "task-runtime-staging"}
+    assert list((data_dir / "imports" / "staging").iterdir()) == []
+
+
 def test_import_upload_route_rejects_unknown_chat_id(client: TestClient, monkeypatch, tmp_path):
     monkeypatch.setattr(memory_router_module, "STAGING_ROOT", tmp_path)
     monkeypatch.setattr(memory_router_module._chat_manager, "get_existing_session_by_session_id", lambda chat_id: None)
@@ -1185,6 +1224,32 @@ def test_import_chat_targets_route(client: TestClient, monkeypatch):
     assert response.json()["data"][0]["user_id"] == "20002"
     assert response.json()["data"][0]["account_id"] == "bot-1"
     assert response.json()["data"][0]["scope"] == "default"
+
+
+def test_memory_chat_name_ignores_private_latest_message_identity(monkeypatch):
+    chat_session = SimpleNamespace(
+        session_id="group-session",
+        group_id="571780722",
+        group_name="麦麦脑电图｜技术交流群｜部署/配置",
+        user_id=None,
+        user_nickname=None,
+        user_cardname=None,
+    )
+    latest_messages = {
+        "group-session": {
+            "group_id": None,
+            "group_name": None,
+            "user_id": "2814567326",
+            "user_nickname": "麦麦",
+            "user_cardname": None,
+        }
+    }
+    monkeypatch.setattr(memory_router_module._chat_manager, "get_session_name", lambda chat_id: "")
+
+    assert (
+        memory_router_module._get_chat_name(chat_session, latest_messages)
+        == "麦麦脑电图｜技术交流群｜部署/配置"
+    )
 
 
 def test_v5_status_route(client: TestClient, monkeypatch):

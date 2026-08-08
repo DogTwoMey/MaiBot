@@ -40,6 +40,7 @@ import type { ConfigSchema } from '@/types/config-schema'
 import type { ModelInfo, ModelTaskConfig, ProviderConfig, TaskConfig } from '../types'
 import type { APIProvider, DeleteConfirmState } from '../../modelProvider/types'
 import { cleanProviderData } from '../../modelProvider/utils'
+import { findTemplateByBaseUrl } from '../../providerTemplates'
 import { useModelAutoSave } from './useModelAutoSave'
 import { useEmbeddingWarning, type PendingEmbeddingUpdate } from './useEmbeddingWarning'
 
@@ -130,10 +131,9 @@ export function useModelConfig() {
 
   // ---- 搜索 / 分页 / 批量选择 ----
   const [searchQuery, setSearchQuery] = useState('')
+  const [modelProviderFilter, setModelProviderFilter] = useState('')
   const [selectedModels, setSelectedModels] = useState<Set<number>>(new Set())
-  const [selectedProviders, setSelectedProviders] = useState<Set<number>>(new Set())
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
-  const [providerBatchDeleteDialogOpen, setProviderBatchDeleteDialogOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [jumpToPage, setJumpToPage] = useState('')
@@ -409,6 +409,14 @@ export function useModelConfig() {
       return providerConfigs.find((p) => p.name === providerName)
     },
     [providerConfigs]
+  )
+
+  const isDeepSeekTemplateProvider = useCallback(
+    (providerName: string): boolean => {
+      const provider = getProviderConfig(providerName)
+      return provider ? findTemplateByBaseUrl(provider.base_url)?.id === 'deepseek' : false
+    },
+    [getProviderConfig]
   )
 
   // 清理模型中的 null 值（TOML 不支持 null）
@@ -839,14 +847,16 @@ export function useModelConfig() {
       // 清除表单验证错误
       setFormErrors({})
 
+      const defaultProvider = providers[0] || ''
+
       setEditingModel(
         model || {
           model_identifier: '',
           name: '',
-          api_provider: providers[0] || '',
+          api_provider: defaultProvider,
           price_in: 0,
           price_out: 0,
-          cache: false,
+          cache: isDeepSeekTemplateProvider(defaultProvider),
           cache_price_in: 0,
           temperature: null,
           max_tokens: null,
@@ -859,7 +869,7 @@ export function useModelConfig() {
       setEditingIndex(index)
       setEditDialogOpen(true)
     },
-    [providers]
+    [isDeepSeekTemplateProvider, providers]
   )
 
   const openProviderDialog = useCallback((provider: APIProvider | null, index: number | null) => {
@@ -1106,55 +1116,6 @@ export function useModelConfig() {
     setDeletingProviderIndex(null)
   }, [apiProviders, checkDeleteProviderImpact, deletingProviderIndex, syncProviderState, toast])
 
-  // ---- 批量选择 / 删除 ----
-  const toggleProviderSelection = useCallback((index: number) => {
-    setSelectedProviders((prev) => {
-      const nextSelected = new Set(prev)
-      if (nextSelected.has(index)) {
-        nextSelected.delete(index)
-      } else {
-        nextSelected.add(index)
-      }
-      return nextSelected
-    })
-  }, [])
-
-  const toggleSelectAllProviders = useCallback(() => {
-    setSelectedProviders((prev) => {
-      if (prev.size === apiProviders.length) {
-        return new Set()
-      }
-      return new Set(apiProviders.map((_, index) => index))
-    })
-  }, [apiProviders])
-
-  const openProviderBatchDeleteDialog = useCallback(() => {
-    if (selectedProviders.size === 0) {
-      toast({
-        title: '提示',
-        description: '请先选择要删除的提供商',
-        variant: 'default',
-      })
-      return
-    }
-    setProviderBatchDeleteDialogOpen(true)
-  }, [selectedProviders, toast])
-
-  const handleConfirmProviderBatchDelete = useCallback(async () => {
-    const nextProviders = apiProviders.filter((_, index) => !selectedProviders.has(index))
-    const { shouldProceed } = await checkDeleteProviderImpact(nextProviders, 'manual')
-    if (shouldProceed) {
-      const deletedCount = selectedProviders.size
-      syncProviderState(nextProviders)
-      setSelectedProviders(new Set())
-      toast({
-        title: '批量删除成功',
-        description: `已删除 ${deletedCount} 个提供商`,
-      })
-    }
-    setProviderBatchDeleteDialogOpen(false)
-  }, [apiProviders, checkDeleteProviderImpact, selectedProviders, syncProviderState, toast])
-
   const handleConfirmDeleteProviderImpact = useCallback(async () => {
     const isAutoSave = deleteConfirmState.context === 'auto'
     try {
@@ -1176,7 +1137,6 @@ export function useModelConfig() {
         context: 'auto',
         oldProviders: [],
       })
-      setSelectedProviders(new Set())
     } catch (error) {
       toast({
         title: '删除失败',
@@ -1305,6 +1265,7 @@ export function useModelConfig() {
   const filteredModels = useMemo(
     () =>
       models.filter((model) => {
+        if (modelProviderFilter && model.api_provider !== modelProviderFilter) return false
         if (!searchQuery) return true
         const query = searchQuery.toLowerCase()
         return (
@@ -1313,8 +1274,13 @@ export function useModelConfig() {
           model.api_provider.toLowerCase().includes(query)
         )
       }),
-    [models, searchQuery]
+    [modelProviderFilter, models, searchQuery]
   )
+
+  useEffect(() => {
+    setPage(1)
+    setSelectedModels(new Set())
+  }, [modelProviderFilter, searchQuery])
 
   // 切换单个模型选择
   const toggleModelSelection = useCallback((index: number) => {
@@ -1465,6 +1431,7 @@ export function useModelConfig() {
     formErrors,
     setFormErrors,
     openEditDialog,
+    isDeepSeekTemplateProvider,
     handleSaveEdit,
     handleEditDialogClose,
     deleteDialogOpen,
@@ -1508,19 +1475,13 @@ export function useModelConfig() {
     setBatchDeleteDialogOpen,
     openBatchDeleteDialog,
     handleConfirmBatchDelete,
-    // 提供商批量
-    selectedProviders,
-    toggleProviderSelection,
-    toggleSelectAllProviders,
-    providerBatchDeleteDialogOpen,
-    setProviderBatchDeleteDialogOpen,
-    openProviderBatchDeleteDialog,
-    handleConfirmProviderBatchDelete,
     // 任务配置
     updateTaskConfig,
     // 搜索 / 分页
     searchQuery,
     setSearchQuery,
+    modelProviderFilter,
+    setModelProviderFilter,
     filteredModels,
     paginatedModels,
     page,

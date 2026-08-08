@@ -88,7 +88,7 @@ class _KernelBackedRuntimeManager:
         component_name: str,
         args: Dict[str, Any] | None,
         *,
-        timeout_ms: int = 30000,
+        timeout_ms: int | None = None,
     ) -> Any:
         del timeout_ms
         payload = args or {}
@@ -278,11 +278,6 @@ async def test_text_to_stream_triggers_real_chat_summary_writeback(
         summary_importer_module.llm_api,
         "get_available_models",
         lambda: {"utils": TaskConfig(model_list=["fake-summary-model"])},
-    )
-    monkeypatch.setattr(
-        summary_importer_module.llm_api,
-        "resolve_task_name_from_model_config",
-        lambda model_config: "utils",
     )
     monkeypatch.setattr(
         summary_importer_module.llm_api,

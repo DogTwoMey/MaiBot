@@ -42,7 +42,7 @@ def _model_usage(
     )
 
 
-def _patch_statistics_database(monkeypatch, tmp_path, records: list[ModelUsage]) -> None:
+def _patch_statistics_database(monkeypatch, tmp_path, records: list[SQLModel]) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'statistics.db'}")
     SQLModel.metadata.create_all(engine, tables=[ModelUsage.__table__, OnlineTime.__table__])
     with Session(engine) as session:
@@ -57,6 +57,35 @@ def _patch_statistics_database(monkeypatch, tmp_path, records: list[ModelUsage])
                 session.commit()
 
     monkeypatch.setattr(statistics_service, "get_db_session", get_test_db_session)
+
+
+def test_hourly_online_seconds_splits_and_merges_intervals(monkeypatch, tmp_path) -> None:
+    start_time = datetime(2026, 7, 1)
+    records = [
+        OnlineTime(
+            timestamp=start_time,
+            duration_minutes=1200,
+            start_timestamp=start_time + timedelta(minutes=50),
+            end_timestamp=start_time + timedelta(minutes=70),
+        ),
+        OnlineTime(
+            timestamp=start_time,
+            duration_minutes=1200,
+            start_timestamp=start_time + timedelta(minutes=60),
+            end_timestamp=start_time + timedelta(minutes=80),
+        ),
+    ]
+    _patch_statistics_database(monkeypatch, tmp_path, records)
+
+    result = statistics_service._get_hourly_online_seconds_sync(
+        start_time,
+        start_time + timedelta(hours=2),
+    )
+
+    assert result == {
+        "2026-07-01T00:00:00": 600.0,
+        "2026-07-01T01:00:00": 1200.0,
+    }
 
 
 def test_summary_cache_rates_separate_all_and_chat_tasks(monkeypatch, tmp_path) -> None:
@@ -216,3 +245,81 @@ def test_collect_model_statistics_does_not_keep_raw_duration_lists(monkeypatch) 
     assert all_time_stats[statistic.TIME_COST_BY_USER] == {}
     assert all_time_stats[statistic.TIME_COST_BY_MODEL] == {}
     assert all_time_stats[statistic.TIME_COST_BY_MODULE] == {}
+
+
+def test_detailed_statistics_snapshot_reuses_html_report_data(monkeypatch) -> None:
+    now = datetime(2026, 7, 1, 12)
+    task = object.__new__(statistic.StatisticOutputTask)
+    task.all_time_start_time = now - timedelta(days=10)
+    task.stat_period = [("all_time", timedelta(days=10), "自部署以来")]
+    task.name_mapping = {
+        "g100": ("测试群聊", now.timestamp()),
+        "session-a": ("测试群聊", now.timestamp()),
+    }
+    stat_data = statistic.StatisticOutputTask._build_stat_period_data()
+    stat_data[statistic.TOTAL_REQ_CNT] = 2
+    stat_data[statistic.TOTAL_COST] = 0.3
+    stat_data[statistic.ONLINE_TIME] = 3600.0
+    stat_data[statistic.TOTAL_MSG_CNT] = 10
+    stat_data[statistic.TOTAL_REPLY_CNT] = 2
+    stat_data[statistic.REQ_CNT_BY_MODEL]["model-a"] = 2
+    stat_data[statistic.IN_TOK_BY_MODEL]["model-a"] = 20
+    stat_data[statistic.OUT_TOK_BY_MODEL]["model-a"] = 10
+    stat_data[statistic.TOTAL_TOK_BY_MODEL]["model-a"] = 30
+    stat_data[statistic.CACHE_HIT_TOK] = 15
+    stat_data[statistic.CACHE_MISS_TOK] = 5
+    stat_data[statistic.CACHE_HIT_TOK_BY_MODEL]["model-a"] = 15
+    stat_data[statistic.CACHE_MISS_TOK_BY_MODEL]["model-a"] = 5
+    stat_data[statistic.COST_BY_MODEL]["model-a"] = 0.3
+    stat_data[statistic.AVG_TIME_COST_BY_MODEL]["model-a"] = 1.5
+    stat_data[statistic.STD_TIME_COST_BY_MODEL]["model-a"] = 0.5
+    stat_data[statistic.REQ_CNT_BY_MODULE]["replyer"] = 2
+    stat_data[statistic.IN_TOK_BY_MODULE]["replyer"] = 20
+    stat_data[statistic.OUT_TOK_BY_MODULE]["replyer"] = 10
+    stat_data[statistic.TOTAL_TOK_BY_MODULE]["replyer"] = 30
+    stat_data[statistic.COST_BY_MODULE]["replyer"] = 0.3
+    stat_data[statistic.REQ_CNT_BY_TYPE]["replyer.chat"] = 2
+    stat_data[statistic.IN_TOK_BY_TYPE]["replyer.chat"] = 20
+    stat_data[statistic.OUT_TOK_BY_TYPE]["replyer.chat"] = 10
+    stat_data[statistic.TOTAL_TOK_BY_TYPE]["replyer.chat"] = 30
+    stat_data[statistic.COST_BY_TYPE]["replyer.chat"] = 0.3
+    stat_data[statistic.MSG_CNT_BY_CHAT]["g100"] = 10
+    stat_data[statistic.COST_BY_CHAT]["session-a"] = 0.3
+
+    chart_data = {
+        "24h": {
+            "time_labels": ["12:00"],
+            "total_cost_data": [0.3],
+            "cost_by_model": {"model-a": [0.3]},
+            "cost_by_module": {"replyer": [0.3]},
+            "message_by_chat": {"测试群聊": [10]},
+        }
+    }
+    metrics_data = {
+        "7d": {
+            "time_labels": ["07-01"],
+            "cost_per_100_messages": [3.0],
+            "cost_per_hour": [0.3],
+            "tokens_per_hour": [30.0],
+            "cost_per_100_replies": [15.0],
+        }
+    }
+
+    snapshot = task._build_detailed_statistics_snapshot(
+        {"all_time": stat_data},
+        now,
+        chart_data,
+        metrics_data,
+    )
+    monkeypatch.setattr(statistics_service, "_detailed_statistics_snapshot", None)
+    statistics_service.store_detailed_statistics_snapshot(snapshot)
+
+    stored_snapshot = statistics_service.get_detailed_statistics_snapshot()
+    assert stored_snapshot is snapshot
+    assert snapshot.periods[0].summary.cache_hit_rate == 0.75
+    assert snapshot.periods[0].summary.cost_per_100_messages == 3.0
+    assert snapshot.periods[0].models[0].avg_calls_per_reply == 1.0
+    assert snapshot.periods[0].models[0].avg_tokens_per_call == 15.0
+    assert snapshot.periods[0].distributions.chat_messages[0].name == "测试群聊"
+    assert snapshot.trends["24h"].message_by_chat == {"测试群聊": [10]}
+    assert snapshot.metrics["7d"].cost_per_100_replies == [15.0]

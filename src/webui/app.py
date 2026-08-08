@@ -1,5 +1,6 @@
 """FastAPI 应用工厂 - 创建和配置 WebUI 应用实例"""
 
+from importlib import import_module
 from os import getenv
 from pathlib import Path
 from typing import Any, Dict, Tuple
@@ -55,8 +56,7 @@ def _resolve_statistics_report_path() -> Path:
 
 
 def _is_local_dashboard_enabled() -> bool:
-   # return getenv(_LOCAL_DASHBOARD_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
-    return True
+    return getenv(_LOCAL_DASHBOARD_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _validate_static_path(static_path: Path | None) -> Tuple[str, Dict[str, Any]] | None:
@@ -82,6 +82,7 @@ def _ensure_static_path_ready() -> Path | None:
     logger.warning(t("startup.webui_static_assets_unavailable"))
     error_key, error_kwargs = validation_error
     logger.warning(t(error_key, **error_kwargs))
+    logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
     return None
 
 
@@ -195,10 +196,12 @@ def _setup_static_files(app: FastAPI):
 
     if not static_path.exists():
         logger.warning(t("startup.webui_static_dir_missing_with_path", static_path=static_path))
+        logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
         return
 
     if not (static_path / "index.html").exists():
         logger.warning(t("startup.webui_index_missing", index_path=static_path / "index.html"))
+        logger.warning(t("startup.webui_dashboard_package_hint", command=_MANUAL_INSTALL_COMMAND))
         return
 
     @app.get("/maibot_statistics.html", include_in_schema=False, dependencies=[Depends(require_auth)])
@@ -273,6 +276,16 @@ def _resolve_static_path() -> Path | None:
         static_path = _get_project_root() / "dashboard" / "dist"
         if static_path.is_dir() and (static_path / "index.html").exists():
             return static_path
+
+    try:
+        module = import_module("maibot_dashboard")
+        get_dist_path = getattr(module, "get_dist_path", None)
+        if callable(get_dist_path):
+            package_path = get_dist_path()
+            if isinstance(package_path, Path) and package_path.exists():
+                return package_path
+    except Exception:
+        pass
 
     return None
 

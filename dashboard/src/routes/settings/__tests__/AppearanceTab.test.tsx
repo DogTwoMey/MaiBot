@@ -235,51 +235,31 @@ describe('AppearanceTab 主题模式与界面风格', () => {
       expect(screen.getByText(tokenName)).toBeInTheDocument()
     }
     // 未来复古专属配置不应出现
-    expect(screen.queryByText('未来复古配置')).not.toBeInTheDocument()
+    expect(screen.queryByText('settings.appearance.retroConfig')).not.toBeInTheDocument()
     // 自定义 CSS 为空时清除按钮禁用
     expect(screen.getByRole('button', { name: /clearCss/ })).toBeDisabled()
   })
 
-  it('未来复古风格隐藏 modern 区块并可切换纸面颗粒开关', async () => {
+  it('未来复古风格隐藏 modern 区块并可切换纸面纹理', async () => {
     const user = userEvent.setup()
     themeState = makeThemeState({ dashboardStyle: 'future-retro' })
     render(<AppearanceTab />)
 
-    expect(screen.getByText('未来复古配置')).toBeInTheDocument()
+    expect(screen.getByText('settings.appearance.retroConfig')).toBeInTheDocument()
     expect(screen.queryByText('settings.appearance.customCss')).not.toBeInTheDocument()
     expect(screen.queryByText('settings.appearance.importExportTheme')).not.toBeInTheDocument()
 
-    // 默认：纸面颗粒开、焦点高亮关
-    const paperSwitch = screen.getByRole('switch', { name: '纸面颗粒' })
-    expect(paperSwitch).toBeChecked()
-    expect(screen.getByRole('switch', { name: '焦点高亮' })).not.toBeChecked()
-
-    await user.click(paperSwitch)
+    expect(
+      screen.getByRole('button', { name: 'settings.appearance.retroTextureFine' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    await user.click(
+      screen.getByRole('button', { name: 'settings.appearance.retroTextureDots' })
+    )
     expect(themeState.updateThemeConfig).toHaveBeenCalledWith({
       styleConfig: {
         futureRetro: {
-          focusHighlight: false,
-          paperTexture: false,
-          variant: 'classic-signal',
-        },
-      },
-    })
-
-    expect(screen.queryByRole('button', { name: /航天信号台/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /深夜档案/ })).not.toBeInTheDocument()
-    expect(
-      screen.getByText('银灰仪表、柔和圆角与白色控制面板，辅以克制的橙色信号。')
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('纸张颗粒、直角描边与工程图式排版，呈现航天档案般的控制台。')
-    ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /纸上控制台/ }))
-    expect(themeState.updateThemeConfig).toHaveBeenCalledWith({
-      styleConfig: {
-        futureRetro: {
-          focusHighlight: false,
-          paperTexture: true,
-          variant: 'paper-console',
+          ...DEFAULT_FUTURE_RETRO_STYLE_CONFIG,
+          textureStyle: 'dot-grid',
         },
       },
     })

@@ -122,7 +122,6 @@ class BotConfig(ConfigBase):
                 "ja_JP": "プラットフォーム",
             },
             "x-widget": "input",
-            "x-icon": "wifi",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-row": "bot-platform-account",
@@ -139,7 +138,6 @@ class BotConfig(ConfigBase):
                 "ja_JP": "QQアカウント",
             },
             "x-widget": "input",
-            "x-icon": "user",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-row": "bot-platform-account",
@@ -156,7 +154,6 @@ class BotConfig(ConfigBase):
                 "ja_JP": "他のプラットフォーム",
             },
             "x-widget": "custom",
-            "x-icon": "layers",
         },
     )
     """其他平台账号，格式为 platform:账号；没有多平台时不用填。"""
@@ -170,7 +167,6 @@ class BotConfig(ConfigBase):
                 "ja_JP": "ボットのニックネーム",
             },
             "x-widget": "input",
-            "x-icon": "user-circle",
         },
     )
     """麦麦显示和自称时使用的名字。"""
@@ -184,7 +180,6 @@ class BotConfig(ConfigBase):
                 "ja_JP": "別名",
             },
             "x-widget": "custom",
-            "x-icon": "tags",
             "advanced": True,
         },
     )
@@ -206,7 +201,6 @@ class PersonalityConfig(ConfigBase):
                 "ja_JP": "人格設定",
             },
             "x-widget": "textarea",
-            "x-icon": "user-circle",
             "x-textarea-min-height": 40,
             "x-textarea-rows": 1,
             "x-description-display": "icon",
@@ -226,7 +220,6 @@ class PersonalityConfig(ConfigBase):
                 "ja_JP": "行動スタイル",
             },
             "x-widget": "textarea",
-            "x-icon": "compass",
             "x-textarea-min-height": 40,
             "x-textarea-rows": 1,
             "x-description-display": "icon",
@@ -243,7 +236,6 @@ class PersonalityConfig(ConfigBase):
                 "ja_JP": "返信スタイル",
             },
             "x-widget": "textarea",
-            "x-icon": "message-square",
             "x-textarea-min-height": 40,
             "x-textarea-rows": 1,
             "x-description-display": "icon",
@@ -267,7 +259,6 @@ class PersonalityConfig(ConfigBase):
             },
             "advanced": True,
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """备用说话风格；触发后只影响本次回复。"""
@@ -284,7 +275,6 @@ class PersonalityConfig(ConfigBase):
             },
             "advanced": True,
             "x-widget": "slider",
-            "x-icon": "percent",
             "step": 0.1,
         },
     )
@@ -298,7 +288,6 @@ class ImageCacheCleanupConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "trash-2",
             "label": {
                 "zh_CN": "启用图片缓存自动清理",
                 "en_US": "Enable image cache cleanup",
@@ -313,7 +302,6 @@ class ImageCacheCleanupConfig(ConfigBase):
         ge=1.0 / 60.0,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "clock",
             "label": {
                 "zh_CN": "清理检查间隔（小时）",
                 "en_US": "Cleanup check interval (hours)",
@@ -328,7 +316,6 @@ class ImageCacheCleanupConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "calendar-days",
             "label": {
                 "zh_CN": "图片文件保留天数",
                 "en_US": "Image file retention days",
@@ -343,7 +330,6 @@ class ImageCacheCleanupConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "database",
             "label": {
                 "zh_CN": "图片理解保留天数",
                 "en_US": "image recognition retention days",
@@ -364,7 +350,6 @@ class VisualConfig(ConfigBase):
         default="auto",
         json_schema_extra={
             "x-widget": "select",
-            "x-icon": "git-branch",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-descriptions": VISUAL_MODE_OPTION_DESCRIPTIONS,
@@ -382,7 +367,6 @@ class VisualConfig(ConfigBase):
         default="auto",
         json_schema_extra={
             "x-widget": "select",
-            "x-icon": "git-branch",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-descriptions": VISUAL_MODE_OPTION_DESCRIPTIONS,
@@ -402,7 +386,6 @@ class VisualConfig(ConfigBase):
         json_schema_extra={
             "advanced": True,
             "x-widget": "input",
-            "x-icon": "images",
             "label": {
                 "zh_CN": "多模态最大图片数",
                 "en_US": "Max multimodal images",
@@ -417,7 +400,6 @@ class VisualConfig(ConfigBase):
         ge=0,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "timer",
             "x-layout": "inline-right",
             "x-input-width": "7.5rem",
             "label": {
@@ -433,7 +415,6 @@ class VisualConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "image",
             "x-layout": "inline-right",
             "x-row": "visual-image-compression",
             "label": {
@@ -450,7 +431,6 @@ class VisualConfig(ConfigBase):
         ge=0,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "image",
             "x-layout": "inline-right",
             "x-input-width": "min(100%, 5.5rem)",
             "x-row": "visual-image-compression",
@@ -467,7 +447,6 @@ class VisualConfig(ConfigBase):
         default="compress",
         json_schema_extra={
             "x-widget": "select",
-            "x-icon": "minimize-2",
             "x-layout": "inline-right",
             "x-input-width": "min(100%, 8.5rem)",
             "x-row": "visual-image-compression",
@@ -567,7 +546,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "グループ発言頻度",
             },
             "x-widget": "slider",
-            "x-icon": "message-circle",
             "x-row": "talk-values",
             "step": 0.001,
         },
@@ -585,7 +563,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "個別チャット発言頻度",
             },
             "x-widget": "slider",
-            "x-icon": "message-circle",
             "x-row": "talk-values",
             "step": 0.001,
         },
@@ -601,7 +578,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "メンション時に必ず返信",
             },
             "x-widget": "switch",
-            "x-icon": "at-sign",
             "x-row": "reply-switches",
         },
     )
@@ -616,7 +592,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "@ に必ず返信",
             },
             "x-widget": "switch",
-            "x-icon": "at-sign",
             "x-row": "reply-switches",
         },
     )
@@ -631,7 +606,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "返信トリガーモード",
             },
             "x-widget": "select",
-            "x-icon": "activity",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-labels": REPLY_TRIGGER_MODE_OPTION_LABELS,
@@ -650,7 +624,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "プランナー連続中断上限",
             },
             "x-widget": "input",
-            "x-icon": "pause-circle",
             "advanced": True,
         },
     )
@@ -666,7 +639,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "連続 wait 上限",
             },
             "x-widget": "input",
-            "x-icon": "timer-reset",
         },
     )
     """Planner 最多连续调用 wait 多少次；达到上限后 wait 工具会拒绝继续进入等待。"""
@@ -681,7 +653,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "アイドルバックオフ基準",
             },
             "x-widget": "input",
-            "x-icon": "timer",
             "x-layout": "inline-right",
             "x-input-width": "7.5rem",
             "x-description-display": "icon",
@@ -700,7 +671,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "アイドルバックオフ上限",
             },
             "x-widget": "input",
-            "x-icon": "timer-reset",
             "x-description-display": "icon",
             "advanced": True,
         },
@@ -717,7 +687,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "アイドルバックオフ開始",
             },
             "x-widget": "input",
-            "x-icon": "list-start",
             "x-description-display": "icon",
             "advanced": True,
         },
@@ -734,33 +703,11 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "アイドルバックオフ迂回メッセージ数",
             },
             "x-widget": "input",
-            "x-icon": "message-square-more",
             "x-description-display": "icon",
             "advanced": True,
         },
     )
     """等待期间新消息达到多少条就立刻重新处理；0 表示不按条数打断等待。"""
-
-    planner_interrupt_strategy: Literal["aggressive", "buffered", "strict_buffered"] = Field(
-        default="buffered",
-        json_schema_extra={
-            "x-widget": "select",
-            "x-icon": "filter",
-            "advanced": True,
-        },
-    )
-    """Planner 打断策略：aggressive=任意消息都打断；buffered=仅@/提及打断（默认）；strict_buffered=完全不打断"""
-
-    buffer_review_threshold: int = Field(
-        default=3,
-        ge=0,
-        json_schema_extra={
-            "x-widget": "input",
-            "x-icon": "eye",
-            "advanced": True,
-        },
-    )
-    """Planner 单轮处理期间积压消息达到该阈值时启用浏览子代理整理要点；0 表示禁用浏览子代理"""
 
     enable_talk_value_rules: bool = Field(
         default=False,
@@ -771,7 +718,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "動的な発言頻度ルールを有効化",
             },
             "x-widget": "switch",
-            "x-icon": "settings",
         },
     )
     """开启后，可以按聊天或时间段单独调整发言频率。"""
@@ -788,7 +734,6 @@ class ChatReplyTimingConfig(ConfigBase):
                 "ja_JP": "動的な発言頻度ルール",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """
@@ -811,7 +756,6 @@ class ChatReplyStyleConfig(ConfigBase):
                 "ja_JP": "引用返信を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "quote",
             "advanced": True,
         },
     )
@@ -831,7 +775,6 @@ class ChatReplyStyleConfig(ConfigBase):
                 "ja_JP": "グループチャットプロンプト",
             },
             "x-widget": "textarea",
-            "x-icon": "users",
         },
     )
     """_wrap_群聊通用提示词，告诉麦麦群聊中该怎么说话。"""
@@ -849,28 +792,9 @@ class ChatReplyStyleConfig(ConfigBase):
                 "ja_JP": "個別チャットプロンプト",
             },
             "x-widget": "textarea",
-            "x-icon": "user",
         },
     )
     """_wrap_私聊通用提示词，告诉麦麦私聊中该怎么说话。"""
-
-    cross_session_memory_prompt: str = Field(
-        default=(
-            "关于你的记忆：你的长期记忆不仅限于当前这个聊天场景。"
-            "同一个用户在其他群聊或私聊里说过的内容、达成的共识、你曾经承诺或记住的事情，"
-            "都可以通过调用 query_memory / query_person_info 等记忆工具回忆起来。\n"
-            "当用户提及当前聊天记录看不到的过去事实（例如「刚才私聊告诉你的」、"
-            "「上次在xx群说过的」、「昨天那件事」等），请先主动调用记忆工具检索再作答，"
-            "不要直接声称看不到或没发生过。即使暂时检索不到，也优先表达「让我想想」、"
-            "「好像有印象」等态度，而不是断然否认。"
-        ),
-        json_schema_extra={
-            "x-widget": "textarea",
-            "x-icon": "brain",
-            "advanced": True,
-        },
-    )
-    """_wrap_跨聊天流记忆说明：追加到 system prompt，提示模型记忆可跨群/私聊"""
 
     chat_prompts: list["ExtraPromptItem"] = Field(
         default_factory=lambda: [],
@@ -881,7 +805,6 @@ class ChatReplyStyleConfig(ConfigBase):
                 "ja_JP": "追加プロンプト",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """给指定群聊或私聊额外补充聊天要求；有特殊群规或语气要求时再加。"""
@@ -904,7 +827,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "グループ文脈数",
             },
             "x-widget": "input",
-            "x-icon": "layers",
             "x-layout": "inline-right",
             "x-input-width": "6.5rem",
             "x-row": "chat-context-controls",
@@ -921,7 +843,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "個別チャット文脈数",
             },
             "x-widget": "input",
-            "x-icon": "layers",
             "x-layout": "inline-right",
             "x-input-width": "6.5rem",
             "x-row": "chat-context-controls",
@@ -938,7 +859,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "コンテキスト最適化",
             },
             "x-widget": "switch",
-            "x-icon": "scissors",
             "x-row": "chat-context-controls",
         },
     )
@@ -953,7 +873,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "チャット回想",
             },
             "x-widget": "switch",
-            "x-icon": "archive",
             "x-row": "chat-recall-controls",
         },
     )
@@ -969,7 +888,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "チャット回想保持数",
             },
             "x-widget": "input",
-            "x-icon": "archive",
             "x-layout": "inline-right",
             "x-input-width": "6.5rem",
             "x-row": "chat-recall-controls",
@@ -986,7 +904,6 @@ class ChatConfig(ConfigBase):
                 "ja_JP": "自分のメッセージ特別マーク",
             },
             "x-widget": "switch",
-            "x-icon": "badge-check",
             "x-row": "self-message-mark",
         },
     )
@@ -1014,7 +931,6 @@ class AttentionDriftConfig(ConfigBase):
                 "ja_JP": "注意ドリフトモード",
             },
             "x-widget": "switch",
-            "x-icon": "sparkles",
         },
     )
     """开启后，麦麦会更容易被有趣的新话题、梗或反差点吸引，但仍需保持上下文可理解。"""
@@ -1028,7 +944,6 @@ class AttentionDriftConfig(ConfigBase):
                 "ja_JP": "ドリフト段階",
             },
             "x-widget": "select",
-            "x-icon": "gauge",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-labels": ATTENTION_DRIFT_LEVEL_OPTION_LABELS,
@@ -1047,7 +962,6 @@ class AttentionDriftConfig(ConfigBase):
                 "ja_JP": "アンカー方針",
             },
             "x-widget": "select",
-            "x-icon": "anchor",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-labels": ATTENTION_DRIFT_ANCHOR_OPTION_LABELS,
@@ -1066,7 +980,6 @@ class AttentionDriftConfig(ConfigBase):
                 "ja_JP": "短い反応スタイル",
             },
             "x-widget": "select",
-            "x-icon": "message-circle",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-labels": ATTENTION_DRIFT_REACTION_OPTION_LABELS,
@@ -1075,90 +988,6 @@ class AttentionDriftConfig(ConfigBase):
         },
     )
     """控制短句、吐槽、语气词等短反应在漂移风格中的使用方式。"""
-
-
-class ExperimentalBrowserConfig(ConfigBase):
-    """实验性网页浏览能力配置。"""
-
-    __ui_label__ = "网页浏览"
-
-    enabled: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "启用网页浏览",
-                "en_US": "Enable web browsing",
-                "ja_JP": "ウェブ閲覧を有効化",
-            },
-            "x-widget": "switch",
-            "x-icon": "globe-2",
-        },
-    )
-    """允许麦麦按需启动隔离浏览器，并通过页面动作票据浏览公开网页。"""
-
-    session_timeout_seconds: int = Field(
-        default=300,
-        ge=30,
-        le=3600,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "浏览会话超时秒数",
-                "en_US": "Browser session timeout",
-                "ja_JP": "閲覧セッションのタイムアウト",
-            },
-            "x-widget": "number",
-            "x-icon": "timer",
-        },
-    )
-    """浏览器会话无操作多久后自动关闭。"""
-
-    navigation_timeout_seconds: int = Field(
-        default=30,
-        ge=5,
-        le=120,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "页面导航超时秒数",
-                "en_US": "Navigation timeout",
-                "ja_JP": "ページ遷移のタイムアウト",
-            },
-            "x-widget": "number",
-            "x-icon": "clock",
-        },
-    )
-    """打开网页或等待页面跳转的最长时间。"""
-
-    max_page_text_length: int = Field(
-        default=6000,
-        ge=1000,
-        le=20000,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "单页正文最大字符数",
-                "en_US": "Maximum page text length",
-                "ja_JP": "ページ本文の最大文字数",
-            },
-            "x-widget": "number",
-            "x-icon": "text",
-        },
-    )
-    """单次页面观察最多返回多少正文字符。"""
-
-    max_actions: int = Field(
-        default=20,
-        ge=5,
-        le=40,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "单页最大动作数",
-                "en_US": "Maximum page actions",
-                "ja_JP": "ページごとの最大アクション数",
-            },
-            "x-widget": "number",
-            "x-icon": "list-tree",
-        },
-    )
-    """每次仅向模型披露当前页面中排序靠前的少量语义动作。"""
 
 
 class ExperimentalConfig(ConfigBase):
@@ -1177,7 +1006,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "行動学習を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "brain-circuit",
         },
     )
     """让麦麦从聊天中学习什么时候该怎么回应的经验。"""
@@ -1191,7 +1019,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "豊かな返信能力",
             },
             "x-widget": "switch",
-            "x-icon": "sparkles",
         },
     )
     """开启后，reply 动作可通过 attach_pic、attach_emoji、attach_at 参数附加图片、表情包或 at。"""
@@ -1205,7 +1032,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "感情特徴",
             },
             "x-widget": "select",
-            "x-icon": "heart-pulse",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-option-labels": EMOTION_TRAIT_OPTION_LABELS,
@@ -1213,9 +1039,6 @@ class ExperimentalConfig(ConfigBase):
         },
     )
     """实验性人格情绪特点；理性冷静和多愁善感会追加人格后缀，中性不追加内容。"""
-
-    browser: ExperimentalBrowserConfig = Field(default_factory=ExperimentalBrowserConfig)
-    """动作票据式网页浏览实验能力。"""
 
     attention_drift: AttentionDriftConfig = Field(default_factory=AttentionDriftConfig)
     """注意力漂移实验模式；让麦麦在群聊/私聊中表现出更活跃的联想和轻微话题漂移。"""
@@ -1237,7 +1060,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "行動学習設定",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """配置哪些聊天会学习和使用行为经验；默认规则不够时再单独添加。"""
@@ -1251,7 +1073,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "行動共有グループ",
             },
             "x-widget": "custom",
-            "x-icon": "users",
         },
     )
     """_wrap_让多个群聊或私聊共享学到的行为经验。"""
@@ -1265,7 +1086,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "Focus モード",
             },
             "x-widget": "switch",
-            "x-icon": "target",
         },
     )
     """让麦麦同一时间只专注一个聊天流，适合直播或高强度聊天场景。"""
@@ -1279,7 +1099,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "私聊で Focus を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "message-circle",
         },
     )
     """Focus 模式是否也作用于私聊。"""
@@ -1293,7 +1112,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "Focus ホワイトリスト",
             },
             "x-widget": "custom",
-            "x-icon": "list-checks",
         },
     )
     """_wrap_Focus 白名单。配置后只有命中的群聊或私聊会进入 Focus；留空表示所有符合聊天类型开关的聊天都可进入 Focus。"""
@@ -1307,7 +1125,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "Focus 共有グループ",
             },
             "x-widget": "custom",
-            "x-icon": "users",
         },
     )
     """_wrap_把聊天流分组后，同组共享 Focus，不同组互不抢占。"""
@@ -1322,7 +1139,6 @@ class ExperimentalConfig(ConfigBase):
                 "ja_JP": "Focus クールタイム",
             },
             "x-widget": "input",
-            "x-icon": "timer",
             "x-layout": "inline-right",
             "x-input-width": "12rem",
             "x-row": "focus-cool-time",
@@ -1342,7 +1158,6 @@ class MessageReceiveConfig(ConfigBase):
         default=5,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "image",
             "advanced": True,
         },
     )
@@ -1354,7 +1169,6 @@ class MessageReceiveConfig(ConfigBase):
         default_factory=lambda: set(),
         json_schema_extra={
             "x-widget": "custom",
-            "x-icon": "ban",
         },
     )
     """包含这些词的消息会被过滤，不进入麦麦处理。"""
@@ -1363,7 +1177,6 @@ class MessageReceiveConfig(ConfigBase):
         default_factory=lambda: set(),
         json_schema_extra={
             "x-widget": "custom",
-            "x-icon": "regex",
         },
     )
     """用正则过滤消息；适合更复杂的过滤规则。"""
@@ -1387,7 +1200,6 @@ class TargetItem(ConfigBase):
                 "ja_JP": "プラットフォーム",
             },
             "x-widget": "input",
-            "x-icon": "wifi",
         },
     )
     """要单独配置的平台；和聊天流 ID 都留空表示全局默认，仅平台有值且聊天流 ID 留空表示平台兜底。"""
@@ -1401,7 +1213,6 @@ class TargetItem(ConfigBase):
                 "ja_JP": "チャットストリーム ID",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """用户/群 ID；留空时和平台字段共同决定全局默认或平台兜底，* 表示任意聊天流。"""
@@ -1415,7 +1226,6 @@ class TargetItem(ConfigBase):
                 "ja_JP": "チャット種別",
             },
             "x-widget": "select",
-            "x-icon": "users",
             "x-option-descriptions": RULE_TYPE_OPTION_DESCRIPTIONS,
         },
     )
@@ -1434,7 +1244,6 @@ class ChatStreamGroup(ConfigBase):
                 "ja_JP": "共有チャットストリーム",
             },
             "x-widget": "custom",
-            "x-icon": "users",
         },
     )
     """_wrap_这个组里的聊天流会共享对应的学习内容。"""
@@ -1454,7 +1263,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "記憶検索を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "database",
         },
     )
     """是否允许麦麦在聊天时查询长期记忆"""
@@ -1470,7 +1278,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "記憶検索件数",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """每次默认从长期记忆中取回多少条结果"""
@@ -1484,7 +1291,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "人物プロファイル検索を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "user-round-search",
         },
     )
     """是否允许麦麦查询人物画像记忆"""
@@ -1498,7 +1304,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "人物プロファイルを自動注入",
             },
             "x-widget": "switch",
-            "x-icon": "user-round-check",
         },
     )
     """是否在 Maisaka Planner 调用前自动注入当前对象相关的人物画像"""
@@ -1514,7 +1319,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "注入プロファイル上限",
             },
             "x-widget": "input",
-            "x-icon": "users",
         },
     )
     """每轮自动注入的人物画像数量上限"""
@@ -1528,7 +1332,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "ヒューリスティック記憶呼び出し",
             },
             "x-widget": "switch",
-            "x-icon": "sparkles",
         },
     )
     """是否根据当前聊天印象自然拉起长期记忆"""
@@ -1542,7 +1345,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "チャット横断呼び出しを許可",
             },
             "x-widget": "switch",
-            "x-icon": "shuffle",
         },
     )
     """是否允许启发式记忆从其他聊天流召回候选"""
@@ -1558,7 +1360,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "印象ウィンドウ件数",
             },
             "x-widget": "input",
-            "x-icon": "rows-3",
             "advanced": True,
         },
     )
@@ -1575,7 +1376,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "自然呼び出し記憶数",
             },
             "x-widget": "input",
-            "x-icon": "list",
             "advanced": True,
         },
     )
@@ -1592,7 +1392,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "自然呼び出し文字数上限",
             },
             "x-widget": "input",
-            "x-icon": "text-cursor-input",
             "advanced": True,
         },
     )
@@ -1608,7 +1407,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "自然呼び出しクールダウン",
             },
             "x-widget": "input",
-            "x-icon": "timer",
             "advanced": True,
         },
     )
@@ -1624,7 +1422,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "自然呼び出し新規メッセージ閾値",
             },
             "x-widget": "input",
-            "x-icon": "messages-square",
             "advanced": True,
         },
     )
@@ -1640,7 +1437,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "自然呼び出しキャッシュ秒数",
             },
             "x-widget": "input",
-            "x-icon": "clock-4",
             "advanced": True,
         },
     )
@@ -1655,7 +1451,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "個人チャットでグループ記憶を使う",
             },
             "x-widget": "switch",
-            "x-icon": "users-round",
             "advanced": True,
         },
     )
@@ -1670,7 +1465,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "グループチャットで個人記憶を使う",
             },
             "x-widget": "switch",
-            "x-icon": "message-circle",
             "advanced": True,
         },
     )
@@ -1685,7 +1479,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "人物事実を書き戻す",
             },
             "x-widget": "switch",
-            "x-icon": "user-round-pen",
         },
     )
     """是否在发送回复后自动提取并写回人物事实到长期记忆"""
@@ -1699,7 +1492,6 @@ class AMemorixIntegrationConfig(ConfigBase):
                 "ja_JP": "チャット要約を書き戻す",
             },
             "x-widget": "switch",
-            "x-icon": "scroll-text",
         },
     )
     """是否在 Maisaka 聊天过程中按消息窗口自动写回聊天摘要到长期记忆"""
@@ -1709,22 +1501,25 @@ class AMemorixIntegrationConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "messages-square",
             "advanced": True,
         },
     )
-    """自动写回聊天摘要的消息窗口阈值（群聊）"""
+    """自动写回聊天摘要的消息窗口阈值"""
 
     chat_summary_writeback_private_threshold: int = Field(
         default=4,
         ge=1,
         json_schema_extra={
+            "label": {
+                "zh_CN": "私聊摘要消息阈值",
+                "en_US": "Private chat summary threshold",
+                "ja_JP": "個別チャット要約メッセージしきい値",
+            },
             "x-widget": "input",
-            "x-icon": "user",
             "advanced": True,
         },
     )
-    """自动写回聊天摘要的消息窗口阈值（私聊）。私聊节奏短、对话少，使用更低阈值以确保私聊里出现的事实能尽快进入长期记忆"""
+    """私聊消息达到该数量后写回摘要；会与通用阈值取较小值。"""
 
     chat_summary_writeback_context_length: int = Field(
         default=36,
@@ -1732,7 +1527,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=500,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "rows-3",
             "advanced": True,
         },
     )
@@ -1742,29 +1536,36 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=180,
         ge=0,
         json_schema_extra={
+            "label": {
+                "zh_CN": "摘要空闲触发秒数",
+                "en_US": "Summary idle trigger seconds",
+                "ja_JP": "要約のアイドル起動秒数",
+            },
             "x-widget": "input",
-            "x-icon": "timer",
             "advanced": True,
         },
     )
-    """聊天摘要空闲兜底触发时长（秒）。当某聊天流收到过消息但静默超过该时长且仍有未摘要消息时，即使未达到 message_threshold 也会强制触发一次摘要。0 表示禁用空闲兜底"""
+    """消息未达到数量阈值时，空闲多久后尝试写回摘要；0 表示禁用。"""
 
     chat_summary_writeback_idle_min_pending: int = Field(
         default=2,
         ge=1,
         json_schema_extra={
+            "label": {
+                "zh_CN": "摘要空闲触发最少消息数",
+                "en_US": "Minimum pending messages for idle summary",
+                "ja_JP": "アイドル要約の最小保留メッセージ数",
+            },
             "x-widget": "input",
-            "x-icon": "list-minus",
             "advanced": True,
         },
     )
-    """空闲兜底触发的最少未摘要消息数。避免因 1 条无意义寒暄就触发 LLM 摘要调用"""
+    """空闲触发摘要前至少需要积累的未摘要消息数。"""
 
     fuzzy_modify_enabled: bool = Field(
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "wand-sparkles",
             "advanced": True,
         },
     )
@@ -1774,7 +1575,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=False,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "badge-check",
             "advanced": True,
         },
     )
@@ -1786,7 +1586,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=1.0,
         json_schema_extra={
             "x-widget": "slider",
-            "x-icon": "gauge",
             "step": 0.01,
             "advanced": True,
         },
@@ -1799,7 +1598,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=100,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "list-filter",
             "advanced": True,
         },
     )
@@ -1811,7 +1609,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=20,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "crosshair",
             "advanced": True,
         },
     )
@@ -1821,7 +1618,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=False,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "globe-2",
             "advanced": True,
         },
     )
@@ -1831,7 +1627,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=False,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "message-circle-warning",
             "advanced": True,
         },
     )
@@ -1842,7 +1637,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         ge=0.1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "clock-4",
             "advanced": True,
         },
     )
@@ -1853,7 +1647,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "timer",
             "advanced": True,
         },
     )
@@ -1865,7 +1658,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=200,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "list-ordered",
             "advanced": True,
         },
     )
@@ -1877,7 +1669,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=1.0,
         json_schema_extra={
             "x-widget": "slider",
-            "x-icon": "gauge",
             "step": 0.01,
             "advanced": True,
         },
@@ -1890,7 +1681,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=200,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "messages-square",
             "advanced": True,
         },
     )
@@ -1900,7 +1690,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "filter",
             "advanced": True,
         },
     )
@@ -1910,7 +1699,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "sticky-note",
             "advanced": True,
         },
     )
@@ -1920,7 +1708,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "eye-off",
             "advanced": True,
         },
     )
@@ -1930,7 +1717,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "user-round-search",
             "advanced": True,
         },
     )
@@ -1940,7 +1726,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "refresh-ccw",
             "advanced": True,
         },
     )
@@ -1950,7 +1735,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "clapperboard",
             "advanced": True,
         },
     )
@@ -1960,7 +1744,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "ban",
             "advanced": True,
         },
     )
@@ -1971,7 +1754,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "repeat",
             "advanced": True,
         },
     )
@@ -1983,7 +1765,6 @@ class AMemorixIntegrationConfig(ConfigBase):
         le=200,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "list-restart",
             "advanced": True,
         },
     )
@@ -2052,8 +1833,6 @@ class AMemorixPluginConfig(ConfigBase):
                 "en_US": "Enable memory",
                 "ja_JP": "記憶を有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "brain",
         },
     )
     """是否启用长期记忆系统"""
@@ -2070,8 +1849,6 @@ class AMemorixStorageConfig(ConfigBase):
                 "en_US": "Data directory",
                 "ja_JP": "データディレクトリ",
             },
-            "x-widget": "input",
-            "x-icon": "folder",
         },
     )
     """数据目录"""
@@ -2088,8 +1865,6 @@ class AMemorixEmbeddingFallbackConfig(ConfigBase):
                 "en_US": "Enable fallback",
                 "ja_JP": "フォールバックを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "life-buoy",
         },
     )
     """是否启用回退机制"""
@@ -2103,8 +1878,6 @@ class AMemorixEmbeddingFallbackConfig(ConfigBase):
                 "en_US": "Probe interval",
                 "ja_JP": "プローブ間隔",
             },
-            "x-widget": "input",
-            "x-icon": "timer",
         },
     )
     """探测间隔秒数"""
@@ -2117,8 +1890,6 @@ class AMemorixEmbeddingFallbackConfig(ConfigBase):
                 "en_US": "Allow metadata-only writes",
                 "ja_JP": "メタデータのみの書き込みを許可",
             },
-            "x-widget": "switch",
-            "x-icon": "database",
         },
     )
     """是否允许仅写入元数据"""
@@ -2135,8 +1906,6 @@ class AMemorixParagraphVectorBackfillConfig(ConfigBase):
                 "en_US": "Enable backfill",
                 "ja_JP": "バックフィルを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "recycle",
         },
     )
     """是否启用回填任务"""
@@ -2150,8 +1919,6 @@ class AMemorixParagraphVectorBackfillConfig(ConfigBase):
                 "en_US": "Backfill interval",
                 "ja_JP": "バックフィル間隔",
             },
-            "x-widget": "input",
-            "x-icon": "timer",
         },
     )
     """回填轮询间隔"""
@@ -2165,8 +1932,6 @@ class AMemorixParagraphVectorBackfillConfig(ConfigBase):
                 "en_US": "Batch size",
                 "ja_JP": "バッチサイズ",
             },
-            "x-widget": "input",
-            "x-icon": "layers",
         },
     )
     """单批回填数量"""
@@ -2180,8 +1945,6 @@ class AMemorixParagraphVectorBackfillConfig(ConfigBase):
                 "en_US": "Max retries",
                 "ja_JP": "最大リトライ回数",
             },
-            "x-widget": "input",
-            "x-icon": "repeat",
         },
     )
     """最大重试次数"""
@@ -2265,6 +2028,19 @@ class AMemorixEmbeddingConfig(ConfigBase):
     )
     """是否缓存向量化结果"""
 
+    runtime_train_threshold: int = Field(
+        default=256,
+        ge=1,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "运行期向量训练阈值",
+                "en_US": "Runtime vector training threshold",
+                "ja_JP": "実行時ベクトル学習しきい値",
+            },
+        },
+    )
+    """未训练向量池在运行期间触发 SQ8 后台训练所需的最少向量数"""
+
     quantization_type: Literal["int8"] = Field(
         default="int8",
         json_schema_extra={
@@ -2273,8 +2049,6 @@ class AMemorixEmbeddingConfig(ConfigBase):
                 "en_US": "Quantization type",
                 "ja_JP": "量子化方式",
             },
-            "x-widget": "select",
-            "x-icon": "package",
         },
     )
     """向量压缩方式，当前仅支持 int8(SQ8)"""
@@ -2315,8 +2089,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Enable sparse retrieval",
                 "ja_JP": "疎検索を有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "search",
         },
     )
     """是否启用稀疏检索"""
@@ -2329,8 +2101,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Retrieval backend",
                 "ja_JP": "検索バックエンド",
             },
-            "x-widget": "select",
-            "x-icon": "database",
         },
     )
     """稀疏检索后端"""
@@ -2343,8 +2113,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Retrieval mode",
                 "ja_JP": "検索モード",
             },
-            "x-widget": "select",
-            "x-icon": "shuffle",
         },
     )
     """稀疏检索模式"""
@@ -2357,8 +2125,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Tokenizer mode",
                 "ja_JP": "トークナイザーモード",
             },
-            "x-widget": "select",
-            "x-icon": "type",
         },
     )
     """分词模式"""
@@ -2372,8 +2138,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Paragraph candidates",
                 "ja_JP": "段落候補数",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """段落候选数"""
@@ -2387,8 +2151,6 @@ class AMemorixSparseRetrievalConfig(ConfigBase):
                 "en_US": "Relation candidates",
                 "ja_JP": "関係候補数",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """关系候选数"""
@@ -2761,8 +2523,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Paragraph Top-K",
                 "ja_JP": "段落 Top-K",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """段落候选数"""
@@ -2776,8 +2536,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Relation Top-K",
                 "ja_JP": "関係 Top-K",
             },
-            "x-widget": "input",
-            "x-icon": "share-2",
         },
     )
     """关系候选数"""
@@ -2791,8 +2549,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Final Top-K",
                 "ja_JP": "最終 Top-K",
             },
-            "x-widget": "input",
-            "x-icon": "trophy",
         },
     )
     """最终返回条数"""
@@ -2807,9 +2563,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Relation fusion weight",
                 "ja_JP": "関係融合重み",
             },
-            "x-widget": "slider",
-            "x-icon": "blend",
-            "step": 0.01,
         },
     )
     """关系融合权重"""
@@ -2822,8 +2575,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Enable PPR",
                 "ja_JP": "PPR を有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "git-branch",
         },
     )
     """是否启用 PPR"""
@@ -2838,9 +2589,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "PPR alpha",
                 "ja_JP": "PPR Alpha",
             },
-            "x-widget": "slider",
-            "x-icon": "git-branch",
-            "step": 0.01,
         },
     )
     """PPR alpha"""
@@ -2854,8 +2602,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "PPR timeout",
                 "ja_JP": "PPR タイムアウト",
             },
-            "x-widget": "input",
-            "x-icon": "timer",
         },
     )
     """PPR 超时秒数"""
@@ -2869,8 +2615,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "PPR concurrency limit",
                 "ja_JP": "PPR 同時実行制限",
             },
-            "x-widget": "input",
-            "x-icon": "zap",
         },
     )
     """PPR 并发限制"""
@@ -2883,8 +2627,6 @@ class AMemorixRetrievalConfig(ConfigBase):
                 "en_US": "Parallel retrieval",
                 "ja_JP": "並列検索",
             },
-            "x-widget": "switch",
-            "x-icon": "zap",
         },
     )
     """是否启用并行检索"""
@@ -2954,7 +2696,7 @@ class AMemorixThresholdConfig(ConfigBase):
     """A_Memorix 阈值过滤配置"""
 
     min_threshold: float = Field(
-        default=0.3,
+        default=0.29,
         ge=0.0,
         le=1.0,
         json_schema_extra={
@@ -2963,9 +2705,6 @@ class AMemorixThresholdConfig(ConfigBase):
                 "en_US": "Minimum threshold",
                 "ja_JP": "最小しきい値",
             },
-            "x-widget": "slider",
-            "x-icon": "ruler",
-            "step": 0.01,
         },
     )
     """最小阈值"""
@@ -2980,9 +2719,6 @@ class AMemorixThresholdConfig(ConfigBase):
                 "en_US": "Maximum threshold",
                 "ja_JP": "最大しきい値",
             },
-            "x-widget": "slider",
-            "x-icon": "ruler",
-            "step": 0.01,
         },
     )
     """最大阈值"""
@@ -2997,15 +2733,12 @@ class AMemorixThresholdConfig(ConfigBase):
                 "en_US": "Dynamic percentile",
                 "ja_JP": "動的パーセンタイル",
             },
-            "x-widget": "slider",
-            "x-icon": "percent",
-            "step": 1,
         },
     )
     """动态阈值百分位"""
 
     min_results: int = Field(
-        default=3,
+        default=4,
         ge=1,
         json_schema_extra={
             "label": {
@@ -3013,32 +2746,14 @@ class AMemorixThresholdConfig(ConfigBase):
                 "en_US": "Minimum results",
                 "ja_JP": "最小保持件数",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """最小保留条数"""
-
-    enable_auto_adjust: bool = Field(
-        default=True,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "自动调整阈值",
-                "en_US": "Auto-adjust threshold",
-                "ja_JP": "しきい値を自動調整",
-            },
-            "x-widget": "switch",
-            "x-icon": "settings",
-        },
-    )
-    """是否启用自动阈值调整"""
-
 
     def model_post_init(self, context: Optional[dict] = None) -> None:
         if self.min_threshold >= self.max_threshold:
             raise ValueError("min_threshold 必须小于 max_threshold")
         return super().model_post_init(context)
-
 
 class AMemorixRetrievalSubtypeFilterConfig(ConfigBase):
     """A_Memorix 跨聊天流检索结果分类型过滤配置"""
@@ -3134,8 +2849,6 @@ class AMemorixFilterConfig(ConfigBase):
                 "en_US": "Enable chat filter",
                 "ja_JP": "チャットフィルターを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "filter",
         },
     )
     """是否启用聊天过滤"""
@@ -3148,8 +2861,6 @@ class AMemorixFilterConfig(ConfigBase):
                 "en_US": "Filter mode",
                 "ja_JP": "フィルターモード",
             },
-            "x-widget": "select",
-            "x-icon": "shield",
         },
     )
     """过滤模式"""
@@ -3162,8 +2873,6 @@ class AMemorixFilterConfig(ConfigBase):
                 "en_US": "Chat stream list",
                 "ja_JP": "チャットストリーム一覧",
             },
-            "x-widget": "input",
-            "x-icon": "messages-square",
         },
     )
     """聊天流列表"""
@@ -3193,8 +2902,6 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Enable episodes",
                 "ja_JP": "Episode を有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "book-open",
         },
     )
     """是否启用 Episode"""
@@ -3207,41 +2914,74 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Generate episodes",
                 "ja_JP": "Episode を自動生成",
             },
-            "x-widget": "switch",
-            "x-icon": "sparkles",
         },
     )
     """是否启用自动生成"""
 
-    pending_batch_size: int = Field(
-        default=50,
+    source_poll_interval_seconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "来源任务轮询间隔",
+                "en_US": "Source task polling interval",
+                "ja_JP": "ソースタスクのポーリング間隔",
+            },
+        },
+    )
+    """来源级 Episode 任务轮询间隔秒数"""
+
+    source_batch_size: int = Field(
+        default=20,
         ge=1,
         json_schema_extra={
             "label": {
-                "zh_CN": "待处理批量",
-                "en_US": "Pending batch size",
-                "ja_JP": "保留中バッチサイズ",
+                "zh_CN": "来源任务批量",
+                "en_US": "Source task batch size",
+                "ja_JP": "ソースタスクのバッチサイズ",
             },
-            "x-widget": "input",
-            "x-icon": "layers",
         },
     )
-    """待处理批大小"""
+    """单轮领取的来源任务数"""
 
-    pending_max_retry: int = Field(
+    source_max_retry: int = Field(
         default=3,
-        ge=0,
+        ge=1,
         json_schema_extra={
             "label": {
-                "zh_CN": "待处理重试",
-                "en_US": "Pending max retries",
-                "ja_JP": "保留中最大リトライ",
+                "zh_CN": "来源任务最大尝试次数",
+                "en_US": "Source task max attempts",
+                "ja_JP": "ソースタスクの最大試行回数",
             },
-            "x-widget": "input",
-            "x-icon": "repeat",
         },
     )
-    """待处理最大重试次数"""
+    """每个来源版本的最大尝试次数，包含首次尝试"""
+
+    source_lease_seconds: float = Field(
+        default=1800.0,
+        ge=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "来源任务租约时长",
+                "en_US": "Source task lease duration",
+                "ja_JP": "ソースタスクのリース時間",
+            },
+        },
+    )
+    """来源任务租约时长秒数"""
+
+    source_max_wait_seconds: float = Field(
+        default=60.0,
+        ge=0.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "来源任务最大防抖等待",
+                "en_US": "Source task maximum debounce wait",
+                "ja_JP": "ソースタスクの最大デバウンス待機時間",
+            },
+        },
+    )
+    """来源持续写入时允许的最大防抖等待秒数"""
 
     max_paragraphs_per_call: int = Field(
         default=20,
@@ -3252,8 +2992,6 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Paragraphs per call",
                 "ja_JP": "1回あたりの段落上限",
             },
-            "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """单次最大段落数"""
@@ -3267,8 +3005,6 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Characters per call",
                 "ja_JP": "1回あたりの文字上限",
             },
-            "x-widget": "input",
-            "x-icon": "type",
         },
     )
     """单次最大字符数"""
@@ -3282,8 +3018,6 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Source time window",
                 "ja_JP": "ソース時間窓",
             },
-            "x-widget": "input",
-            "x-icon": "clock",
         },
     )
     """时间窗口小时数"""
@@ -3296,8 +3030,6 @@ class AMemorixEpisodeConfig(ConfigBase):
                 "en_US": "Segmentation model",
                 "ja_JP": "分割モデル",
             },
-            "x-widget": "input",
-            "x-icon": "scissors",
         },
     )
     """分段模型选择"""
@@ -3327,8 +3059,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
                 "en_US": "Enable person profiles",
                 "ja_JP": "人物プロファイルを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "user-round",
         },
     )
     """是否启用画像"""
@@ -3342,8 +3072,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
                 "en_US": "Refresh interval",
                 "ja_JP": "更新間隔",
             },
-            "x-widget": "input",
-            "x-icon": "refresh-cw",
         },
     )
     """刷新间隔分钟数"""
@@ -3357,8 +3085,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
                 "en_US": "Active window",
                 "ja_JP": "アクティブ期間",
             },
-            "x-widget": "input",
-            "x-icon": "clock",
         },
     )
     """活跃窗口小时数"""
@@ -3372,8 +3098,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
                 "en_US": "Refreshes per cycle",
                 "ja_JP": "1サイクル更新上限",
             },
-            "x-widget": "input",
-            "x-icon": "layers",
         },
     )
     """单轮最大刷新数"""
@@ -3457,8 +3181,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
                 "en_US": "Evidence count",
                 "ja_JP": "証拠件数",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """证据条数"""
@@ -3502,8 +3224,6 @@ class AMemorixMemoryEvolutionConfig(ConfigBase):
                 "en_US": "Enable memory evolution",
                 "ja_JP": "記憶進化を有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "git-branch",
         },
     )
     """是否启用记忆演化"""
@@ -3517,25 +3237,20 @@ class AMemorixMemoryEvolutionConfig(ConfigBase):
                 "en_US": "Half-life",
                 "ja_JP": "半減期",
             },
-            "x-widget": "input",
-            "x-icon": "hourglass",
         },
     )
     """半衰期小时数"""
 
     prune_threshold: float = Field(
         default=0.1,
-        ge=0.0,
-        le=1.0,
+        gt=0.0,
+        lt=1.0,
         json_schema_extra={
             "label": {
                 "zh_CN": "裁剪阈值",
                 "en_US": "Prune threshold",
                 "ja_JP": "剪定しきい値",
             },
-            "x-widget": "slider",
-            "x-icon": "trash-2",
-            "step": 0.01,
         },
     )
     """裁剪阈值"""
@@ -3549,11 +3264,96 @@ class AMemorixMemoryEvolutionConfig(ConfigBase):
                 "en_US": "Freeze duration",
                 "ja_JP": "凍結時間",
             },
-            "x-widget": "input",
-            "x-icon": "snowflake",
         },
     )
     """冻结时长小时数"""
+
+    revive_threshold: float = Field(
+        default=0.15,
+        gt=0.0,
+        le=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "恢复阈值",
+                "en_US": "Revival threshold",
+                "ja_JP": "復帰しきい値",
+            },
+        },
+    )
+    """冻结关系恢复为活跃状态的保留强度阈值"""
+
+    access_reinforcement_alpha: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "访问加强系数",
+                "en_US": "Access reinforcement factor",
+                "ja_JP": "アクセス強化係数",
+            },
+        },
+    )
+    """记忆被最终采用时的饱和加强系数"""
+
+    access_reinforcement_cooldown_minutes: float = Field(
+        default=60.0,
+        ge=0.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "访问加强冷却时间",
+                "en_US": "Access reinforcement cooldown",
+                "ja_JP": "アクセス強化クールダウン",
+            },
+        },
+    )
+    """同一关系两次访问加强之间的最短分钟数，0表示不限制"""
+
+    explicit_reinforcement_alpha: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "显式加强系数",
+                "en_US": "Explicit reinforcement factor",
+                "ja_JP": "明示的強化係数",
+            },
+        },
+    )
+    """用户显式加强或独立新证据的饱和加强系数"""
+
+    weaken_alpha: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "弱化系数",
+                "en_US": "Weakening factor",
+                "ja_JP": "弱化係数",
+            },
+        },
+    )
+    """显式弱化事件的比例系数"""
+
+    lifecycle_batch_size: int = Field(
+        default=1000,
+        ge=1,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "生命周期批量",
+                "en_US": "Lifecycle batch size",
+                "ja_JP": "ライフサイクルのバッチサイズ",
+            },
+        },
+    )
+    """单轮处理的到期关系数量"""
+
+    def model_post_init(self, context: Optional[dict] = None) -> None:
+        if self.revive_threshold <= self.prune_threshold:
+            raise ValueError("revive_threshold 必须大于 prune_threshold")
+        return super().model_post_init(context)
 
 
 class AMemorixAdvancedConfig(ConfigBase):
@@ -3567,8 +3367,6 @@ class AMemorixAdvancedConfig(ConfigBase):
                 "en_US": "Auto save",
                 "ja_JP": "自動保存",
             },
-            "x-widget": "switch",
-            "x-icon": "save",
         },
     )
     """是否启用自动保存"""
@@ -3582,8 +3380,6 @@ class AMemorixAdvancedConfig(ConfigBase):
                 "en_US": "Auto-save interval",
                 "ja_JP": "自動保存間隔",
             },
-            "x-widget": "input",
-            "x-icon": "timer",
         },
     )
     """自动保存间隔"""
@@ -3596,8 +3392,6 @@ class AMemorixAdvancedConfig(ConfigBase):
                 "en_US": "Debug mode",
                 "ja_JP": "デバッグモード",
             },
-            "x-widget": "switch",
-            "x-icon": "bug",
         },
     )
     """是否启用调试"""
@@ -3683,8 +3477,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Enable import center",
                 "ja_JP": "インポートセンターを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "upload",
         },
     )
     """是否启用导入中心"""
@@ -3698,8 +3490,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Max queue size",
                 "ja_JP": "最大キューサイズ",
             },
-            "x-widget": "input",
-            "x-icon": "list-ordered",
         },
     )
     """最大队列长度"""
@@ -3713,8 +3503,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Files per task",
                 "ja_JP": "タスクあたりのファイル上限",
             },
-            "x-widget": "input",
-            "x-icon": "files",
         },
     )
     """单任务最大文件数"""
@@ -3728,8 +3516,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "File size limit",
                 "ja_JP": "ファイルサイズ上限",
             },
-            "x-widget": "input",
-            "x-icon": "file-up",
         },
     )
     """单文件大小上限 MB"""
@@ -3743,8 +3529,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Paste character limit",
                 "ja_JP": "貼り付け文字数上限",
             },
-            "x-widget": "input",
-            "x-icon": "clipboard-paste",
         },
     )
     """粘贴字符数上限"""
@@ -3758,8 +3542,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Default file concurrency",
                 "ja_JP": "既定ファイル並列数",
             },
-            "x-widget": "input",
-            "x-icon": "zap",
         },
     )
     """默认文件并发"""
@@ -3773,8 +3555,6 @@ class AMemorixWebImportConfig(ConfigBase):
                 "en_US": "Default chunk concurrency",
                 "ja_JP": "既定チャンク並列数",
             },
-            "x-widget": "input",
-            "x-icon": "zap",
         },
     )
     """默认分块并发"""
@@ -3859,8 +3639,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Enable tuning center",
                 "ja_JP": "チューニングセンターを有効化",
             },
-            "x-widget": "switch",
-            "x-icon": "sliders",
         },
     )
     """是否启用调优中心"""
@@ -3874,8 +3652,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Max queue size",
                 "ja_JP": "最大キューサイズ",
             },
-            "x-widget": "input",
-            "x-icon": "list-ordered",
         },
     )
     """最大队列长度"""
@@ -3889,8 +3665,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Poll interval",
                 "ja_JP": "ポーリング間隔",
             },
-            "x-widget": "input",
-            "x-icon": "timer",
         },
     )
     """轮询间隔毫秒数"""
@@ -3903,8 +3677,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Default intensity",
                 "ja_JP": "既定の強度",
             },
-            "x-widget": "select",
-            "x-icon": "gauge",
         },
     )
     """默认调优强度"""
@@ -3917,8 +3689,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Default objective",
                 "ja_JP": "既定の目標",
             },
-            "x-widget": "select",
-            "x-icon": "target",
         },
     )
     """默认调优目标"""
@@ -3932,8 +3702,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Default eval Top-K",
                 "ja_JP": "既定評価 Top-K",
             },
-            "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """默认评估 Top-K"""
@@ -3947,8 +3715,6 @@ class AMemorixWebTuningConfig(ConfigBase):
                 "en_US": "Default sample size",
                 "ja_JP": "既定サンプル数",
             },
-            "x-widget": "input",
-            "x-icon": "blocks",
         },
     )
     """默认样本数"""
@@ -4082,7 +3848,6 @@ class AMemorixConfig(ConfigBase):
                 "ja_JP": "記憶のグローバル共有",
             },
             "x-widget": "switch",
-            "x-icon": "globe-2",
         },
     )
     """是否让普通记忆查询在所有聊天流范围内检索"""
@@ -4096,7 +3861,6 @@ class AMemorixConfig(ConfigBase):
                 "ja_JP": "共有記憶グループ",
             },
             "x-widget": "custom",
-            "x-icon": "users-round",
             "x-display-as-section": True,
         },
     )
@@ -4173,7 +3937,6 @@ class LearningItem(ConfigBase):
                 "ja_JP": "プラットフォーム",
             },
             "x-widget": "input",
-            "x-icon": "wifi",
         },
     )
     """平台，与ID一起留空表示全局"""
@@ -4187,7 +3950,6 @@ class LearningItem(ConfigBase):
                 "ja_JP": "チャットストリーム ID",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """要单独配置的群号或用户 ID；留空表示默认规则。"""
@@ -4201,7 +3963,6 @@ class LearningItem(ConfigBase):
                 "ja_JP": "チャット種別",
             },
             "x-widget": "select",
-            "x-icon": "users",
             "x-option-descriptions": RULE_TYPE_OPTION_DESCRIPTIONS,
         },
     )
@@ -4216,7 +3977,6 @@ class LearningItem(ConfigBase):
                 "ja_JP": "使用",
             },
             "x-widget": "switch",
-            "x-icon": "message-square",
         },
     )
     """是否在这个聊天里使用已学到的内容。"""
@@ -4230,7 +3990,6 @@ class LearningItem(ConfigBase):
                 "ja_JP": "学習",
             },
             "x-widget": "switch",
-            "x-icon": "graduation-cap",
         },
     )
     """是否从这个聊天里继续学习新内容。"""
@@ -4256,7 +4015,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "人間が確認した表現のみ使用",
             },
             "x-widget": "switch",
-            "x-icon": "check",
             "x-row": "expression-learning-switches",
         },
     )
@@ -4271,7 +4029,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "表現学習を最適化",
             },
             "x-widget": "switch",
-            "x-icon": "sparkles",
             "x-row": "expression-learning-switches",
         },
     )
@@ -4286,7 +4043,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "表現の使用方法",
             },
             "x-widget": "select",
-            "x-icon": "route",
             "advanced": False,
             "options": ["legacy", "vector", "vector_intent"],
             "x-option-labels": {
@@ -4312,7 +4068,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "表現ベクトル索引パス",
             },
             "x-widget": "input",
-            "x-icon": "file-search",
             "advanced": True,
         },
     )
@@ -4329,7 +4084,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "ベクトル候補上限",
             },
             "x-widget": "input",
-            "x-icon": "list-filter",
             "advanced": True,
         },
     )
@@ -4344,7 +4098,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "表現学習の最大同時実行数",
             },
             "x-widget": "input",
-            "x-icon": "layers",
             "advanced": True,
         },
     )
@@ -4367,7 +4120,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "学習設定",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """配置哪些聊天会学习和使用表达方式；默认规则不够时再单独添加。"""
@@ -4381,7 +4133,6 @@ class ExpressionConfig(ConfigBase):
                 "ja_JP": "表現共有グループ",
             },
             "x-widget": "custom",
-            "x-icon": "users",
         },
     )
     """_wrap_让多个群聊或私聊共享学到的表达方式。"""
@@ -4411,7 +4162,6 @@ class JargonConfig(ConfigBase):
                 "ja_JP": "学習設定",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """_wrap_配置哪些聊天会学习和使用黑话；默认规则不够时再单独添加。"""
@@ -4425,7 +4175,6 @@ class JargonConfig(ConfigBase):
                 "ja_JP": "隠語共有グループ",
             },
             "x-widget": "custom",
-            "x-icon": "users",
         },
     )
     """_wrap_让多个群聊或私聊共享学到的黑话。"""
@@ -4442,7 +4191,6 @@ class VoiceConfig(ConfigBase):
         default=False,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "mic",
         },
     )
     """开启后麦麦可以把语音消息识别成文字再处理。"""
@@ -4455,7 +4203,6 @@ class EmojiCacheCleanupConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "x-widget": "switch",
-            "x-icon": "trash-2",
             "label": {
                 "zh_CN": "启用表情包缓存自动清理",
                 "en_US": "Enable emoji cache cleanup",
@@ -4470,7 +4217,6 @@ class EmojiCacheCleanupConfig(ConfigBase):
         ge=1.0 / 60.0,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "clock",
             "label": {
                 "zh_CN": "表情包清理检查间隔（小时）",
                 "en_US": "Emoji cleanup check interval (hours)",
@@ -4485,7 +4231,6 @@ class EmojiCacheCleanupConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "calendar-days",
             "label": {
                 "zh_CN": "未注册表情包文件保留天数",
                 "en_US": "Unregistered emoji file retention days",
@@ -4500,7 +4245,6 @@ class EmojiCacheCleanupConfig(ConfigBase):
         ge=1,
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "database",
             "label": {
                 "zh_CN": "未注册表情包无文件记录保留天数",
                 "en_US": "Unregistered emoji no-file record retention days",
@@ -4529,7 +4273,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "送信候補の絵文字数",
             },
             "x-widget": "input",
-            "x-icon": "grid",
             "advanced": True,
         },
     )
@@ -4544,7 +4287,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "最大登録数",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """最多保存多少个可用表情。"""
@@ -4558,7 +4300,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "上限到達時に古い絵文字を置換",
             },
             "x-widget": "switch",
-            "x-icon": "refresh-cw",
             "advanced": True,
         },
     )
@@ -4573,7 +4314,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "チェック間隔",
             },
             "x-widget": "input",
-            "x-icon": "clock",
         },
     )
     """每隔多少分钟检查一次表情库状态。"""
@@ -4587,7 +4327,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "チャット絵文字を収集",
             },
             "x-widget": "switch",
-            "x-icon": "copy",
         },
     )
     """是否从聊天中自动收集别人发的表情。"""
@@ -4602,7 +4341,6 @@ class EmojiConfig(ConfigBase):
                 "ja_JP": "収集する絵文字サイズ上限（MB）",
             },
             "x-widget": "input",
-            "x-icon": "file-warning",
             "advanced": True,
         },
     )
@@ -4618,7 +4356,6 @@ class EmojiConfig(ConfigBase):
             },
             "advanced": True,
             "x-widget": "switch",
-            "x-icon": "filter",
         },
     )
     """开启后只保存内容合适的表情。"""
@@ -4639,7 +4376,6 @@ class KeywordRuleConfig(ConfigBase):
                 "ja_JP": "キーワード",
             },
             "x-widget": "custom",
-            "x-icon": "tag",
         },
     )
     """要匹配的关键词；命中任意一个即可触发。"""
@@ -4653,7 +4389,6 @@ class KeywordRuleConfig(ConfigBase):
                 "ja_JP": "正規表現",
             },
             "x-widget": "custom",
-            "x-icon": "regex",
         },
     )
     """要匹配的正则表达式；适合复杂文本规则。"""
@@ -4667,7 +4402,6 @@ class KeywordRuleConfig(ConfigBase):
                 "ja_JP": "リアクションプロンプト",
             },
             "x-widget": "textarea",
-            "x-icon": "message-circle",
         },
     )
     """命中后给麦麦看的提示内容，不会直接当作消息发送。"""
@@ -4702,7 +4436,6 @@ class KeywordReactionConfig(ConfigBase):
                 "ja_JP": "キーワードルール",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """命中关键词后，给麦麦追加一段固定反应提示。"""
@@ -4716,7 +4449,6 @@ class KeywordReactionConfig(ConfigBase):
                 "ja_JP": "正規表現ルール",
             },
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """命中正则规则后，给麦麦追加一段固定反应提示。"""
@@ -4746,7 +4478,6 @@ class ResponsePostProcessConfig(ConfigBase):
                 "ja_JP": "返信後処理を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "settings",
         },
     )
     """开启后会对回复做错别字、分段等后处理。"""
@@ -4762,7 +4493,6 @@ class ResponsePostProcessConfig(ConfigBase):
                 "ja_JP": "タイピング速度",
             },
             "x-widget": "slider",
-            "x-icon": "keyboard",
             "x-row": "reply-speed",
             "step": 0.1,
             "advanced": True,
@@ -4785,10 +4515,41 @@ class ChineseTypoConfig(ConfigBase):
                 "ja_JP": "誤字生成を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "type",
         },
     )
     """让麦麦偶尔打错字，更像真人聊天。"""
+
+    enable_correction_quote: bool = Field(
+        default=True,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "错别字纠正时引用原消息",
+                "en_US": "Quote typo message when correcting",
+                "ja_JP": "誤字訂正時に元メッセージを引用",
+            },
+            "x-widget": "switch",
+            "x-row": "typo-correction-quote",
+        },
+    )
+    """纠正错别字时，是否引用上一条包含错别字的消息。"""
+
+    correction_quote_probability: float = Field(
+        default=1.0,
+        ge=0,
+        le=1,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "错别字纠正引用概率",
+                "en_US": "Typo correction quote chance",
+                "ja_JP": "誤字訂正の引用確率",
+            },
+            "x-widget": "slider",
+            "x-row": "typo-correction-quote",
+            "step": 0.01,
+            "advanced": True,
+        },
+    )
+    """生成纠正消息时，引用上一条错别字消息的概率。"""
 
     error_rate: float = Field(
         default=0.01,
@@ -4801,7 +4562,6 @@ class ChineseTypoConfig(ConfigBase):
                 "ja_JP": "単字誤字確率",
             },
             "x-widget": "slider",
-            "x-icon": "percent",
             "step": 0.01,
             "advanced": True,
         },
@@ -4817,7 +4577,6 @@ class ChineseTypoConfig(ConfigBase):
                 "ja_JP": "最小文字頻度",
             },
             "x-widget": "input",
-            "x-icon": "hash",
             "advanced": True,
         },
     )
@@ -4834,7 +4593,6 @@ class ChineseTypoConfig(ConfigBase):
                 "ja_JP": "声調誤字確率",
             },
             "x-widget": "slider",
-            "x-icon": "percent",
             "step": 0.1,
             "advanced": True,
         },
@@ -4852,7 +4610,6 @@ class ChineseTypoConfig(ConfigBase):
                 "ja_JP": "単語置換確率",
             },
             "x-widget": "slider",
-            "x-icon": "percent",
             "step": 0.001,
             "advanced": True,
         },
@@ -4874,7 +4631,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "返信分割を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "scissors",
         },
     )
     """把过长回复拆成多条发送。"""
@@ -4888,7 +4644,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "1通の最大長",
             },
             "x-widget": "input",
-            "x-icon": "ruler",
         },
     )
     """单条回复允许的最大长度。"""
@@ -4902,7 +4657,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "1通の最大文数",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """单条回复最多包含多少个句子。"""
@@ -4917,7 +4671,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "最大分割数",
             },
             "x-widget": "input",
-            "x-icon": "list",
         },
     )
     """一次回复最多拆成几条消息。"""
@@ -4931,7 +4684,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "顔文字を保護",
             },
             "x-widget": "switch",
-            "x-icon": "smile",
             "advanced": True,
         },
     )
@@ -4946,7 +4698,6 @@ class ResponseSplitterConfig(ConfigBase):
                 "ja_JP": "超過時に全文保持",
             },
             "x-widget": "switch",
-            "x-icon": "maximize",
             "advanced": True,
         },
     )
@@ -4969,7 +4720,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "日付形式",
             },
             "x-widget": "input",
-            "x-icon": "clock",
         },
     )
     """日志时间的显示格式。"""
@@ -4983,7 +4733,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "ログレベル表示",
             },
             "x-widget": "select",
-            "x-icon": "list",
         },
     )
     """日志等级的显示样式，只影响日志外观。"""
@@ -4997,7 +4746,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "コンソール色",
             },
             "x-widget": "select",
-            "x-icon": "palette",
         },
     )
     """控制台日志颜色范围。"""
@@ -5011,7 +4759,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "全体ログレベル",
             },
             "x-widget": "select",
-            "x-icon": "list-filter",
         },
     )
     """全局最低日志等级；DEBUG 最详细，ERROR 最安静。"""
@@ -5025,7 +4772,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "コンソールログレベル",
             },
             "x-widget": "select",
-            "x-icon": "terminal",
         },
     )
     """控制台输出的最低日志等级。"""
@@ -5039,7 +4785,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "ファイルログレベル",
             },
             "x-widget": "select",
-            "x-icon": "file-json",
         },
     )
     """写入日志文件的最低日志等级。"""
@@ -5053,7 +4798,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "単一ログサイズ",
             },
             "x-widget": "input",
-            "x-icon": "hard-drive",
         },
     )
     """单个日志文件超过这个大小后会轮转。"""
@@ -5067,7 +4811,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "保持ログ数",
             },
             "x-widget": "input",
-            "x-icon": "files",
         },
     )
     """最多保留多少个主日志文件。"""
@@ -5081,7 +4824,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "ログ保持日数",
             },
             "x-widget": "input",
-            "x-icon": "calendar-days",
         },
     )
     """主日志文件超过多少天后清理。"""
@@ -5095,7 +4837,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "リクエストスナップショット数",
             },
             "x-widget": "input",
-            "x-icon": "archive",
         },
     )
     """失败模型请求快照最多保留多少份。"""
@@ -5109,7 +4850,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "Prompt プレビュー保持数",
             },
             "x-widget": "input",
-            "x-icon": "panel-top",
         },
     )
     """每个聊天最多保留多少组 Prompt 预览。"""
@@ -5123,7 +4863,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "返信効果記録数",
             },
             "x-widget": "input",
-            "x-icon": "clipboard-check",
         },
     )
     """每个聊天最多保留多少条回复效果记录。"""
@@ -5149,7 +4888,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "抑制ライブラリログ",
             },
             "x-widget": "custom",
-            "x-icon": "volume-x",
             "advanced": True,
         },
     )
@@ -5164,7 +4902,6 @@ class LogConfig(ConfigBase):
                 "ja_JP": "ライブラリログレベル",
             },
             "x-widget": "custom",
-            "x-icon": "sliders-horizontal",
             "advanced": True,
         },
     )
@@ -5185,7 +4922,6 @@ class TelemetryConfig(ConfigBase):
                 "ja_JP": "テレメトリを有効化",
             },
             "x-widget": "switch",
-            "x-icon": "activity",
         },
     )
     """是否发送匿名运行统计；关闭不影响正常使用。"""
@@ -5197,6 +4933,19 @@ class DebugConfig(ConfigBase):
     __ui_parent__ = "log"
     __ui_label__ = "其他"
 
+    enable_console_input: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "启用终端输入",
+                "en_US": "Enable console input",
+                "ja_JP": "ターミナル入力を有効化",
+            },
+            "x-widget": "switch",
+        },
+    )
+    """在交互式终端中启用本地消息和指令输入。"""
+
     show_maisaka_thinking: bool = Field(
         default=True,
         json_schema_extra={
@@ -5206,7 +4955,6 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "思考過程を表示",
             },
             "x-widget": "switch",
-            "x-icon": "brain",
         },
     )
     """在日志或界面中显示麦麦的思考过程。"""
@@ -5220,7 +4968,6 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "/clear コマンドを有効化",
             },
             "x-widget": "switch",
-            "x-icon": "eraser",
         },
     )
     """允许使用 /clear 清空当前聊天流的 Maisaka 短期历史上下文。"""
@@ -5234,7 +4981,6 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "返信効果を記録",
             },
             "x-widget": "switch",
-            "x-icon": "activity",
         },
     )
     """记录回复效果评分，方便观察回复质量。"""
@@ -5248,7 +4994,6 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "プレビュー画像データを保持",
             },
             "x-widget": "switch",
-            "x-icon": "image",
         },
     )
     """Prompt 预览里保留图片 base64，便于复现但会占空间。"""
@@ -5262,19 +5007,9 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "ツール構造化内容を記録",
             },
             "x-widget": "switch",
-            "x-icon": "braces",
         },
     )
     """保存工具返回的结构化内容，便于调试但会增加数据库体积。"""
-
-    record_tool_structured_content: bool = Field(
-        default=False,
-        json_schema_extra={
-            "x-widget": "switch",
-            "x-icon": "braces",
-        },
-    )
-    """是否在工具调用记录中保存 structured_content，默认关闭以减少数据库体积"""
 
     enable_llm_cache_stats: bool = Field(
         default=False,
@@ -5285,7 +5020,6 @@ class DebugConfig(ConfigBase):
                 "ja_JP": "モデルキャッシュ統計を記録",
             },
             "x-widget": "switch",
-            "x-icon": "chart-no-axes-column",
         },
     )
     """记录模型 prompt cache 统计，用于性能调试。"""
@@ -5296,7 +5030,6 @@ class ExtraPromptItem(ConfigBase):
         default="",
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "wifi",
         },
     )
     """额外提示作用的平台，和聊天流 ID、提示内容需要一起填写。"""
@@ -5305,7 +5038,6 @@ class ExtraPromptItem(ConfigBase):
         default="",
         json_schema_extra={
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """额外提示作用的群号或用户 ID。"""
@@ -5314,7 +5046,6 @@ class ExtraPromptItem(ConfigBase):
         default="group",
         json_schema_extra={
             "x-widget": "select",
-            "x-icon": "users",
             "x-option-descriptions": RULE_TYPE_OPTION_DESCRIPTIONS,
         },
     )
@@ -5324,7 +5055,6 @@ class ExtraPromptItem(ConfigBase):
         default="",
         json_schema_extra={
             "x-widget": "textarea",
-            "x-icon": "file-text",
         },
     )
     """给这个聊天额外补充的要求。"""
@@ -5351,7 +5081,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "旧 WS ホスト",
             },
             "x-widget": "input",
-            "x-icon": "server",
         },
     )
     """旧版 WebSocket 服务监听地址；不清楚就保持默认。"""
@@ -5365,7 +5094,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "旧 WS ポート",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """旧版 WebSocket 服务端口。"""
@@ -5379,7 +5107,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "旧認証トークン",
             },
             "x-widget": "custom",
-            "x-icon": "key",
         },
     )
     """旧版 API 的认证令牌；为空表示不验证。"""
@@ -5393,7 +5120,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "新 API を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "server",
         },
     )
     """是否开启新版 API Server，供外部程序调用麦麦。"""
@@ -5407,7 +5133,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "新 API ホスト",
             },
             "x-widget": "input",
-            "x-icon": "globe",
         },
     )
     """新版 API Server 监听地址；0.0.0.0 表示允许外部访问。"""
@@ -5421,7 +5146,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "新 API ポート",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """新版 API Server 监听端口。"""
@@ -5435,7 +5159,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "新 API で WSS を使用",
             },
             "x-widget": "switch",
-            "x-icon": "lock",
         },
     )
     """新版 API Server 是否使用加密 WebSocket。"""
@@ -5449,7 +5172,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "WSS 証明書ファイル",
             },
             "x-widget": "input",
-            "x-icon": "file",
         },
     )
     """WSS 使用的证书文件路径。"""
@@ -5463,7 +5185,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "WSS 秘密鍵ファイル",
             },
             "x-widget": "input",
-            "x-icon": "key",
         },
     )
     """WSS 使用的私钥文件路径。"""
@@ -5477,7 +5198,6 @@ class MaimMessageConfig(ConfigBase):
                 "ja_JP": "新 API Key 許可リスト",
             },
             "x-widget": "custom",
-            "x-icon": "shield",
         },
     )
     """允许访问新版 API 的 Key 列表；为空表示不限制。"""
@@ -5499,7 +5219,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "WebUI を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "monitor",
         },
     )
     """是否启动 WebUI 管理界面。"""
@@ -5513,7 +5232,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "WebUI ホスト",
             },
             "x-widget": "tags",
-            "x-icon": "globe",
             "x-placeholder": "127.0.0.1",
         },
     )
@@ -5528,7 +5246,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "WebUI ポート",
             },
             "x-widget": "input",
-            "x-icon": "hash",
         },
     )
     """WebUI 访问端口。"""
@@ -5542,7 +5259,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "実行モード",
             },
             "x-widget": "select",
-            "x-icon": "settings",
         },
     )
     """WebUI 运行模式；普通使用保持 production。"""
@@ -5558,7 +5274,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "画面スタイル",
             },
             "x-widget": "number",
-            "x-icon": "palette",
             "x-layout": "inline-right",
             "x-input-width": "8rem",
         },
@@ -5574,7 +5289,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "クローラー対策モード",
             },
             "x-widget": "select",
-            "x-icon": "shield",
         },
     )
     """防爬虫策略；basic 只记录，strict/loose 会拦截更多请求。"""
@@ -5588,7 +5302,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "許可 IP",
             },
             "x-widget": "comma-list",
-            "x-icon": "network",
             "x-placeholder": "127.0.0.1",
         },
     )
@@ -5603,7 +5316,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "信頼プロキシ IP",
             },
             "x-widget": "comma-list",
-            "x-icon": "server",
             "x-placeholder": "127.0.0.1",
         },
     )
@@ -5618,7 +5330,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "XFF を信頼",
             },
             "x-widget": "switch",
-            "x-icon": "shield-check",
         },
     )
     """是否信任 X-Forwarded-For 里的真实访客 IP。"""
@@ -5632,7 +5343,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "セキュア Cookie",
             },
             "x-widget": "switch",
-            "x-icon": "cookie",
         },
     )
     """只在 HTTPS 下发送登录 Cookie；没有 HTTPS 时不要开启。"""
@@ -5646,7 +5356,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "公開ネットワーク URL チェックを強制",
             },
             "x-widget": "switch",
-            "x-icon": "shield-alert",
             "advanced": False,
         },
     )
@@ -5661,7 +5370,6 @@ class WebUIConfig(ConfigBase):
                 "ja_JP": "段落全文を読み込む",
             },
             "x-widget": "switch",
-            "x-icon": "file-text",
         },
     )
     """知识图谱里是否加载段落全文；更完整但更占内存。"""
@@ -5681,7 +5389,6 @@ class DatabaseConfig(ConfigBase):
                 "ja_JP": "バイナリ原本を保存",
             },
             "x-widget": "switch",
-            "x-icon": "save",
             "advanced": True,
         },
     )
@@ -5698,7 +5405,6 @@ class MCPAuthorizationConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "认证方式"},
             "x-widget": "select",
-            "x-icon": "shield",
             "x-option-labels": {
                 "none": "无认证",
                 "bearer": "Bearer Token",
@@ -5712,7 +5418,6 @@ class MCPAuthorizationConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "Bearer Token"},
             "x-widget": "password",
-            "x-icon": "key",
         },
     )
     """Bearer 认证令牌，只在 mode 为 bearer 时使用。"""
@@ -5725,7 +5430,6 @@ class MCPRootItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用 Root"},
             "x-widget": "switch",
-            "x-icon": "power",
         },
     )
     """是否启用这个 Root。"""
@@ -5735,7 +5439,6 @@ class MCPRootItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "Root URI"},
             "x-widget": "input",
-            "x-icon": "folder",
         },
     )
     """Root 的 URI，文件夹一般写 file:/// 开头的路径。"""
@@ -5745,7 +5448,6 @@ class MCPRootItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "显示名称"},
             "x-widget": "input",
-            "x-icon": "tag",
         },
     )
     """这个 Root 在 MCP 里的显示名称。"""
@@ -5773,7 +5475,6 @@ class MCPRootsConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用 Roots"},
             "x-widget": "switch",
-            "x-icon": "folder-tree",
         },
     )
     """是否向 MCP 服务器暴露 Roots 能力。"""
@@ -5783,7 +5484,6 @@ class MCPRootsConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "Root 列表"},
             "x-widget": "custom",
-            "x-icon": "folder",
         },
     )
     """允许 MCP 服务器看到的目录或资源列表。"""
@@ -5797,7 +5497,6 @@ class MCPSamplingConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用 Sampling"},
             "x-widget": "switch",
-            "x-icon": "brain",
         },
     )
     """是否声明支持 MCP Sampling。"""
@@ -5807,7 +5506,6 @@ class MCPSamplingConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "模型任务"},
             "x-widget": "input",
-            "x-icon": "sparkles",
         },
     )
     """MCP Sampling 调用模型时使用的任务名。"""
@@ -5817,7 +5515,6 @@ class MCPSamplingConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "携带上下文（暂未支持）"},
             "x-widget": "switch",
-            "x-icon": "layers",
             "advanced": True,
         },
     )
@@ -5828,7 +5525,6 @@ class MCPSamplingConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "允许 Sampling 使用工具"},
             "x-widget": "switch",
-            "x-icon": "wrench",
         },
     )
     """Sampling 过程中是否允许继续使用工具。"""
@@ -5842,7 +5538,6 @@ class MCPElicitationConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用 Elicitation（暂未支持）"},
             "x-widget": "switch",
-            "x-icon": "message-circle-question",
             "advanced": True,
         },
     )
@@ -5853,7 +5548,6 @@ class MCPElicitationConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "允许表单请求"},
             "x-widget": "switch",
-            "x-icon": "form-input",
             "advanced": True,
         },
     )
@@ -5864,7 +5558,6 @@ class MCPElicitationConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "允许 URL 请求"},
             "x-widget": "switch",
-            "x-icon": "link",
             "advanced": True,
         },
     )
@@ -5893,7 +5586,6 @@ class MCPClientConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "客户端名称"},
             "x-widget": "input",
-            "x-icon": "bot",
             "advanced": True,
         },
     )
@@ -5904,7 +5596,6 @@ class MCPClientConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "客户端版本"},
             "x-widget": "input",
-            "x-icon": "info",
             "advanced": True,
         },
     )
@@ -5937,7 +5628,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "服务名称"},
             "x-widget": "input",
-            "x-icon": "tag",
         },
     )
     """MCP 服务器名称，必须唯一。"""
@@ -5947,7 +5637,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用服务"},
             "x-widget": "switch",
-            "x-icon": "power",
         },
     )
     """是否启用这个 MCP 服务器。"""
@@ -5957,7 +5646,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "传输方式"},
             "x-widget": "select",
-            "x-icon": "shuffle",
             "x-option-labels": {
                 "stdio": "本地命令（stdio）",
                 "streamable_http": "远程 HTTP",
@@ -5972,7 +5660,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启动命令"},
             "x-widget": "input",
-            "x-icon": "terminal",
         },
     )
     """stdio 模式下启动服务器的命令。"""
@@ -5982,7 +5669,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "命令参数"},
             "x-widget": "custom",
-            "x-icon": "list",
         },
     )
     """stdio 模式下传给命令的参数。"""
@@ -5992,7 +5678,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "环境变量"},
             "x-widget": "custom",
-            "x-icon": "variable",
         },
     )
     """stdio 模式下额外传入的环境变量。"""
@@ -6002,7 +5687,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "服务 URL"},
             "x-widget": "input",
-            "x-icon": "link",
         },
     )
     """HTTP 或 SSE 模式下的服务器地址。"""
@@ -6012,7 +5696,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "请求 Headers"},
             "x-widget": "custom",
-            "x-icon": "file-json",
         },
     )
     """HTTP/SSE 请求时附加的请求头。"""
@@ -6023,7 +5706,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "HTTP 请求超时"},
             "x-widget": "number",
-            "x-icon": "clock-3",
         },
     )
     """HTTP 请求多久没响应就算超时。"""
@@ -6034,7 +5716,6 @@ class MCPServerItemConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "会话读取超时"},
             "x-widget": "number",
-            "x-icon": "timer",
         },
     )
     """连接建立后，等服务器消息的最长时间。"""
@@ -6086,7 +5767,6 @@ class MCPConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "启用 MCP"},
             "x-widget": "switch",
-            "x-icon": "zap",
         },
     )
     """是否启用 MCP 工具接入能力。"""
@@ -6102,7 +5782,6 @@ class MCPConfig(ConfigBase):
         json_schema_extra={
             "label": {"zh_CN": "MCP 服务"},
             "x-widget": "custom",
-            "x-icon": "server",
         },
     )
     """_wrap_要连接的 MCP 服务器列表。"""
@@ -6139,7 +5818,6 @@ class PluginConfig(ConfigBase):
                 "ja_JP": "プラグイン管理権限",
             },
             "x-widget": "tags",
-            "x-icon": "shield-check",
             "x-placeholder": "qq:123456789",
         },
     )
@@ -6158,7 +5836,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "ブラウザ描画を有効化",
             },
             "x-widget": "switch",
-            "x-icon": "image",
         },
     )
     """是否允许插件使用浏览器渲染能力。"""
@@ -6172,7 +5849,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "ブラウザデバッグアドレス",
             },
             "x-widget": "input",
-            "x-icon": "link",
         },
     )
     """已有 Chrome/Chromium 的调试地址；留空则自动启动。"""
@@ -6186,7 +5862,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "ブラウザ実行ファイルパス",
             },
             "x-widget": "input",
-            "x-icon": "folder",
         },
     )
     """浏览器程序路径；留空自动查找。"""
@@ -6200,7 +5875,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "ブラウザインストール先",
             },
             "x-widget": "input",
-            "x-icon": "hard-drive",
         },
     )
     """自动下载浏览器时保存的位置。"""
@@ -6214,7 +5888,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "画面なしで実行",
             },
             "x-widget": "switch",
-            "x-icon": "monitor",
         },
     )
     """是否隐藏浏览器窗口运行。"""
@@ -6234,7 +5907,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "起動引数",
             },
             "x-widget": "custom",
-            "x-icon": "terminal",
         },
     )
     """启动浏览器时附加的命令参数。"""
@@ -6249,7 +5921,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "同時描画数",
             },
             "x-widget": "number",
-            "x-icon": "layers",
         },
     )
     """同时最多运行多少个渲染任务。"""
@@ -6264,7 +5935,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "起動タイムアウト秒数",
             },
             "x-widget": "number",
-            "x-icon": "clock",
         },
     )
     """浏览器启动或连接的最长等待时间。"""
@@ -6279,7 +5949,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "描画タイムアウト秒数",
             },
             "x-widget": "number",
-            "x-icon": "timer",
         },
     )
     """单次渲染任务的最长等待时间。"""
@@ -6293,7 +5962,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "Chromium を自動ダウンロード",
             },
             "x-widget": "switch",
-            "x-icon": "download",
         },
     )
     """找不到浏览器时是否自动下载 Chromium。"""
@@ -6308,7 +5976,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "ダウンロード接続タイムアウト秒数",
             },
             "x-widget": "number",
-            "x-icon": "cloud-lightning",
         },
     )
     """下载 Chromium 时的连接超时时间。"""
@@ -6323,7 +5990,6 @@ class PluginRuntimeRenderConfig(ConfigBase):
                 "ja_JP": "描画後の再起動回数",
             },
             "x-widget": "number",
-            "x-icon": "refresh-cw",
         },
     )
     """渲染多少次后重启浏览器；0 表示不自动重启。"""
@@ -6344,7 +6010,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "プラグインランタイムを有効化",
             },
             "x-widget": "switch",
-            "x-icon": "power",
         },
     )
     """是否启用新版插件运行时。"""
@@ -6358,7 +6023,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "ヘルスチェック間隔秒数",
             },
             "x-widget": "number",
-            "x-icon": "activity",
         },
     )
     """每隔多少秒检查一次插件运行状态。"""
@@ -6372,7 +6036,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "最大再起動回数",
             },
             "x-widget": "number",
-            "x-icon": "refresh-cw",
         },
     )
     """插件 Runner 崩溃后最多自动重启几次。"""
@@ -6386,7 +6049,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "Runner 起動タイムアウト秒数",
             },
             "x-widget": "number",
-            "x-icon": "clock",
         },
     )
     """等待插件 Runner 启动完成的最长时间。"""
@@ -6400,7 +6062,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "ブロッキング Hook タイムアウト秒数",
             },
             "x-widget": "number",
-            "x-icon": "timer",
         },
     )
     """单个阻塞 Hook 最多允许运行多久。"""
@@ -6414,7 +6075,6 @@ class PluginRuntimeConfig(ConfigBase):
                 "ja_JP": "IPC ソケットパス",
             },
             "x-widget": "input",
-            "x-icon": "link",
         },
     )
     """

@@ -28,9 +28,10 @@ PARAGRAPH_TEXT = "林澈在杭州与顾遥共同维护离线知识库。"
 class OfflineDeterministicEmbedding:
     """完全离线的确定性 embedding，用于驱动真实 Faiss 存储。"""
 
-    def __init__(self, dimension: int) -> None:
+    def __init__(self, dimension: int, *, fingerprint: Dict[str, Any] | None = None) -> None:
         self.dimension = int(dimension)
         self.model_name = f"pytest-local-cjk-ngram-{self.dimension}"
+        self._fingerprint = dict(fingerprint) if fingerprint is not None else None
         self._initialized = False
         self._encode_count = 0
 
@@ -71,6 +72,8 @@ class OfflineDeterministicEmbedding:
         return self.dimension
 
     def get_embedding_fingerprint(self, *, dimension: int | None = None) -> Dict[str, Any]:
+        if self._fingerprint is not None:
+            return dict(self._fingerprint)
         effective_dimension = int(dimension or self.dimension)
         payload = f"{self.model_name}:{effective_dimension}:offline"
         return {
@@ -123,7 +126,13 @@ async def _open_runtime(data_dir: Path) -> SDKMemoryKernel:
     await kernel.initialize()
     await kernel._stop_background_tasks()
 
-    embedding = OfflineDeterministicEmbedding(EMBEDDING_DIMENSION)
+    # The deterministic test encoder replaces the configured adapter only after
+    # startup, so it must retain that adapter's identity across restarts. A
+    # different fingerprint correctly triggers the V2 quarantine path.
+    embedding = OfflineDeterministicEmbedding(
+        EMBEDDING_DIMENSION,
+        fingerprint=kernel._current_embedding_fingerprint(),
+    )
     await embedding.initialize()
     kernel.embedding_manager = embedding
     kernel.embedding_dimension = EMBEDDING_DIMENSION

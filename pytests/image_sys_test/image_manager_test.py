@@ -7,6 +7,9 @@ import importlib.util
 
 
 class DummyLogger:
+    def debug(self, *a, **k):
+        pass
+
     def info(self, *a, **k):
         pass
 
@@ -161,6 +164,15 @@ def patch_external_dependencies(monkeypatch):
     monkeypatch.setitem(sys.modules, "src.llm_models.utils_model", llm_mod)
     llm_service_mod = types.SimpleNamespace(LLMServiceClient=DummyLLMServiceClient)
     monkeypatch.setitem(sys.modules, "src.services.llm_service", llm_service_mod)
+
+    config_manager = types.SimpleNamespace(
+        get_model_config=lambda: types.SimpleNamespace(
+            model_task_config=types.SimpleNamespace(
+                vlm=types.SimpleNamespace(model_list=["pytest-vlm"]),
+            )
+        )
+    )
+    monkeypatch.setitem(sys.modules, "src.config.config", types.SimpleNamespace(config_manager=config_manager))
 
     # Patch logger
     logger_mod = types.SimpleNamespace(get_logger=lambda name: DummyLogger())

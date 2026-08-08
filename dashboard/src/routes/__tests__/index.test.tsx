@@ -13,10 +13,17 @@ import * as systemApi from '@/lib/system-api'
 import * as pluginApi from '@/lib/plugin-api'
 import { APP_VERSION } from '@/lib/version'
 
+const originalRandomUUID = globalThis.crypto.randomUUID
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   window.localStorage.clear()
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    writable: true,
+    value: originalRandomUUID,
+  })
 })
 
 // i18n 测试环境未初始化，t() 返回 key；mock 为恒等便于断言。
@@ -110,6 +117,7 @@ const dashboardData = {
   hourly_data: [
     {
       timestamp: '2025-01-01T00:00:00Z',
+      online_seconds: 2700,
       requests: 10,
       cost: 1,
       tokens: 500,
@@ -122,6 +130,7 @@ const dashboardData = {
   daily_data: [
     {
       timestamp: '2025-01-01T00:00:00Z',
+      online_seconds: 3600,
       requests: 240,
       cost: 24,
       tokens: 12000,
@@ -195,7 +204,48 @@ describe('IndexPage 特征化', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('hitokoto')))
   })
 
-  it('运行状态与精简运行时长左右对齐，并与功能灯分层展示', async () => {
+  it('缺少 randomUUID 时仍可停用默认一言、维护自定义列表，并在列表为空时留空', async () => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    })
+    const user = userEvent.setup()
+    render(<IndexPage />)
+
+    await screen.findByText(/测试一言/)
+    await user.click(screen.getByRole('button', { name: 'home.hitokoto.edit' }))
+    await user.click(screen.getByRole('switch', { name: 'home.hitokoto.editor.defaultSource' }))
+    await user.click(screen.getByText('home.hitokoto.editor.empty'))
+    await user.type(
+      screen.getByRole('textbox', { name: 'home.hitokoto.editor.content' }),
+      '自定义的一言'
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: 'home.hitokoto.editor.source' }),
+      '自定义出处'
+    )
+    await user.click(screen.getByRole('button', { name: 'common.save' }))
+
+    expect(await screen.findByText(/自定义的一言/)).toHaveTextContent('自定义出处')
+    expect(
+      JSON.parse(localStorage.getItem('maibot-home-hitokoto-settings-v1') ?? '{}')
+    ).toMatchObject({
+      defaultEnabled: false,
+      customItems: [
+        { id: expect.any(String), content: '自定义的一言', source: '自定义出处' },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'home.hitokoto.edit' }))
+    await user.click(screen.getByRole('button', { name: 'home.hitokoto.editor.remove' }))
+    await user.click(screen.getByRole('button', { name: 'common.save' }))
+
+    await waitFor(() => expect(screen.queryByText(/自定义的一言/)).not.toBeInTheDocument())
+    expect(document.querySelector('[data-home-hitokoto="true"] p')).not.toBeInTheDocument()
+  })
+
+  it('运行状态与精简运行时长纵向排列，并与功能灯分层展示', async () => {
     render(<IndexPage />)
 
     const runtimeLabel = await screen.findByText('home.botStatus.running')
@@ -208,9 +258,9 @@ describe('IndexPage 特征化', () => {
     )
     const runtimeUptime = screen.getByText('home.botStatus.uptime')
     expect(runtimeUptime).toHaveAttribute('data-maibot-runtime-uptime', 'true')
-    expect(runtimeUptime).toHaveClass('text-xs', 'text-right', 'tabular-nums', 'whitespace-nowrap')
+    expect(runtimeUptime).toHaveClass('text-xs', 'text-left', 'tabular-nums', 'whitespace-nowrap')
     expect(runtimeLabel).toHaveClass('whitespace-nowrap')
-    expect(runtimeLabel.parentElement).toHaveClass('justify-between', 'items-baseline')
+    expect(runtimeLabel.parentElement).toHaveClass('flex-col', 'items-start')
     expect(screen.queryByText('home.botStatus.uptimeLabel')).not.toBeInTheDocument()
 
     const featureLights = document.querySelector('[data-maibot-feature-lights="true"]')
@@ -221,6 +271,42 @@ describe('IndexPage 特征化', () => {
     ) ?? []) {
       expect(light).toHaveClass('rounded-full', 'border-0')
     }
+  })
+
+  it('活动卡片可点击翻转到最近在线图表，并提供轻微悬停高亮', async () => {
+    const user = userEvent.setup()
+    render(<IndexPage />)
+
+    const statusCard = await screen.findByRole('button', {
+      name: 'home.botStatus.showRecentOnline',
+    })
+    const frontFace = statusCard.querySelector('[data-maibot-status-face="front"]')
+    const backFace = statusCard.querySelector('[data-maibot-status-face="back"]')
+
+    expect(frontFace).toHaveAttribute('aria-hidden', 'false')
+    expect(backFace).toHaveAttribute('aria-hidden', 'true')
+    expect(statusCard.parentElement).toHaveClass('overflow-visible')
+    expect(statusCard.querySelector('[data-maibot-status-glow="true"]')).toBeInTheDocument()
+    expect(statusCard.querySelector('[data-maibot-status-rotor="true"]')).toHaveClass(
+      '[transform-style:preserve-3d]'
+    )
+    for (const face of [frontFace, backFace]) {
+      expect(face).not.toHaveClass('overflow-hidden')
+      expect(face?.querySelector('[data-maibot-status-surface="true"]')).toHaveClass(
+        'overflow-hidden'
+      )
+    }
+
+    await user.click(statusCard)
+
+    expect(statusCard).toHaveAccessibleName('home.botStatus.showStatus')
+    expect(statusCard).toHaveAttribute('aria-pressed', 'true')
+    expect(frontFace).toHaveAttribute('aria-hidden', 'true')
+    expect(backFace).toHaveAttribute('aria-hidden', 'false')
+    expect(screen.getByText('home.botStatus.recentOnline')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: 'home.botStatus.recentOnlineChart' })
+    ).toBeInTheDocument()
   })
 
   it('首页使用精简版本行且不再显示标题和版本卡片', async () => {
@@ -271,7 +357,7 @@ describe('IndexPage 特征化', () => {
     const storageRows = document.querySelectorAll('[data-home-storage-row="true"]')
     expect(storageRows).toHaveLength(4)
     for (const row of storageRows) {
-      expect(row).toHaveClass('grid', 'items-center')
+      expect(row).toHaveClass('grid', 'items-baseline')
       expect(row.querySelector('[data-home-storage-progress="true"]')).toBeInTheDocument()
     }
     const cardIds = Array.from(document.querySelectorAll('[data-home-card-id]')).map((card) =>
