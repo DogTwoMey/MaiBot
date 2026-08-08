@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Tuple
 
+from .provider_state import ProviderState
 from .tool_option import ToolCall
 
 
@@ -80,8 +81,9 @@ class Message:
     # 保留上一轮 assistant 的 CoT/thinking 输出。DeepSeek v4 的思考模式要求把
     # reasoning_content 随 assistant history 一起回传，否则 400：
     # "The `reasoning_content` in the thinking mode must be passed back to the API."
-    # 其它供应商（OpenAI / Aliyun / gpt4novel 等）对未知字段静默忽略，不影响兼容性。
+    # Chat Completions 客户端只会向 DeepSeek 端点或 DeepSeek 模型回传该字段。
     reasoning_content: str | None = None
+    provider_state: ProviderState | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """执行消息对象的基础校验。
@@ -95,6 +97,8 @@ class Message:
             raise ValueError("Tool 角色的工具调用 ID 不能为空")
         if self.tool_name and self.role != RoleType.Tool:
             raise ValueError("仅当角色为 Tool 时才能设置工具名称")
+        if self.provider_state is not None and self.role != RoleType.Assistant:
+            raise ValueError("仅当角色为 Assistant 时才能携带 ProviderState")
 
     @property
     def content(self) -> str | List[Tuple[str, str] | str]:
@@ -145,6 +149,7 @@ class MessageBuilder:
         self.__tool_name: str | None = None
         self.__tool_calls: List[ToolCall] | None = None
         self.__reasoning_content: str | None = None
+        self.__provider_state: ProviderState | None = None
 
     def set_role(self, role: RoleType = RoleType.User) -> "MessageBuilder":
         """设置消息角色。
@@ -298,6 +303,13 @@ class MessageBuilder:
         self.__reasoning_content = reasoning_content or None
         return self
 
+    def set_provider_state(self, provider_state: ProviderState) -> "MessageBuilder":
+        """设置 assistant 消息携带的 Provider 原生状态。"""
+        if self.__role != RoleType.Assistant:
+            raise ValueError("仅当角色为 Assistant 时才能设置 ProviderState")
+        self.__provider_state = provider_state
+        return self
+
     def build(self) -> Message:
         """构建消息对象。
 
@@ -311,4 +323,5 @@ class MessageBuilder:
             tool_name=self.__tool_name,
             tool_calls=list(self.__tool_calls) if self.__tool_calls else None,
             reasoning_content=self.__reasoning_content,
+            provider_state=self.__provider_state,
         )

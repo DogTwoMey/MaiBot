@@ -636,6 +636,7 @@ def test_webui_memory_timeline_returns_chat_scoped_events(client: TestClient, mo
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -706,6 +707,7 @@ def test_webui_memory_timeline_filters_types_and_limit(client: TestClient, monke
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -759,6 +761,7 @@ def test_webui_memory_timeline_deleted_paragraph_prefers_delete_operation(client
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -789,6 +792,7 @@ def test_webui_memory_timeline_uses_latest_message_snapshot(client: TestClient, 
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id=None,
             user_id="user-1",
             group_name=None,
@@ -843,6 +847,7 @@ def test_webui_memory_timeline_handles_json_bytes_zero_timestamp_and_batches_ite
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
             platform="qq",
+            account_id=None,
             group_id="100",
             user_id=None,
             group_name="测试群",
@@ -1185,6 +1190,32 @@ def test_import_chat_targets_route(client: TestClient, monkeypatch):
     assert response.json()["data"][0]["user_id"] == "20002"
     assert response.json()["data"][0]["account_id"] == "bot-1"
     assert response.json()["data"][0]["scope"] == "default"
+
+
+def test_memory_chat_name_ignores_private_latest_message_identity(monkeypatch):
+    chat_session = SimpleNamespace(
+        session_id="group-session",
+        group_id="571780722",
+        group_name="麦麦脑电图｜技术交流群｜部署/配置",
+        user_id=None,
+        user_nickname=None,
+        user_cardname=None,
+    )
+    latest_messages = {
+        "group-session": {
+            "group_id": None,
+            "group_name": None,
+            "user_id": "2814567326",
+            "user_nickname": "麦麦",
+            "user_cardname": None,
+        }
+    }
+    monkeypatch.setattr(memory_router_module._chat_manager, "get_session_name", lambda chat_id: "")
+
+    assert (
+        memory_router_module._get_chat_name(chat_session, latest_messages)
+        == "麦麦脑电图｜技术交流群｜部署/配置"
+    )
 
 
 def test_v5_status_route(client: TestClient, monkeypatch):

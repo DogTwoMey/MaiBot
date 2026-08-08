@@ -342,6 +342,7 @@ async def test_text_to_stream_triggers_real_chat_summary_writeback(
     integration_config = memory_flow_service_module.global_config.a_memorix.integration
     monkeypatch.setattr(integration_config, "chat_summary_writeback_enabled", True, raising=False)
     monkeypatch.setattr(integration_config, "chat_summary_writeback_message_threshold", 2, raising=False)
+    monkeypatch.setattr(integration_config, "chat_summary_writeback_private_threshold", 2, raising=False)
     monkeypatch.setattr(integration_config, "chat_summary_writeback_context_length", 10, raising=False)
     monkeypatch.setattr(integration_config, "person_fact_writeback_enabled", False, raising=False)
 

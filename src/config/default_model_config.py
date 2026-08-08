@@ -10,6 +10,7 @@ DEFAULT_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com",
         "api_key": "your-api-key",
+        "client_type": "openai",
         "auth_type": OpenAICompatibleAuthType.BEARER.value,
         "max_retry": 3,
         "timeout": 100,

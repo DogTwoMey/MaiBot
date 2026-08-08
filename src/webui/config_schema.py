@@ -59,7 +59,10 @@ AMEMORIX_ADVANCED_FIELD_PATHS: set[str] = {
     "a_memorix.filter.retrieval.episode.enabled",
     "a_memorix.filter.retrieval.episode.mode",
     "a_memorix.integration.chat_summary_writeback_context_length",
+    "a_memorix.integration.chat_summary_writeback_idle_min_pending",
+    "a_memorix.integration.chat_summary_writeback_idle_trigger_seconds",
     "a_memorix.integration.chat_summary_writeback_message_threshold",
+    "a_memorix.integration.chat_summary_writeback_private_threshold",
     "a_memorix.integration.enable_person_profile_injection",
     "a_memorix.integration.feedback_correction_episode_rebuild_enabled",
     "a_memorix.integration.feedback_correction_max_feedback_messages",
@@ -391,7 +394,7 @@ class ConfigSchemaGenerator:
         if options := cls._extract_options(annotation):
             schema["options"] = options
 
-        # Task 1c: Merge json_schema_extra (x-widget, x-icon, step, etc.)
+        # 合并 json_schema_extra（x-widget、step 等）
         if hasattr(field_info, "json_schema_extra") and field_info.json_schema_extra:
             schema.update(field_info.json_schema_extra)
 

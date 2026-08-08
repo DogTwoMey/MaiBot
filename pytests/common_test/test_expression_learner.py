@@ -205,7 +205,7 @@ async def test_ai_self_reflect_expression_stays_unchecked(
     class FakeLearnModel:
         async def generate_response_with_messages(self, builder, options, session_id: str):
             del builder, options, session_id
-            return SimpleNamespace(response="response")
+            return SimpleNamespace(response="response", provider_response=None)
 
     class FakeRuntimeManager:
         async def invoke_hook(self, *args, **kwargs):

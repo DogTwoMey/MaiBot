@@ -4,7 +4,7 @@ from src.llm_models.model_client.openai_client import (
     _convert_messages,
     _should_use_qwen_vl_image_options,
 )
-from src.llm_models.payload_content.message import MessageBuilder
+from src.llm_models.payload_content.message import MessageBuilder, RoleType
 
 
 TINY_PNG_BASE64 = (
@@ -51,3 +51,19 @@ def test_qwen_vl_image_options_only_apply_to_dashscope_qwen_vl() -> None:
         "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "text-embedding-v4",
     )
+
+
+def test_reasoning_content_is_only_added_when_requested_for_deepseek() -> None:
+    message = (
+        MessageBuilder()
+        .set_role(RoleType.Assistant)
+        .add_text_content("最终回答")
+        .set_reasoning_content("推理过程")
+        .build()
+    )
+
+    standard_payload = _convert_messages([message])
+    deepseek_payload = _convert_messages([message], include_reasoning_content=True)
+
+    assert "reasoning_content" not in standard_payload[0]
+    assert deepseek_payload[0]["reasoning_content"] == "推理过程"

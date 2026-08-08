@@ -1,6 +1,7 @@
 ﻿"""Maisaka 对话循环服务。"""
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, List, Optional, Sequence
 
@@ -18,6 +19,7 @@ from src.config.official_configs import build_personality_emotion_suffix
 from src.core.tooling import ToolAvailabilityContext, ToolRegistry
 from src.llm_models.model_client.base_client import BaseClient
 from src.llm_models.payload_content.message import Message, MessageBuilder, RoleType
+from src.llm_models.payload_content.native_tool import NativeToolCallSummary
 from src.llm_models.payload_content.resp_format import RespFormat
 from src.llm_models.payload_content.tool_option import ToolCall, ToolDefinitionInput, ToolOption, normalize_tool_options
 from src.plugin_runtime.hook_payloads import (
@@ -43,10 +45,10 @@ from src.maisaka.context.messages import (
     ToolResultMessage,
     build_llm_message_from_context,
 )
-from src.maisaka.context.history import normalize_tool_call_result_pairs
+from src.maisaka.display.display_utils import format_native_tool_call_for_display
+from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.memory.mid_term import is_mid_term_memory_message
 from src.maisaka.prompt_sections import build_system_guidance_prompt
-from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.focus import focus_mode_manager
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.maisaka.visual.mode_utils import resolve_enable_visual_planner
@@ -95,7 +97,9 @@ class ChatResponse:
     duration_ms: float = 0.0
     prompt_section: Optional[RenderableType] = None
     prompt_html_uri: Optional[str] = None
-    reasoning: str = ""
+    reasoning: str = ""  # Provider 原生推理，仅用于观测，不代表 Planner 显式正文。
+    provider_response: dict[str, Any] | None = field(default=None, repr=False)
+    native_tool_calls: List[NativeToolCallSummary] = field(default_factory=list)
 
 
 logger = get_logger("maisaka_chat_loop")
@@ -554,9 +558,15 @@ class MaisakaChatLoopService:
 
     @property
     def personality_prompt(self) -> str:
-        """返回当前人格提示词。"""
+        """返回人格提示词，用于 Planner 模板加载失败时的安全降级。"""
 
         return self._build_personality_prompt()
+
+    @property
+    def behavior_style_prompt(self) -> str:
+        """返回 Planner 使用的行为风格提示词。"""
+
+        return global_config.personality.behavior_style.strip()
 
     @staticmethod
     def _resolve_llm_request_type(request_kind: str) -> str:
@@ -600,15 +610,6 @@ class MaisakaChatLoopService:
             )
             self._llm_chat_clients[client_key] = llm_client
         return llm_client
-
-    @staticmethod
-    def _resolve_planner_response_content(response: str, reasoning: str) -> str:
-        """在模型只把思考放入原生 reasoning 字段时，仍保留可传给工具的 planner 文本。"""
-
-        normalized_response = str(response or "").strip()
-        if normalized_response:
-            return response
-        return str(reasoning or "").strip()
 
     @staticmethod
     def _get_runtime_manager() -> Any:
@@ -699,9 +700,9 @@ class MaisakaChatLoopService:
 
         return {
             "bot_name": global_config.bot.nickname,
+            "behavior_style": self.behavior_style_prompt,
             "file_tools_section": tools_section,
             "group_chat_attention_block": self._build_group_chat_attention_block(),
-            "identity": self.personality_prompt,
             "planner_idle_focus_rule": self._build_planner_idle_focus_rule(),
             "query_memory_rule": self._build_query_memory_rule(),
             "system_guidance": build_system_guidance_prompt(global_config.bot.nickname),
@@ -1102,9 +1103,10 @@ class MaisakaChatLoopService:
             )
             all_tools = [*get_builtin_tools(availability_context), *self._extra_tools]
 
+        serialized_messages = serialize_prompt_messages(built_messages)
         before_request_result = await self._get_runtime_manager().invoke_hook(
             "maisaka.planner.before_request",
-            messages=serialize_prompt_messages(built_messages),
+            messages=deepcopy(serialized_messages),
             tool_definitions=serialize_tool_definitions(all_tools),
             selected_history_count=len(selected_history),
             built_message_count=len(built_messages),
@@ -1113,7 +1115,7 @@ class MaisakaChatLoopService:
         )
         before_request_kwargs = before_request_result.kwargs
         raw_messages = before_request_kwargs.get("messages")
-        if isinstance(raw_messages, list):
+        if isinstance(raw_messages, list) and raw_messages != serialized_messages:
             try:
                 built_messages = deserialize_prompt_messages(raw_messages)
             except Exception as exc:
@@ -1142,13 +1144,16 @@ class MaisakaChatLoopService:
         )
         llm_duration_ms = round((time.perf_counter() - llm_started_at) * 1000, 2)
 
+        # Provider 原生推理与 Planner 显式正文语义不同，必须分别保留。
         final_reasoning = generation_result.reasoning or ""
-        final_response = self._resolve_planner_response_content(generation_result.response or "", final_reasoning)
+        final_response = generation_result.response or ""
         final_tool_calls = list(generation_result.tool_calls or [])
+        original_response = final_response
+        serialized_final_tool_calls = serialize_tool_calls(final_tool_calls)
         after_response_result = await self._get_runtime_manager().invoke_hook(
             "maisaka.planner.after_response",
             response=final_response,
-            tool_calls=serialize_tool_calls(final_tool_calls),
+            tool_calls=deepcopy(serialized_final_tool_calls),
             selected_history_count=len(selected_history),
             built_message_count=len(built_messages),
             selection_reason=selection_reason,
@@ -1166,6 +1171,9 @@ class MaisakaChatLoopService:
                 final_tool_calls = deserialize_tool_calls(raw_tool_calls)
             except Exception as exc:
                 logger.warning(f"Hook maisaka.planner.after_response 返回的 tool_calls 无法反序列化，已忽略: {exc}")
+        provider_state = generation_result.provider_state
+        if final_response != original_response or serialize_tool_calls(final_tool_calls) != serialized_final_tool_calls:
+            provider_state = None
         prompt_tokens = self._coerce_int(after_response_kwargs.get("prompt_tokens"), generation_result.prompt_tokens)
         completion_tokens = self._coerce_int(
             after_response_kwargs.get("completion_tokens"),
@@ -1181,6 +1189,12 @@ class MaisakaChatLoopService:
             "duration_ms": llm_duration_ms,
         }
 
+        # 推理记录复用既有工具调用区，按实际执行顺序先展示 Provider 原生调用，再展示 Maisaka function 调用。
+        preview_tool_calls: list[Any] = [
+            format_native_tool_call_for_display(tool_call)
+            for tool_call in generation_result.native_tool_calls
+        ]
+        preview_tool_calls.extend(final_tool_calls)
         prompt_section_result = PromptCLIVisualizer.build_prompt_section_result(
             built_messages,
             category=self._resolve_prompt_preview_category(request_kind),
@@ -1189,8 +1203,9 @@ class MaisakaChatLoopService:
             selection_reason=prompt_selection_reason,
             tool_definitions=list(all_tools),
             output_content=final_response.strip(),
-            output_tool_calls=final_tool_calls,
+            output_tool_calls=preview_tool_calls,
             metadata=prompt_metadata,
+            provider_response=generation_result.provider_response,
         )
         prompt_html_uri = prompt_section_result.preview_access.preview_web_uri
         if global_config.debug.show_maisaka_thinking:
@@ -1202,7 +1217,8 @@ class MaisakaChatLoopService:
             tool_calls=final_tool_calls,
             # 保留思考链，下一轮请求时 _convert_messages 会写回 assistant payload
             # 的 reasoning_content 字段；DeepSeek v4 thinking 模式必须带此字段。
-            reasoning_content=(getattr(generation_result, "reasoning", "") or ""),
+            reasoning_content=final_reasoning,
+            provider_state=provider_state,
         )
         return ChatResponse(
             content=final_response or None,
@@ -1220,6 +1236,8 @@ class MaisakaChatLoopService:
             prompt_section=prompt_section,
             prompt_html_uri=prompt_html_uri,
             reasoning=final_reasoning,
+            provider_response=generation_result.provider_response,
+            native_tool_calls=list(generation_result.native_tool_calls),
         )
 
     @staticmethod

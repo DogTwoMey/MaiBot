@@ -509,6 +509,7 @@ def _convert_messages(
     messages: List[Message],
     *,
     use_qwen_vl_image_options: bool = False,
+    include_reasoning_content: bool = False,
 ) -> List[ChatCompletionMessageParam]:
     """将内部消息列表转换为 OpenAI 兼容消息列表。
 
@@ -546,11 +547,10 @@ def _convert_messages(
             }
             if message.tool_calls:
                 assistant_payload["tool_calls"] = _convert_assistant_tool_calls(message.tool_calls)
-            # DeepSeek v4 thinking 模式要求 **每条** assistant history 都带 reasoning_content，
-            # 否则 400: "The `reasoning_content` in the thinking mode must be passed back to the API."
-            # 即便是 guided_reply / timing_gate 等本身没思考链的消息也得有。其它供应商
-            # （OpenAI / Aliyun / gpt4novel 等）对未知字段静默忽略，所以无条件写入安全。
-            assistant_payload["reasoning_content"] = message.reasoning_content or ""  # type: ignore[typeddict-unknown-key]
+            if include_reasoning_content:
+                # DeepSeek thinking 模式要求每条 assistant history 都带该字段；即使
+                # 当前消息没有显式推理，也必须发送空字符串，否则多轮请求会返回 400。
+                assistant_payload["reasoning_content"] = message.reasoning_content or ""  # type: ignore[typeddict-unknown-key]
             converted_messages.append(assistant_payload)
             continue
 
@@ -1439,6 +1439,10 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 use_qwen_vl_image_options=_should_use_qwen_vl_image_options(
                     self.api_provider.base_url,
                     model_info.model_identifier,
+                ),
+                include_reasoning_content=(
+                    (urlparse(self.api_provider.base_url).hostname or "").lower() == "api.deepseek.com"
+                    or model_info.model_identifier.strip().lower().startswith("deepseek")
                 ),
             )
             tools_payload: List[ChatCompletionToolParam] | None = (

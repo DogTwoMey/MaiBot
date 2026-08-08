@@ -123,6 +123,19 @@ describe('PluginConfigPage 特征化', () => {
     expect(screen.queryByText(/A_Memorix/i)).not.toBeInTheDocument()
   })
 
+  it('删除按钮使用透明底色与主题色边框和图标', async () => {
+    render(<PluginConfigPage />)
+
+    const deleteButton = await screen.findByRole('button', { name: '删除' })
+    expect(deleteButton).toHaveClass(
+      'border-current',
+      'bg-transparent',
+      'text-primary',
+      'shadow-none'
+    )
+    expect(deleteButton.querySelector('svg')).not.toHaveClass('text-primary')
+  })
+
   it('无插件时显示空态提示', async () => {
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([] as never)
     render(<PluginConfigPage />)
@@ -159,6 +172,23 @@ describe('PluginConfigPage 特征化', () => {
     expect(screen.getByRole('heading', { level: 2, name: '加载成功' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: '加载中' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: '加载失败' })).toBeInTheDocument()
+  })
+
+  it('重复插件 ID 被隔离时展示冲突目录', async () => {
+    const user = userEvent.setup()
+    const duplicatePlugin = makePlugin('test.duplicate', 'Duplicate Plugin')
+    duplicatePlugin.load_status = 'failed'
+    duplicatePlugin.load_error =
+      '插件 ID 重复，已阻止加载；冲突目录: C:\\plugins\\duplicate_a, C:\\plugins\\duplicate_b'
+    vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([duplicatePlugin] as never)
+
+    render(<PluginConfigPage />)
+
+    expect(await screen.findByText('插件加载失败')).toBeInTheDocument()
+    expect(screen.getByText(`失败原因：${duplicatePlugin.load_error}`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '查看详情' }))
+    expect(screen.getByText(duplicatePlugin.load_error)).toBeInTheDocument()
   })
 
   it('插件版本不兼容时优先展示用户可理解的结论并保留技术详情', async () => {

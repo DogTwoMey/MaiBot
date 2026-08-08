@@ -59,17 +59,22 @@ describe('menuSections 菜单结构', () => {
     expect(modelItem?.tourId).toBe('sidebar-model-management')
   })
 
-  it('数据迁移位于扩展与维护分组', () => {
+  it('数据管理位于扩展与维护分组，并排在 MCP 设置上方', () => {
     const extensionsSection = menuSections.find(
       (section) => section.title === 'sidebar.groups.extensionsMonitor'
     )
     const dataTransferItem = extensionsSection?.items.find((item) => item.path === '/data-transfer')
+    const dataTransferIndex =
+      extensionsSection?.items.findIndex((item) => item.path === '/data-transfer') ?? -1
+    const mcpIndex = extensionsSection?.items.findIndex((item) => item.path === '/mcp-settings') ?? -1
 
     expect(dataTransferItem?.label).toBe('sidebar.menu.dataTransfer')
     expect(dataTransferItem?.searchDescription).toBe('search.items.dataTransferDesc')
+    expect(dataTransferIndex).toBeGreaterThanOrEqual(0)
+    expect(dataTransferIndex).toBeLessThan(mcpIndex)
   })
 
-  it('详细统计数据位于扩展与维护分组最底部并使用外部页面', () => {
+  it('详细统计数据位于扩展与维护分组最底部并使用站内页面', () => {
     const extensionsSection = menuSections.find(
       (section) => section.title === 'sidebar.groups.extensionsMonitor'
     )
@@ -77,9 +82,9 @@ describe('menuSections 菜单结构', () => {
 
     expect(statisticsItem).toMatchObject({
       label: 'sidebar.menu.statistics',
-      path: '/maibot_statistics.html',
-      external: true,
+      path: '/statistics',
     })
+    expect(statisticsItem?.external).toBeUndefined()
   })
 
   it('行为学习项受 behaviorLearning 特性开关控制，且是唯一带开关的项', () => {
