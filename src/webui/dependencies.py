@@ -1,12 +1,12 @@
 from typing import Optional
 
-from fastapi import Cookie, Depends, Request
+from fastapi import Depends, Request
 
-from .core import check_auth_rate_limit, get_current_token, is_token_valid
+from .core import auth_cookie, check_auth_rate_limit, get_current_token, is_token_valid
 
 
 async def require_auth(
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> str:
     """
     FastAPI 依赖：要求有效认证
@@ -24,7 +24,7 @@ async def require_auth(
 
 async def require_auth_with_rate_limit(
     request: Request,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
     _rate_limit: None = Depends(check_auth_rate_limit),
 ) -> str:
     """
@@ -43,7 +43,7 @@ async def require_auth_with_rate_limit(
 
 
 def get_optional_token(
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> Optional[str]:
     """
     FastAPI 依赖：可选获取 token（不验证）
@@ -57,7 +57,7 @@ def get_optional_token(
 
 
 async def verify_token_optional(
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> bool:
     """
     FastAPI 依赖：可选验证 token

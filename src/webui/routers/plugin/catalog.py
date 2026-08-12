@@ -1,10 +1,11 @@
 import json
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from src.common.logger import get_logger
 from src.config.config import MMC_VERSION
+from src.webui.core import auth_cookie
 from src.webui.services.git_mirror_service import get_git_mirror_service
 
 from .progress import update_progress
@@ -51,7 +52,7 @@ async def check_git_status() -> GitStatusResponse:
 
 
 @router.get("/mirrors", response_model=AvailableMirrorsResponse)
-async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None)) -> AvailableMirrorsResponse:
+async def get_available_mirrors(maibot_session: Optional[str] = auth_cookie()) -> AvailableMirrorsResponse:
     require_plugin_token(maibot_session)
 
     service = get_git_mirror_service()
@@ -61,7 +62,7 @@ async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None)) ->
 
 
 @router.post("/mirrors", response_model=MirrorConfigResponse)
-async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = Cookie(None)) -> MirrorConfigResponse:
+async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = auth_cookie()) -> MirrorConfigResponse:
     require_plugin_token(maibot_session)
 
     try:
@@ -87,7 +88,7 @@ async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = 
 async def update_mirror(
     mirror_id: str,
     request: UpdateMirrorRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> MirrorConfigResponse:
     require_plugin_token(maibot_session)
 
@@ -115,7 +116,7 @@ async def update_mirror(
 
 
 @router.delete("/mirrors/{mirror_id}")
-async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
 
     service = get_git_mirror_service()
@@ -128,7 +129,7 @@ async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(N
 @router.post("/fetch-raw", response_model=FetchRawFileResponse)
 async def fetch_raw_file(
     request: FetchRawFileRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> FetchRawFileResponse:
     require_plugin_token(maibot_session)
     logger.info(f"收到获取 Raw 文件请求: {request.owner}/{request.repo}/{request.branch}/{request.file_path}")
@@ -187,7 +188,7 @@ async def fetch_raw_file(
 @router.post("/clone", response_model=CloneRepositoryResponse)
 async def clone_repository(
     request: CloneRepositoryRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> CloneRepositoryResponse:
     require_plugin_token(maibot_session)
     logger.info(f"收到克隆仓库请求: {request.owner}/{request.repo} -> {request.target_path}")

@@ -1,6 +1,6 @@
 """WebUI 认证模块。"""
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Cookie, HTTPException, Request, Response
 
@@ -11,9 +11,25 @@ from .security import get_token_manager
 
 logger = get_logger("webui.auth")
 
-# Cookie 配置
-COOKIE_NAME = "maibot_session"
+# Cookie 配置。浏览器不会按端口隔离 Cookie，因此同一主机运行多个实例时，
+# 必须把 WebUI 端口纳入名称，避免一个实例登录后覆盖另一个实例的会话。
+COOKIE_NAME_PREFIX = "maibot_session"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7天
+
+
+def build_auth_cookie_name(port: int) -> str:
+    """根据 WebUI 端口生成实例级认证 Cookie 名。"""
+
+    return f"{COOKIE_NAME_PREFIX}_{port}"
+
+
+COOKIE_NAME = build_auth_cookie_name(global_config.webui.port)
+
+
+def auth_cookie() -> Any:
+    """创建绑定到当前实例 Cookie 名的 FastAPI 参数。"""
+
+    return Cookie(None, alias=COOKIE_NAME)
 
 
 def _is_secure_environment() -> bool:
@@ -39,7 +55,7 @@ def _is_secure_environment() -> bool:
 
 
 def get_current_token(
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> str:
     """
     获取当前请求的 token，仅从 HttpOnly Cookie 获取。
@@ -115,7 +131,8 @@ def set_auth_cookie(response: Response, token: str, request: Optional[Request] =
     )
 
     logger.info(
-        f"已设置认证 Cookie: {token[:8]}... (secure={is_secure}, samesite=lax, httponly=True, path=/, max_age={COOKIE_MAX_AGE})"
+        f"已设置认证 Cookie: name={COOKIE_NAME}, token={token[:8]}... "
+        f"(secure={is_secure}, samesite=lax, httponly=True, path=/, max_age={COOKIE_MAX_AGE})"
     )
     logger.debug(f"完整 token 前缀: {token[:20]}...")
 

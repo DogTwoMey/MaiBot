@@ -2,10 +2,11 @@
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from src.plugin_runtime.component_query import component_query_service
 from src.plugin_runtime.host.component_registry import CommandEntry, ComponentEntry, ComponentTypes, HomeCardEntry, ToolEntry
+from src.webui.core import auth_cookie
 
 from .schemas import HookSpecListResponse, HookSpecResponse
 from .support import find_plugin_path_by_id, require_plugin_token, validate_plugin_id
@@ -159,7 +160,7 @@ def _serialize_home_card_entry(component: HomeCardEntry) -> Dict[str, Any]:
 
 
 @router.get("/runtime/plugins/{plugin_id}/components")
-async def list_plugin_components(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def list_plugin_components(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """返回指定插件当前注册的全部组件。"""
 
     require_plugin_token(maibot_session)
@@ -176,7 +177,7 @@ async def list_plugin_components(plugin_id: str, maibot_session: Optional[str] =
 
 
 @router.get("/runtime/home-cards")
-async def list_runtime_home_cards(maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def list_runtime_home_cards(maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """返回当前已启用插件注册的 WebUI 首页卡片。"""
 
     require_plugin_token(maibot_session)
@@ -195,7 +196,7 @@ async def list_runtime_home_cards(maibot_session: Optional[str] = Cookie(None)) 
 
 
 @router.get("/runtime/hooks", response_model=HookSpecListResponse)
-async def list_runtime_hook_specs(maibot_session: Optional[str] = Cookie(None)) -> HookSpecListResponse:
+async def list_runtime_hook_specs(maibot_session: Optional[str] = auth_cookie()) -> HookSpecListResponse:
     """返回当前插件运行时公开的 Hook 规格清单。
 
     Args:

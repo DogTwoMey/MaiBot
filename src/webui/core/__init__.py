@@ -1,6 +1,8 @@
 from .auth import (
     COOKIE_MAX_AGE,
     COOKIE_NAME,
+    auth_cookie,
+    build_auth_cookie_name,
     clear_auth_cookie,
     get_current_token,
     is_token_valid,
@@ -24,6 +26,8 @@ __all__ = [
     "check_api_rate_limit",
     "COOKIE_NAME",
     "COOKIE_MAX_AGE",
+    "auth_cookie",
+    "build_auth_cookie_name",
     "get_current_token",
     "is_token_valid",
     "set_auth_cookie",

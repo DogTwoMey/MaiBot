@@ -8,10 +8,11 @@ from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Par
 import json
 import shutil
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 import tomlkit
 
 from src.common.logger import get_logger
+from src.webui.core import auth_cookie
 from src.webui.services.git_mirror_service import get_git_mirror_service
 
 from .progress import update_progress
@@ -401,7 +402,7 @@ async def _release_plugin_runtime_before_delete(plugin_id: str, plugin_path: Pat
 
 @router.post("/install")
 @_exclusive_plugin_operation("install")
-async def install_plugin(request: InstallPluginRequest, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def install_plugin(request: InstallPluginRequest, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info(f"收到安装插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
@@ -543,7 +544,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
 @router.post("/uninstall")
 @_exclusive_plugin_operation("uninstall")
 async def uninstall_plugin(
-    request: UninstallPluginRequest, maibot_session: Optional[str] = Cookie(None)
+    request: UninstallPluginRequest, maibot_session: Optional[str] = auth_cookie()
 ) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info(f"收到卸载插件请求: {request.plugin_id}")
@@ -628,7 +629,7 @@ async def uninstall_plugin(
 
 @router.post("/update")
 @_exclusive_plugin_operation("update")
-async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info(f"收到更新插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
@@ -761,7 +762,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
 
 
 @router.get("/installed")
-async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_installed_plugins(maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info("收到获取已安装插件列表请求")
 
@@ -845,7 +846,7 @@ async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None)) ->
 
 
 @router.get("/local-readme/{plugin_id}")
-async def get_local_plugin_readme(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_local_plugin_readme(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info(f"获取本地插件 README: {plugin_id}")
 
@@ -865,7 +866,7 @@ async def get_local_plugin_readme(plugin_id: str, maibot_session: Optional[str] 
 
 
 @router.get("/local-changelog/{plugin_id}")
-async def get_local_plugin_changelog(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_local_plugin_changelog(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     logger.info(f"获取本地插件更新日志: {plugin_id}")
 

@@ -4,10 +4,10 @@ import secrets
 import time
 from typing import Dict, Optional, Tuple
 
-from fastapi import APIRouter, Cookie
+from fastapi import APIRouter
 
 from src.common.logger import get_logger
-from src.webui.core import get_token_manager
+from src.webui.core import auth_cookie, get_token_manager
 
 logger = get_logger("webui.ws_auth")
 router = APIRouter()
@@ -74,7 +74,7 @@ def verify_ws_token(temp_token: str) -> bool:
 
 @router.get("/ws-token")
 async def get_ws_token(
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ):
     """
     获取 WebSocket 连接用的临时 token

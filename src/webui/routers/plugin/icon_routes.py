@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 import mimetypes
+
+from src.webui.core import auth_cookie
 
 from .support import find_plugin_path_by_id, load_manifest_json, require_plugin_token, resolve_plugin_file_path
 
@@ -40,7 +42,7 @@ def _validate_local_icon_path(icon_path: str) -> None:
 
 
 @router.get("/icon/{plugin_id}")
-async def get_plugin_icon(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> FileResponse:
+async def get_plugin_icon(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> FileResponse:
     """读取已安装插件在 manifest 中声明的本地图标。"""
     require_plugin_token(maibot_session)
 

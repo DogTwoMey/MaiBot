@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from src.common.logger import get_logger
 from src.common.logger_color_and_mapping import MODULE_COLORS
-from src.webui.core import get_token_manager
+from src.webui.core import COOKIE_NAME, get_token_manager
 from src.webui.routers.websocket.auth import verify_ws_token
 from src.webui.routers.websocket.manager import websocket_manager
 
@@ -132,7 +132,7 @@ async def websocket_logs(websocket: WebSocket, token: Optional[str] = Query(None
 
     # 方式 2: 尝试从 Cookie 获取 session token
     if not is_authenticated:
-        cookie_token = websocket.cookies.get("maibot_session")
+        cookie_token = websocket.cookies.get(COOKIE_NAME)
         if cookie_token:
             token_manager = get_token_manager()
             if token_manager.verify_token(cookie_token):

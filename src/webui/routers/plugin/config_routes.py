@@ -5,12 +5,13 @@ from typing import Any, Dict, Optional, cast
 
 import asyncio
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 import tomlkit
 
 from src.common.logger import get_logger
 from src.common.runtime_loop import run_on_main_loop
 from src.plugin_runtime.protocol.envelope import InspectPluginConfigResultPayload
+from src.webui.core import auth_cookie
 from src.webui.utils.toml_utils import save_toml_with_format
 
 from .schemas import UpdatePluginConfigRequest, UpdatePluginRawConfigRequest
@@ -376,7 +377,7 @@ async def _wait_for_plugin_runtime_toggle(
 
 
 @router.get("/config/{plugin_id}/bundle")
-async def get_plugin_config_bundle(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_bundle(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """一次性返回插件配置页初始化所需的数据，避免重复运行时解析。"""
 
     require_plugin_token(maibot_session)
@@ -421,7 +422,7 @@ async def get_plugin_config_bundle(plugin_id: str, maibot_session: Optional[str]
 
 
 @router.get("/config/{plugin_id}/schema")
-async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """按插件 ID 返回配置 Schema。
 
     Args:
@@ -464,7 +465,7 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
 
 
 @router.get("/config/{plugin_id}/raw")
-async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """获取插件原始 TOML 配置内容。
 
     Args:
@@ -500,7 +501,7 @@ async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = 
 async def update_plugin_config_raw(
     plugin_id: str,
     request: UpdatePluginRawConfigRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> Dict[str, Any]:
     """更新插件原始 TOML 配置内容。
 
@@ -545,7 +546,7 @@ async def update_plugin_config_raw(
 
 
 @router.get("/config/{plugin_id}")
-async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """获取插件配置字典。
 
     Args:
@@ -594,7 +595,7 @@ async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cook
 async def update_plugin_config(
     plugin_id: str,
     request: UpdatePluginConfigRequest,
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> Dict[str, Any]:
     """更新插件结构化配置。
 
@@ -661,7 +662,7 @@ async def update_plugin_config(
 
 
 @router.post("/config/{plugin_id}/reset")
-async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """重置插件配置文件。
 
     Args:
@@ -695,7 +696,7 @@ async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Co
 
 
 @router.post("/config/{plugin_id}/toggle")
-async def toggle_plugin(plugin_id: str, maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def toggle_plugin(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """切换插件启用状态。
 
     Args:
