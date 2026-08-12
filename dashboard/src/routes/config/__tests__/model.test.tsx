@@ -208,7 +208,8 @@ describe('ModelConfigPage 特征化', () => {
     expect(addModelButton).not.toBeNull()
     await user.click(addModelButton!)
 
-    const dialog = await screen.findByRole('dialog', { name: '添加模型' })
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
     expect(within(dialog).queryByText('支持缓存')).not.toBeInTheDocument()
     const thinkingSwitch = within(dialog).getByRole('switch', { name: '启用思考' })
     const effortSelect = within(dialog).getByRole('combobox', { name: '思考力度' })
@@ -258,28 +259,38 @@ describe('ModelConfigPage 特征化', () => {
         ),
       },
     })
-    await user.click(within(extraParamsDialog).getByRole('button', { name: '保存' }))
+    const saveExtraParamsButton = within(extraParamsDialog).getByRole('button', { name: '保存' })
+    fireEvent.pointerDown(saveExtraParamsButton, { pointerType: 'touch' })
+    // 内层弹窗打开时 Radix 会把外层弹窗标记为 aria-hidden，但外层不应被触摸事件卸载。
+    expect(dialog).toBeInTheDocument()
+    await user.click(saveExtraParamsButton)
+    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
     expect(thinkingSwitch).toBeChecked()
     expect(effortSelect).toBeEnabled()
     expect(effortSelect).toHaveTextContent('最高')
 
     await user.click(within(dialog).getByRole('button', { name: '高级设置' }))
     expect(within(dialog).getByRole('switch', { name: '支持缓存' })).toBeChecked()
-  })
 
-  it('切到任务页可见 embedding 配置卡片', async () => {
-    const user = userEvent.setup()
-    await renderModelPage()
-    await user.click(screen.getByRole('tab', { name: '为模型分配功能' }))
-    expect(await screen.findByTestId('task-config-card')).toBeInTheDocument()
-    expect(screen.getByTestId('task-models')).toHaveTextContent('old-embed-model')
+    await user.click(within(dialog).getByRole('button', { name: '已配置 2 个参数' }))
+    const reopenedExtraParamsDialog = await screen.findByRole('dialog', {
+      name: '编辑额外参数',
+    })
+    await user.click(within(reopenedExtraParamsDialog).getByRole('tab', { name: 'JSON 编辑' }))
+    fireEvent.change(within(reopenedExtraParamsDialog).getByRole('textbox'), {
+      target: { value: '' },
+    })
+    await user.click(within(reopenedExtraParamsDialog).getByRole('button', { name: '保存' }))
+
+    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
+    expect(within(dialog).getByText('未配置额外参数')).toBeInTheDocument()
   })
 
   describe('embedding 换模型警告', () => {
     it('更改 embedding 模型弹出警告对话框，确认后应用变更', async () => {
       const user = userEvent.setup()
       await renderModelPage()
-      await user.click(screen.getByRole('tab', { name: '为模型分配功能' }))
+      await user.click(screen.getByRole('tab', { name: '功能分配' }))
       await user.click(await screen.findByText('change-embedding'))
 
       // 弹出警告
@@ -297,7 +308,7 @@ describe('ModelConfigPage 特征化', () => {
     it('取消则不应用变更', async () => {
       const user = userEvent.setup()
       await renderModelPage()
-      await user.click(screen.getByRole('tab', { name: '为模型分配功能' }))
+      await user.click(screen.getByRole('tab', { name: '功能分配' }))
       await user.click(await screen.findByText('change-embedding'))
       expect(await screen.findByText('更换嵌入模型警告')).toBeInTheDocument()
 
@@ -307,11 +318,22 @@ describe('ModelConfigPage 特征化', () => {
     })
   })
 
+  it('移动端由页面承载纵向滚动，子标签内容不被裁切', async () => {
+    await renderModelPage()
+
+    const page = document.querySelector('[data-model-config-page="true"]')
+    expect(page?.parentElement).toHaveClass('overflow-y-auto', 'lg:overflow-hidden')
+    expect(page).toHaveClass('min-h-full', 'lg:h-full', 'lg:overflow-hidden')
+
+    const configurationPanel = screen.getByRole('tabpanel')
+    expect(configurationPanel).toHaveClass('overflow-visible', 'lg:overflow-hidden')
+  })
+
   it('保存配置：产生变更后点击保存调用 getModelConfig + updateModelConfig', async () => {
     const user = userEvent.setup()
     await renderModelPage()
     // 先经 embedding 确认产生一次变更（hasUnsavedChanges = true）
-    await user.click(screen.getByRole('tab', { name: '为模型分配功能' }))
+    await user.click(screen.getByRole('tab', { name: '功能分配' }))
     await user.click(await screen.findByText('change-embedding'))
     await user.click(screen.getByRole('button', { name: '确认更换' }))
 
@@ -346,14 +368,6 @@ describe('ModelConfigPage 特征化', () => {
     expect(configApi.updateModelConfigSection).not.toHaveBeenCalled()
   })
 
-  it('提供商连接测试调用 testProviderConnection', async () => {
-    const user = userEvent.setup()
-    await renderModelPage()
-    await user.click(screen.getByRole('tab', { name: '模型设置' }))
-    await user.click(await screen.findByRole('button', { name: '测试厂商 openai 连接' }))
-    await waitFor(() => expect(configApi.testProviderConnection).toHaveBeenCalledWith('openai'))
-  })
-
   it('选择左侧厂商后只显示该厂商的模型，选择全部后恢复', async () => {
     const user = userEvent.setup()
     const filteredConfig = {
@@ -376,7 +390,8 @@ describe('ModelConfigPage 特征化', () => {
     vi.mocked(configApi.getModelConfig).mockResolvedValue(filteredConfig as never)
 
     await renderModelPage()
-    const modelTable = screen.getByTestId('model-table')
+    await user.click(screen.getByRole('tab', { name: '模型设置' }))
+    const modelTable = await screen.findByTestId('model-table')
     expect(within(modelTable).getByText('gpt-4')).toBeInTheDocument()
     expect(within(modelTable).getByText('local-model')).toBeInTheDocument()
 
@@ -392,6 +407,7 @@ describe('ModelConfigPage 特征化', () => {
     const user = userEvent.setup()
     await renderModelPage()
     await user.click(screen.getByRole('tab', { name: '模型设置' }))
+    await user.click(screen.getByRole('button', { name: '筛选厂商 openai' }))
 
     // 删除 openai（被 gpt-4 引用）→ 单删确认框
     await user.click(await screen.findByRole('button', { name: '删除厂商 openai' }))

@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 import base64
 import json
+import mimetypes
 import os
 import re
 import shutil
@@ -28,6 +29,7 @@ from src.llm_models.request_snapshot import (
     serialize_context_item_snapshot,
 )
 from src.services.llm_service import generate as generate_llm_response
+from src.services.bot_account_service import get_all_bot_account_pairs
 from src.services.service_task_resolver import get_available_models
 from src.webui.dependencies import require_auth
 from src.webui.routers.avatar import build_webui_avatar_url
@@ -438,24 +440,9 @@ def _resolve_session_name(session: str, sessions: list[str]) -> str:
 
 
 def _get_configured_platform_accounts() -> set[tuple[str, str]]:
-    """读取当前配置中的平台账号对。"""
+    """读取当前实例全部有效的平台账号对。"""
 
-    from src.config.config import global_config
-
-    pairs: set[tuple[str, str]] = set()
-    base_platform = str(global_config.bot.platform or "").strip()
-    base_account = str(global_config.bot.qq_account or "").strip()
-    if base_platform and base_account:
-        pairs.add((base_platform, base_account))
-
-    for item in global_config.bot.platforms:
-        platform, separator, account_id = str(item or "").partition(":")
-        platform = platform.strip()
-        account_id = account_id.strip()
-        if separator and platform and account_id:
-            pairs.add((platform, account_id))
-
-    return pairs
+    return get_all_bot_account_pairs()
 
 
 def _parse_session_directory_name(name: str) -> tuple[str, str, str] | None:
@@ -2027,6 +2014,18 @@ async def get_reasoning_prompt_file(path: str = Query(...)):
         total_tokens=metadata.get("total_tokens") if isinstance(metadata.get("total_tokens"), int) else None,
         message_avatars=message_avatars,
     )
+
+
+@router.get("/image")
+async def get_reasoning_prompt_image(path: str = Query(...)):
+    """读取推理记录引用的本地图片，只允许访问既有图片缓存目录。"""
+
+    try:
+        image_path = _resolve_replay_image_path(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    media_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+    return FileResponse(image_path, media_type=media_type)
 
 
 @router.post("/replay", response_model=ReasoningReplayResponse)

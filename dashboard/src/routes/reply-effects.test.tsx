@@ -18,16 +18,14 @@ const versionAggregates = [
     reception_score_std: 7,
     conversation_score: 50,
     conversation_score_std: 6,
-    raw_score: 54,
-    raw_score_std: 7,
-    relative_score: 55,
-    relative_score_std: 8,
     confidence: 0.8,
     confidence_std: 0.05,
     model_name: 'model-a',
     prompt_fingerprint: 'prompt-a',
+    evaluation_version: 5,
     model_names: ['model-a'],
     prompt_fingerprints: ['prompt-a'],
+    evaluation_versions: [5],
     first_seen: '2026-01-01T00:00:00',
     last_seen: '2026-01-02T00:00:00',
     collapsed_models: false,
@@ -43,16 +41,14 @@ const versionAggregates = [
     reception_score_std: 6,
     conversation_score: 58,
     conversation_score_std: 7,
-    raw_score: 62,
-    raw_score_std: 6,
-    relative_score: 64,
-    relative_score_std: 7,
     confidence: 0.82,
     confidence_std: 0.04,
     model_name: 'model-b',
     prompt_fingerprint: 'prompt-b',
+    evaluation_version: 5,
     model_names: ['model-b'],
     prompt_fingerprints: ['prompt-b'],
+    evaluation_versions: [5],
     first_seen: '2026-01-01T00:00:00',
     last_seen: '2026-01-02T00:00:00',
     collapsed_models: false,
@@ -71,8 +67,6 @@ describe('ReplyEffectsPage', () => {
             response_score: 80,
             reception_score: 70,
             conversation_score: 60,
-            raw_score: 72,
-            relative_score: null,
             confidence: 0.8,
           },
           strategies: [
@@ -82,8 +76,6 @@ describe('ReplyEffectsPage', () => {
               response_score: 80,
               reception_score: 70,
               conversation_score: 60,
-              raw_score: 72,
-              relative_score: null,
               confidence: 0.8,
             },
           ],
@@ -100,7 +92,7 @@ describe('ReplyEffectsPage', () => {
           finalized_at: '2026-01-01T00:10:00',
           finalize_reason: 'session_followups_limit',
           evaluation_error: '',
-          scorer_version: 2,
+          evaluation_version: 5,
           session: { session_name: '测试群' },
           reply: {
             target_message_id: '-1085252920',
@@ -110,14 +102,10 @@ describe('ReplyEffectsPage', () => {
             prompt_fingerprint: 'prompt123',
           },
           scores: {
-            response_score: 80,
-            reception_score: 70,
-            conversation_score: 60,
-            raw_score: 72,
-            relative_score: null,
-            confidence: 0.8,
-            baseline_sample_size: 0,
-            baseline_level: 'insufficient',
+            response_score: 0,
+            reception_score: null,
+            conversation_score: 0,
+            confidence: null,
           },
           context_snapshot: [
             {
@@ -144,7 +132,7 @@ describe('ReplyEffectsPage', () => {
         }) as never
       }
       return Promise.resolve({
-        total: 1,
+        total: 2,
         next_cursor: null,
         items: [
           {
@@ -152,15 +140,31 @@ describe('ReplyEffectsPage', () => {
             session_name: '测试群',
             status: 'finalized',
             created_at: '2026-01-01T00:00:00',
+            finalize_reason: 'session_followups_limit',
             strategy_primary: 'answer',
             model_name: 'test',
+            evaluation_version: 5,
             reply_text: '你好',
             response_score: 80,
             reception_score: 70,
             conversation_score: 60,
-            raw_score: 72,
-            relative_score: null,
             confidence: 0.8,
+            evaluation_error: '',
+          },
+          {
+            effect_id: 'e2',
+            session_name: '测试群',
+            status: 'incomplete',
+            created_at: '2026-01-01T00:05:00',
+            finalize_reason: 'runtime_stop',
+            strategy_primary: 'other',
+            model_name: 'test',
+            evaluation_version: 5,
+            reply_text: '观察被中断',
+            response_score: null,
+            reception_score: null,
+            conversation_score: null,
+            confidence: null,
             evaluation_error: '',
           },
         ],
@@ -200,10 +204,12 @@ describe('ReplyEffectsPage', () => {
     expect(screen.getAllByText('回应度').length).toBeGreaterThan(0)
     expect(screen.getByText('情感接受度')).toBeInTheDocument()
     expect(screen.getByText('聊天推动度')).toBeInTheDocument()
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('80.0').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('70.0').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('60.0').length).toBeGreaterThan(0)
 
     const requestPaths = vi.mocked(backendApi.get).mock.calls.map(([path]) => path)
-    expect(requestPaths.find((path) => path.includes('/overview'))).toContain('min_confidence=0.6')
+    expect(requestPaths.find((path) => path.includes('/overview'))).toContain('min_confidence=0')
   })
 
   it('以结构化消息样式展示评估上下文且不显示消息 ID', async () => {
@@ -216,6 +222,10 @@ describe('ReplyEffectsPage', () => {
     expect(screen.getByText('明光')).toBeInTheDocument()
     expect(screen.getByText('应该只有群里有吧')).toBeInTheDocument()
     expect(screen.getByText('目标消息')).toBeInTheDocument()
+    expect(screen.getByText('评估标准 v5')).toBeInTheDocument()
+    expect(screen.getByText('已完成 / 无信息')).toBeInTheDocument()
+    expect(screen.getByText('已完成观察，未发现与本次回复相关的后续信息。')).toBeInTheDocument()
+    expect(screen.getAllByText('不完整').length).toBeGreaterThan(0)
     expect(screen.queryByText(/msg_id:/)).not.toBeInTheDocument()
   })
 
@@ -230,9 +240,15 @@ describe('ReplyEffectsPage', () => {
     expect(screen.getByText('显著')).toBeInTheDocument()
     expect(backendApi.post).toHaveBeenCalledWith('/api/webui/reply-effects/compare', {
       body: expect.objectContaining({
-        left: expect.objectContaining({ model_names: ['model-a'] }),
-        right: expect.objectContaining({ model_names: ['model-b'] }),
-        min_confidence: 0.6,
+        left: expect.objectContaining({
+          model_names: ['model-a'],
+          evaluation_versions: [5],
+        }),
+        right: expect.objectContaining({
+          model_names: ['model-b'],
+          evaluation_versions: [5],
+        }),
+        min_confidence: 0,
       }),
     })
   })

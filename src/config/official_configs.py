@@ -1,4 +1,4 @@
-from typing import Final, List, Literal, Optional
+from typing import Dict, Final, List, Literal, Optional
 
 import re
 
@@ -117,9 +117,9 @@ class BotConfig(ConfigBase):
         default="",
         json_schema_extra={
             "label": {
-                "zh_CN": "平台",
-                "en_US": "Platform",
-                "ja_JP": "プラットフォーム",
+                "zh_CN": "备用主平台",
+                "en_US": "Fallback primary platform",
+                "ja_JP": "予備のメインプラットフォーム",
             },
             "x-widget": "input",
             "x-layout": "inline-right",
@@ -127,15 +127,15 @@ class BotConfig(ConfigBase):
             "x-row": "bot-platform-account",
         },
     )
-    """麦麦主账号所在的平台，例如 qq。"""
+    """适配器没有上报身份时使用的备用主平台，例如 qq。"""
 
     qq_account: str = Field(
         default="",
         json_schema_extra={
             "label": {
-                "zh_CN": "QQ账号",
-                "en_US": "QQ account",
-                "ja_JP": "QQアカウント",
+                "zh_CN": "备用 QQ 账号",
+                "en_US": "Fallback QQ account",
+                "ja_JP": "予備の QQ アカウント",
             },
             "x-widget": "input",
             "x-layout": "inline-right",
@@ -143,20 +143,20 @@ class BotConfig(ConfigBase):
             "x-row": "bot-platform-account",
         },
     )
-    """麦麦主账号 ID，用来识别哪些消息是麦麦自己发的。"""
+    """适配器没有上报 QQ 身份时使用的备用账号 ID。"""
 
     platforms: list[str] = Field(
         default_factory=lambda: [],
         json_schema_extra={
             "label": {
-                "zh_CN": "其他平台",
-                "en_US": "Other platforms",
-                "ja_JP": "他のプラットフォーム",
+                "zh_CN": "其他备用平台",
+                "en_US": "Other fallback platforms",
+                "ja_JP": "その他の予備プラットフォーム",
             },
             "x-widget": "custom",
         },
     )
-    """其他平台账号，格式为 platform:账号；没有多平台时不用填。"""
+    """其他平台的备用账号，格式为 platform:账号；适配器身份存在时不参与判断。"""
 
     nickname: str = Field(
         default="麦麦",
@@ -193,7 +193,7 @@ class PersonalityConfig(ConfigBase):
     __ui_label__ = "人格"
 
     personality: str = Field(
-        default="你是一个大二女大学生，现在正在上网和群友聊天。",
+        default="是一个大二女大学生，现在正在上网和群友聊天。善于用人类的角度思考问题，聊天偏日常。",
         json_schema_extra={
             "label": {
                 "zh_CN": "人格设定",
@@ -210,8 +210,7 @@ class PersonalityConfig(ConfigBase):
 
     behavior_style: str = Field(
         default=(
-            "先观察聊天上下文和他人的反应，再决定是否参与。只在被提及、对话题感兴趣或确实能推进聊天时行动，"
-            "不需要回应每条消息；不适合参与时保持安静。"
+            "是大二女大学生，现在正在上网和群友聊天。善于用人类的角度思考问题，聊天偏日常。不会没话题硬找话题，"
         ),
         json_schema_extra={
             "label": {
@@ -228,7 +227,7 @@ class PersonalityConfig(ConfigBase):
     """Planner 使用的行动准则，例如何时参与聊天、如何观察局面以及何时保持安静。"""
 
     reply_style: str = Field(
-        default="你的风格平淡简短。可以参考贴吧，知乎和微博的回复风格。不浮夸不长篇大论，不要过分修辞和复杂句。尽量回复的简短一些，平淡一些",
+        default="你的风格平淡简短，可以参考贴吧的回复风格。不滥用比喻或者生硬句子。视情况省略主语或者进行倒装，风格较为随意。",
         json_schema_extra={
             "label": {
                 "zh_CN": "表达风格",
@@ -5802,6 +5801,16 @@ class MCPConfig(ConfigBase):
         return super().model_post_init(context)
 
 
+class CommandPermissionConfig(ConfigBase):
+    """单个命令的额外放行规则。"""
+
+    allow_users: list[str] = Field(default_factory=list)
+    """允许执行命令的用户，格式如 qq:123456789。"""
+
+    allow_chats: list[str] = Field(default_factory=list)
+    """允许执行命令的真实聊天流 ID。"""
+
+
 class PluginConfig(ConfigBase):
     """插件管理配置类"""
 
@@ -5822,6 +5831,12 @@ class PluginConfig(ConfigBase):
         },
     )
     """允许用聊天命令管理插件的用户，格式如 qq:123456789。"""
+
+    command_permissions: Dict[str, CommandPermissionConfig] = Field(
+        default_factory=dict,
+        json_schema_extra={"hidden": True},
+    )
+    """受保护命令按用户和真实聊天流配置的额外放行规则。"""
 
 
 class PluginRuntimeRenderConfig(ConfigBase):

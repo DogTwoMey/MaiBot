@@ -35,15 +35,15 @@ interface RecordItem {
   session_name: string
   status: string
   created_at: string
+  finalize_reason: string
   strategy_primary: string
   model_name: string
+  evaluation_version: number
   reply_text: string
   response_score: number | null
   reception_score: number | null
   conversation_score: number | null
-  raw_score: number | null
-  relative_score: number | null
-  confidence: number
+  confidence: number | null
   evaluation_error: string
 }
 
@@ -107,7 +107,7 @@ interface EffectDetail {
   finalize_reason: string
   evaluation_error: string
   confidence_note: string
-  scorer_version: number
+  evaluation_version: number
   pre_activity_count: number
   pre_activity_bucket: string
   session?: { session_name?: string }
@@ -122,16 +122,12 @@ interface EffectDetail {
   }
   scores?: {
     response_score: number
-    reception_score: number
+    reception_score: number | null
     conversation_score: number
-    raw_score: number
-    relative_score: number | null
-    confidence: number
+    confidence: number | null
     response_evidence_confidence: number
     reception_evidence_confidence: number
     conversation_evidence_confidence: number
-    baseline_sample_size: number
-    baseline_level: string
   }
   context_snapshot?: ContextMessage[]
   followup_messages?: DetailFollowup[]
@@ -159,6 +155,7 @@ const STATUS_NAMES: Record<string, string> = {
   pending: '等待结算',
   evaluating: '正在评估',
   finalized: '已完成',
+  incomplete: '不完整',
   evaluation_failed: '评估失败',
 }
 
@@ -189,8 +186,6 @@ const CONTRIBUTION_NAMES: Record<string, string> = {
 
 const SORT_OPTIONS = [
   ['created_at', '评估时间'],
-  ['raw_score', '原始总分'],
-  ['relative_score', '相对分'],
   ['response_score', '回应度'],
   ['reception_score', '接受度'],
   ['conversation_score', '推动度'],
@@ -203,6 +198,47 @@ function scoreText(value: number | null | undefined) {
 
 function confidenceText(value: number | null | undefined) {
   return value == null ? '—' : `${Math.round(value * 100)}%`
+}
+
+function ConfidenceIndicator({ value, incomplete }: { value: number | null; incomplete: boolean }) {
+  if (value == null) {
+    return (
+      <div className="mt-2">
+        <div className="text-muted-foreground flex items-center justify-between text-[11px]">
+          <span>置信度</span>
+          <span>{incomplete ? '不完整' : '已完成 / 无信息'}</span>
+        </div>
+        <div className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full" />
+      </div>
+    )
+  }
+
+  const normalizedValue = Math.max(0, Math.min(1, value))
+  const percentage = Math.round(normalizedValue * 100)
+  const color = `hsl(${Math.round(normalizedValue * 120)} 72% 42%)`
+  return (
+    <div className="mt-2">
+      <div className="text-muted-foreground flex items-center justify-between text-[11px]">
+        <span>置信度</span>
+        <span className="font-medium tabular-nums" style={{ color }}>
+          {percentage}%
+        </span>
+      </div>
+      <div
+        className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full"
+        role="progressbar"
+        aria-label={`置信度 ${percentage}%`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percentage}
+      >
+        <div
+          className="h-full rounded-full transition-[width,background-color] duration-300"
+          style={{ width: `${percentage}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function strategyName(value: string | undefined) {
@@ -360,6 +396,8 @@ function StatusBadge({ status }: { status: string }) {
           'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
         status === 'pending' &&
           'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+        status === 'incomplete' &&
+          'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
         status === 'evaluating' && 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
         status === 'evaluation_failed' && 'border-destructive/30 bg-destructive/10 text-destructive'
       )}
@@ -424,6 +462,7 @@ function EvaluationDetail({ detail }: { detail: EffectDetail }) {
     return messages
   }, [contextMessages, detail.created_at, detail.effect_id, detail.followup_messages, detail.reply])
   const scores = detail.scores
+  const incomplete = detail.status === 'incomplete'
 
   return (
     <div className="space-y-5">
@@ -434,7 +473,7 @@ function EvaluationDetail({ detail }: { detail: EffectDetail }) {
               <span>{detail.session?.session_name || '未知聊天流'}</span>
               <span>{new Date(detail.created_at).toLocaleString()}</span>
               <span>{detail.reply?.model_name || '未记录模型'}</span>
-              <span>评分器 v{detail.scorer_version}</span>
+              <span>评估标准 v{detail.evaluation_version}</span>
             </div>
           </div>
           <StatusBadge status={detail.status} />
@@ -461,27 +500,42 @@ function EvaluationDetail({ detail }: { detail: EffectDetail }) {
           <CircleGauge className="text-primary h-4 w-4" />
           <h3 className="text-sm font-semibold">评分结果</h3>
         </div>
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <DetailScore label="回应度" value={scores?.response_score} />
           <DetailScore label="情感接受度" value={scores?.reception_score} />
           <DetailScore label="聊天推动度" value={scores?.conversation_score} />
-          <DetailScore label="原始总分" value={scores?.raw_score} />
-          <DetailScore label="相对分" value={scores?.relative_score} />
           <div className="bg-card rounded-lg border p-3">
             <div className="text-muted-foreground text-xs">综合置信度</div>
             <div className="mt-1 text-xl font-bold tabular-nums">
-              {confidenceText(scores?.confidence)}
+              {scores == null
+                ? incomplete
+                  ? '不完整'
+                  : '—'
+                : scores.confidence == null
+                  ? '已完成 / 无信息'
+                  : confidenceText(scores.confidence)}
             </div>
           </div>
         </div>
-        {scores && (
+        {incomplete && (
+          <div className="text-muted-foreground mt-3 text-xs">
+            观察窗口不完整，未进行评分。
+          </div>
+        )}
+        {!incomplete && scores && scores.confidence == null && (
+          <div className="text-muted-foreground mt-3 text-xs">
+            已完成观察，未发现与本次回复相关的后续信息。
+          </div>
+        )}
+        {scores && scores.confidence != null && (
           <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
             <span>回应证据 {confidenceText(scores.response_evidence_confidence)}</span>
-            <span>接受证据 {confidenceText(scores.reception_evidence_confidence)}</span>
-            <span>推动证据 {confidenceText(scores.conversation_evidence_confidence)}</span>
             <span>
-              相对基线 {scores.baseline_level} · {scores.baseline_sample_size} 条
+              {scores.reception_score == null
+                ? '接受度：无针对 Bot 的情绪证据'
+                : `接受证据 ${confidenceText(scores.reception_evidence_confidence)}`}
             </span>
+            <span>推动证据 {confidenceText(scores.conversation_evidence_confidence)}</span>
             {detail.confidence_note && <span>{detail.confidence_note}</span>}
           </div>
         )}
@@ -831,10 +885,7 @@ export function ReplyEffectsBrowser({
                     <div className="text-muted-foreground mt-1 truncate text-xs">
                       {item.session_name} · {strategyName(item.strategy_primary)}
                     </div>
-                    <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[11px] tabular-nums">
-                      <span className="bg-muted/45 rounded px-1 py-1">
-                        总 {scoreText(item.raw_score)}
-                      </span>
+                    <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[11px] tabular-nums">
                       <span className="bg-muted/45 rounded px-1 py-1">
                         回 {scoreText(item.response_score)}
                       </span>
@@ -845,6 +896,10 @@ export function ReplyEffectsBrowser({
                         推 {scoreText(item.conversation_score)}
                       </span>
                     </div>
+                    <ConfidenceIndicator
+                      value={item.confidence}
+                      incomplete={item.status === 'incomplete'}
+                    />
                   </button>
                 ))}
               </div>

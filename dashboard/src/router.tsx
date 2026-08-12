@@ -73,7 +73,7 @@ const indexRoute = createRoute({
 const statisticsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/statistics',
-  component: lazyRouteComponent(() => import('./routes/statistics'), 'StatisticsPage'),
+  component: lazyRouteComponent(() => import('./routes/logs'), 'StatisticsLogViewerPage'),
 })
 
 const replyEffectsRoute = createRoute({
@@ -265,6 +265,13 @@ const pluginConfigRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/plugin-config'), 'PluginConfigPage'),
 })
 
+// 适配器管理路由：复用插件配置页，仅展示 adapter 类型插件
+const adapterManagementRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/adapter-management',
+  component: lazyRouteComponent(() => import('./routes/plugin-config'), 'PluginConfigPage'),
+})
+
 // 外部程序嵌入用插件配置路由，不挂载 dashboard 顶栏和侧边栏
 const pluginConfigEmbedRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -381,6 +388,7 @@ const routeTree = rootRoute.addChildren([
     pluginsRoute,
     modelPresetsRoute,
     pluginConfigRoute,
+    adapterManagementRoute,
     pluginMirrorsRoute,
     mcpSettingsRoute,
     dataTransferRoute,
