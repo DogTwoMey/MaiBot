@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import psutil
 
 from scripts import launcher
@@ -56,3 +58,22 @@ def test_hidden_direct_process_is_running(monkeypatch) -> None:
 
 def test_all_targets_only_include_external_processes() -> None:
     assert launcher.parse_targets(["all"]) == ["napcat", "bot"]
+
+
+def test_spawn_enables_utf8_for_child_process(monkeypatch) -> None:
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_popen(*args, **kwargs):
+        del args
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(pid=4321)
+
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+
+    assert launcher.spawn({}, "bot", ["python", "bot.py"], launcher.REPO_ROOT, hidden=False) == 4321
+    child_env = captured_kwargs["env"]
+    assert isinstance(child_env, dict)
+    assert child_env["PYTHONUTF8"] == "1"
+    assert child_env["PYTHONIOENCODING"] == "utf-8"

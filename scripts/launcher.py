@@ -20,6 +20,7 @@ Requires: Python 3.11+ (tomllib) and psutil.
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import subprocess
 import sys
