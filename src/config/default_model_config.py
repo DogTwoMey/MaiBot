@@ -29,7 +29,7 @@ DEFAULT_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
 
 DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
     "utils": {
-        "model_list": ["deepseek-v4-flash"],
+        "model_list": ["qwen3.7-flash", "qwen3.7-plus", "deepseek-v4-flash"],
         "max_tokens": 4096,
         "temperature": 0.5,
         "slow_threshold": 15.0,
@@ -53,7 +53,12 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "hard_timeout": 180.0,
     },
     "replyer": {
-        "model_list": ["deepseek-v4-pro-think", "deepseek-v4-pro-nonthink"],
+        "model_list": [
+            "qwen3.7-flash",
+            "qwen3.7-plus",
+            "deepseek-v4-pro-think",
+            "deepseek-v4-pro-nonthink",
+        ],
         "max_tokens": 4096,
         "temperature": 1,
         "slow_threshold": 120.0,
@@ -61,7 +66,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "hard_timeout": 240.0,
     },
     "planner": {
-        "model_list": ["deepseek-v4-flash"],
+        "model_list": ["qwen3.7-flash", "qwen3.7-plus", "deepseek-v4-flash"],
         "max_tokens": 8000,
         "temperature": 0.7,
         "slow_threshold": 12.0,
@@ -80,7 +85,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
     },
     "voice": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0},
     "embedding": {
-        "model_list": ["text-embedding-v4"],
+        "model_list": ["qwen3.7-text-embedding"],
         "max_tokens": 4096,
         "hard_timeout": 60.0,
     },
@@ -112,8 +117,26 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
         "api_provider": "DeepSeek",
         "price_in": 1.0,
         "price_out": 2.0,
+        "temperature": 0.3,
         "visual": False,
         "extra_params": {"thinking": {"type": "disabled"}},
+    },
+    # --- 百炼对话模型 ---
+    {
+        "model_identifier": "qwen3.7-flash",
+        "name": "qwen3.7-flash",
+        "api_provider": "BaiLian",
+        "temperature": 0.3,
+        "visual": False,
+        "extra_params": {"enable_thinking": False},
+    },
+    {
+        "model_identifier": "qwen3.7-plus",
+        "name": "qwen3.7-plus",
+        "api_provider": "BaiLian",
+        "temperature": 0.3,
+        "visual": False,
+        "extra_params": {"enable_thinking": False},
     },
     # --- 百炼 VLM 模型 ---
     {
@@ -126,11 +149,9 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     },
     # --- 百炼 Embedding 模型 ---
     {
-        "model_identifier": "text-embedding-v4",
-        "name": "text-embedding-v4",
+        "model_identifier": "qwen3.7-text-embedding",
+        "name": "qwen3.7-text-embedding",
         "api_provider": "BaiLian",
-        "price_in": 0.5,
-        "price_out": 0.0,
         "visual": False,
     },
 ]

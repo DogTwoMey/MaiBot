@@ -55,8 +55,8 @@ import _common  # noqa: E402
 from _common import ProviderBundle  # noqa: E402
 
 
-# 多模态档位映射：主 tier → Aliyun 用的 tier
-_MULTIMODAL_TIER_MAP = {
+# 百炼档位映射：主 tier → Aliyun 用的 tier
+_ALIYUN_TIER_MAP = {
     "low": "low",
     "mid": "low",
     "high": "high",
@@ -101,7 +101,7 @@ def _build_composite_bundle(args, providers: List[str]) -> ProviderBundle:
     """加载所有 provider 并构建复合 bundle。
 
     - DeepSeek：使用请求的 tier，负责 replyer / planner / utils
-    - Aliyun：根据 _MULTIMODAL_TIER_MAP 映射 tier，负责 vlm / voice / embedding
+    - Aliyun：根据 _ALIYUN_TIER_MAP 映射 tier，负责 Qwen 对话、vlm / voice / embedding
     - DZMM：所有档位均追加 replyer 候选
     """
     from tomlkit import aot
@@ -116,7 +116,7 @@ def _build_composite_bundle(args, providers: List[str]) -> ProviderBundle:
     for pname in providers:
         provider_args = copy.copy(args)
         if pname == "aliyun":
-            provider_args.tier = _MULTIMODAL_TIER_MAP.get(tier, tier)
+            provider_args.tier = _ALIYUN_TIER_MAP.get(tier, tier)
         print(f"\n--- {pname} (tier={provider_args.tier}) ---")
         module = _load_provider_module(pname)
         bundle = module.build(provider_args, apisource_dir=SCRIPT_DIR)

@@ -13,6 +13,7 @@ from src.llm_models.payload_content.context_item import (
 )
 from src.llm_models.payload_content.native_tool import NativeToolCallSummary
 from src.maisaka.chat_loop_service import ChatResponse, MaisakaChatLoopService
+from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.monitor.events import _serialize_planner_block
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
@@ -82,6 +83,64 @@ def test_native_tool_summary_is_serialized_without_provider_state() -> None:
         }
     ]
     assert "provider_state" not in block
+
+
+@pytest.mark.parametrize(
+    "planner_content",
+    [
+        "让我输出分析并调用reply。",
+        "I will call the reply tool now.",
+        "Let me send a reply.",
+    ],
+)
+def test_planner_reply_intent_without_tool_call_retries_once(planner_content: str) -> None:
+    """Planner 明确声称调用 reply 时，应追加纠正提示并重试一次。"""
+
+    runtime = SimpleNamespace(_chat_history=[], log_prefix="[测试]")
+    engine = MaisakaReasoningEngine(runtime)
+    planner_extra_lines: list[str] = []
+
+    planner_no_tool_count, cycle_end, should_end = engine._handle_planner_no_tool_retry(
+        0,
+        planner_extra_lines,
+        planner_content,
+    )
+
+    assert planner_no_tool_count == 1
+    assert cycle_end.reason == "planner_missing_reply_tool_retry"
+    assert should_end is False
+    assert planner_extra_lines == ["状态：reply 工具调用缺失，已纠正并重试一次"]
+    assert len(runtime._chat_history) == 1
+    hint = runtime._chat_history[0]
+    assert isinstance(hint, ReferenceMessage)
+    assert hint.reference_type == ReferenceMessageType.PLANNER_TOOL_HINT
+    assert "结构化 reply 工具调用" in hint.content
+
+
+def test_planner_without_tool_intent_ends_normally() -> None:
+    """普通无工具分析仍应直接结束，避免为正常沉默增加模型调用。"""
+
+    runtime = SimpleNamespace(
+        _chat_history=[],
+        log_prefix="[测试]",
+        _end_planner_continuation=lambda: None,
+        _reset_consecutive_wait_count=lambda reason: None,
+        _enter_stop_state=lambda: None,
+    )
+    engine = MaisakaReasoningEngine(runtime)
+    planner_extra_lines: list[str] = []
+
+    planner_no_tool_count, cycle_end, should_end = engine._handle_planner_no_tool_retry(
+        0,
+        planner_extra_lines,
+        "当前无需调用 reply，结束本轮。",
+    )
+
+    assert planner_no_tool_count == 1
+    assert cycle_end.reason == "planner_no_tool_end"
+    assert should_end is True
+    assert planner_extra_lines == ["状态：已结束本轮思考"]
+    assert runtime._chat_history == []
 
 
 @pytest.mark.asyncio

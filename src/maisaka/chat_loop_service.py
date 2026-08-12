@@ -801,7 +801,6 @@ class MaisakaChatLoopService:
         return {
             "bot_name": global_config.bot.nickname,
             "behavior_style": self.behavior_style_prompt,
-            "identity": self.personality_prompt,
             "file_tools_section": tools_section,
             "group_chat_attention_block": self._build_group_chat_attention_block(),
             "planner_idle_focus_rule": self._build_planner_idle_focus_rule(),

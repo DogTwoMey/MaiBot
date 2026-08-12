@@ -103,6 +103,31 @@ HISTORY_DEFERRED_TOOL_RESULT_NAMES = {"wait"}
 TOOL_RESULT_MEDIA_TYPES = {"image", "audio", "resource_link", "resource", "binary"}
 BEHAVIOR_SELECTOR_CONTEXT_MESSAGE_LIMIT = 8
 BEHAVIOR_SELECTOR_CONTEXT_TEXT_LIMIT = 1800
+PLANNER_REPLY_TOOL_RETRY_HINT_PREFIX = "[Planner reply 工具纠正]"
+PLANNER_REPLY_TOOL_INTENT_MARKERS = (
+    "调用reply",
+    "调用 reply",
+    "执行reply",
+    "执行 reply",
+    "使用reply",
+    "使用 reply",
+    "call reply",
+    "call the reply",
+    "send a reply",
+)
+PLANNER_REPLY_TOOL_NEGATION_SUFFIXES = (
+    "不",
+    "不要",
+    "无需",
+    "不需要",
+    "不必",
+    "别",
+    "do not ",
+    "don't ",
+    "not ",
+    "never ",
+    "no need to ",
+)
 BEHAVIOR_SCENARIO_CONSTRAINT_TEXT = (
     "【行为表现情景分析任务约束】\n"
     "你现在不是主 planner，不要续写聊天、不要判断是否需要回复、不要选择行为表现。\n"
@@ -606,14 +631,59 @@ class MaisakaReasoningEngine:
             message for message in self._runtime._chat_history if not self._is_planner_no_tool_hint_message(message)
         ]
 
+    @staticmethod
+    def _planner_claims_reply_tool_call(planner_content: str) -> bool:
+        """判断 Planner 正文是否明确声称要调用 reply。"""
+
+        normalized_content = " ".join(planner_content.lower().split())
+        for marker in PLANNER_REPLY_TOOL_INTENT_MARKERS:
+            marker_start = normalized_content.find(marker)
+            while marker_start >= 0:
+                marker_prefix = normalized_content[:marker_start]
+                if not any(marker_prefix.endswith(suffix) for suffix in PLANNER_REPLY_TOOL_NEGATION_SUFFIXES):
+                    return True
+                marker_start = normalized_content.find(marker, marker_start + len(marker))
+        return False
+
+    def _append_planner_reply_tool_retry_hint(self) -> None:
+        """追加一次性纠正提示，要求 Planner 使用结构化 reply 工具调用。"""
+
+        self._clear_planner_no_tool_hints()
+        self._runtime._chat_history.append(
+            ReferenceMessage(
+                content=(
+                    "你刚才在分析文本中明确表示要调用 reply，但响应没有包含结构化 reply 工具调用，"
+                    "因此用户看不到任何回复。若你仍决定回复，请现在直接调用 reply；"
+                    "不要只在分析正文中描述、模拟或宣称调用。若重新判断后无需回复，可以只输出分析并结束本轮。"
+                ),
+                timestamp=datetime.now(),
+                reference_type=ReferenceMessageType.PLANNER_TOOL_HINT,
+                remaining_uses_value=None,
+                display_prefix=PLANNER_REPLY_TOOL_RETRY_HINT_PREFIX,
+            )
+        )
+
     def _handle_planner_no_tool_retry(
         self,
         planner_no_tool_count: int,
         planner_extra_lines: list[str],
+        planner_content: str,
     ) -> tuple[int, CycleEnd, bool]:
         """处理 Planner 未调用工具时的终止策略。"""
 
         planner_no_tool_count += 1
+        if planner_no_tool_count == 1 and self._planner_claims_reply_tool_call(planner_content):
+            self._append_planner_reply_tool_retry_hint()
+            cycle_end = CycleEnd(
+                "planner_missing_reply_tool_retry",
+                "Planner 声称调用 reply 但未返回结构化工具调用，已追加纠正提示并重试一次。",
+            )
+            planner_extra_lines.append("状态：reply 工具调用缺失，已纠正并重试一次")
+            logger.warning(
+                f"{self._runtime.log_prefix} Planner 声称调用 reply 但未返回结构化工具调用，已重试一次"
+            )
+            return planner_no_tool_count, cycle_end, False
+
         cycle_end = CycleEnd("planner_no_tool_end", "Planner本轮思考结束。")
         self._end_planner_no_tool_cycle(
             planner_extra_lines,
@@ -686,6 +756,7 @@ class MaisakaReasoningEngine:
         planner_no_tool_count, cycle_end, should_end_after_no_tool = self._handle_planner_no_tool_retry(
             planner_no_tool_count,
             planner_extra_lines,
+            planner_content,
         )
         state.cycle_end = cycle_end
         state.tool_result_summaries = []

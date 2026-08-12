@@ -1,12 +1,11 @@
 # 阿里云百炼精选模型模板
 # 由 apisource/manage.py --provider aliyun 读取，合并进 config/model_config.toml
 #
-# 本模板仅包含 MaiBot 需要通过百炼调用的 **多模态** 类模型：
+# 本模板包含 MaiBot 需要通过百炼调用的模型：
+#   - Chat（replyer / planner / utils）
 #   - VLM（视觉语言模型）
 #   - Voice（语音识别/全模态）
 #   - Embedding（文本向量化）
-#
-# 对话类任务（replyer / planner / utils）使用 DeepSeek，不在此处配置。
 #
 # 维护原则：
 #   1. 仅使用无日期戳的滚动模型名（如 qwen3-vl-plus 而非 qwen3-vl-plus-2025-12-19）
@@ -29,6 +28,37 @@ tool_argument_parse_mode = "auto"
 max_retry = 2
 timeout = 60
 retry_interval = 10
+
+
+# =============================================================================
+# Chat 模型
+# =============================================================================
+
+[[models]]
+model_identifier = "qwen3.7-flash"
+name = "qwen3.7-flash"
+tier = "low"
+category = "chat"
+price_in = 0.0
+price_out = 0.0
+visual = false
+temperature = 0.3
+
+[models.extra_params]
+enable_thinking = false
+
+[[models]]
+model_identifier = "qwen3.7-plus"
+name = "qwen3.7-plus"
+tier = "high"
+category = "chat"
+price_in = 0.0
+price_out = 0.0
+visual = false
+temperature = 0.3
+
+[models.extra_params]
+enable_thinking = false
 
 
 # =============================================================================
@@ -123,13 +153,13 @@ temperature = 0.3
 # Embedding 模型
 # =============================================================================
 
-# 通义文本向量化 v4：最新版，高质量
+# Qwen 3.7 文本向量模型
 [[models]]
-model_identifier = "text-embedding-v4"
-name = "text-embedding-v4"
+model_identifier = "qwen3.7-text-embedding"
+name = "qwen3.7-text-embedding"
 tier = "all"
 category = "embedding"
-price_in = 0.5
+price_in = 0.0
 price_out = 0.0
 visual = false
 temperature = 0.3

@@ -3,12 +3,11 @@
 由 apisource/manage.py 通过 ``--provider aliyun`` 载入并调用 ``build(...)``。
 
 本版本从 ``models.toml`` 读取人工维护的精选模型清单，不再扫描 ``response_cn_*.json``
-免费配额数据。模型清单仅包含 MaiBot 需要通过百炼调用的多模态类模型：
+免费配额数据。模型清单包含 MaiBot 需要通过百炼调用的模型：
+    - Chat（replyer / planner / utils）
     - VLM（视觉语言模型，visual=true）
     - Voice（语音/全模态）
     - Embedding（文本向量化）
-
-对话类任务（replyer / planner / utils）不在此处配置，由 DeepSeek provider 覆盖。
 
 合并语义（配合 _common.apply_bundle_to_config）：
     - ``is_managed_provider_name``: ``BaiLian`` 或以 ``BaiLian-`` 开头。
@@ -121,8 +120,7 @@ def _build_providers_aot(template: Dict[str, Any], provider_name: str, api_key: 
 def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[str]]:
     """百炼的 tier 任务槽分配规则。
 
-    百炼仅负责多模态类任务槽：vlm / voice / embedding。
-    对话类槽位（replyer / planner / utils）留空，由 DeepSeek provider 覆盖。
+    百炼负责对话和多模态任务槽。
 
     档位语义：
         low   → 各类别用最便宜的模型
@@ -132,6 +130,7 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
     """
 
     by_category: Dict[str, Dict[str, List[str]]] = {
+        "chat": {"low": [], "mid": [], "high": [], "all": []},
         "vlm": {"low": [], "mid": [], "high": [], "all": []},
         "voice": {"low": [], "mid": [], "high": [], "all": []},
         "embedding": {"low": [], "mid": [], "high": [], "all": []},
@@ -165,34 +164,40 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
         return out
 
     if tier == "low":
+        chat = chain("chat", "low")
         vlm = chain("vlm", "low")
         voice = chain("voice", "low")
         embedding = chain("embedding", "low")
     elif tier == "mid":
+        chat = chain("chat", "low", "high")
         vlm = chain("vlm", "low", "mid")
         voice = chain("voice", "low", "mid")
         embedding = chain("embedding", "low", "mid")
     elif tier == "high":
+        chat = chain("chat", "high", "low")
         vlm = chain("vlm", "high", "mid", "low")
         voice = chain("voice", "mid", "low")
         embedding = chain("embedding", "high", "mid")
     elif tier == "ultra":
+        chat = chain("chat", "high")
         vlm = chain("vlm", "high")
         voice = chain("voice", "mid")
         embedding = chain("embedding", "high")
     elif tier == "free":
+        chat = chain("chat", "low", "high")
         vlm = chain("vlm", "low", "mid", "high")
         voice = chain("voice", "low", "mid")
         embedding = chain("embedding", "low", "mid", "high")
     else:
+        chat = chain("chat", "low", "high")
         vlm = chain("vlm", "mid", "low", "high")
         voice = chain("voice", "low", "mid")
         embedding = chain("embedding", "mid", "low")
 
     return {
-        "replyer": [],
-        "planner": [],
-        "utils": [],
+        "replyer": chat,
+        "planner": chat,
+        "utils": chat,
         "vlm": vlm,
         "voice": voice,
         "embedding": embedding,
@@ -230,7 +235,7 @@ def build(args, *, apisource_dir: Path) -> ProviderBundle:
         models_aot=models_aot,
         providers_aot=providers_aot,
         tier_mapping=dict(tier_mapping),
-        embedding_name="text-embedding-v4",
+        embedding_name="qwen3.7-text-embedding",
         tier=tier if args.tier else "none",
         is_managed_provider_name=_is_managed_provider_name,
     )
