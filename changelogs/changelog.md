@@ -16,7 +16,7 @@
 
 - 正式支持 Response 端点。
 - 模型上下文和输出升级为扁平 Item-first 结构，独立保留正文、推理、函数调用、工具结果与 Provider 原生活动；列表位置负责顺序，`call_id` 和逻辑轮次负责工具关系。
-- 默认模型配置新增百炼 `qwen3.7-flash`、`qwen3.7-plus` 与 `qwen3.7-text-embedding`，并同步到梯度模型方案；降低 `deepseek-v4-flash` 默认温度以提升工具调用稳定性。
+- 默认模型配置新增百炼 `qwen3.7-flash`、`qwen3.7-plus` 与 `qwen3.7-text-embedding`，按华北2（北京）原价首档记录计费单价，并同步到梯度模型方案；降低 `deepseek-v4-flash` 默认温度以提升工具调用稳定性。
 
 ## 表达方式
 

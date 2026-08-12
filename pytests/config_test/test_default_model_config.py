@@ -15,8 +15,11 @@ def test_default_model_config_includes_qwen37_models() -> None:
     assert config.model_task_config.utils.model_list[:2] == ["qwen3.7-flash", "qwen3.7-plus"]
     assert config.model_task_config.embedding.model_list == ["qwen3.7-text-embedding"]
     assert models["qwen3.7-flash"].model_identifier == "qwen3.7-flash"
+    assert (models["qwen3.7-flash"].price_in, models["qwen3.7-flash"].price_out) == (0.2, 0.8)
     assert models["qwen3.7-plus"].model_identifier == "qwen3.7-plus"
+    assert (models["qwen3.7-plus"].price_in, models["qwen3.7-plus"].price_out) == (2.0, 8.0)
     assert models["qwen3.7-text-embedding"].model_identifier == "qwen3.7-text-embedding"
+    assert (models["qwen3.7-text-embedding"].price_in, models["qwen3.7-text-embedding"].price_out) == (0.5, 0.0)
 
 
 def test_aliyun_tiers_include_qwen37_chat_and_embedding_models() -> None:

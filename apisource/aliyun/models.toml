@@ -39,8 +39,9 @@ model_identifier = "qwen3.7-flash"
 name = "qwen3.7-flash"
 tier = "low"
 category = "chat"
-price_in = 0.0
-price_out = 0.0
+# 华北2（北京）原价首档（0 < Token <= 32K），单位：元/百万 Token。
+price_in = 0.2
+price_out = 0.8
 visual = false
 temperature = 0.3
 
@@ -52,8 +53,9 @@ model_identifier = "qwen3.7-plus"
 name = "qwen3.7-plus"
 tier = "high"
 category = "chat"
-price_in = 0.0
-price_out = 0.0
+# 华北2（北京）原价首档（0 < Token <= 256K），单位：元/百万 Token。
+price_in = 2.0
+price_out = 8.0
 visual = false
 temperature = 0.3
 
@@ -159,7 +161,8 @@ model_identifier = "qwen3.7-text-embedding"
 name = "qwen3.7-text-embedding"
 tier = "all"
 category = "embedding"
-price_in = 0.0
+# 华北2（北京）原价，单位：元/百万 Token。
+price_in = 0.5
 price_out = 0.0
 visual = false
 temperature = 0.3
