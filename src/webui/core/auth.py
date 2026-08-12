@@ -32,6 +32,12 @@ def auth_cookie() -> Any:
     return Cookie(None, alias=COOKIE_NAME)
 
 
+def get_auth_cookie_value(request: Request) -> Optional[str]:
+    """从请求中读取当前 WebUI 实例的认证 Cookie。"""
+
+    return request.cookies.get(COOKIE_NAME)
+
+
 def _is_secure_environment() -> bool:
     """
     检测是否应该启用安全 Cookie（HTTPS）

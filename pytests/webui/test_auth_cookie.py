@@ -1,8 +1,9 @@
 from unittest.mock import patch
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
+from src.webui.app import create_app
 from src.webui.core import auth as auth_module
 from src.webui.dependencies import require_auth
 
@@ -52,3 +53,28 @@ def test_set_and_clear_auth_cookie_use_current_instance_name() -> None:
     assert set_cookie_header.startswith(f"{auth_module.COOKIE_NAME}=test-token;")
     assert clear_cookie_header.startswith(f'{auth_module.COOKIE_NAME}="";')
     assert "Max-Age=0" in clear_cookie_header
+
+
+def test_get_auth_cookie_value_reads_current_instance_cookie() -> None:
+    app = FastAPI()
+
+    @app.get("/")
+    async def read_cookie(request: Request) -> dict[str, str | None]:
+        return {"token": auth_module.get_auth_cookie_value(request)}
+
+    client = TestClient(app)
+    client.cookies.set(auth_module.COOKIE_NAME, "current-token")
+
+    assert client.get("/").json() == {"token": "current-token"}
+
+
+def test_create_app_registers_dashboard_api_routes() -> None:
+    app = create_app(enable_static=False)
+    routes = {
+        (method, route.path)
+        for route in app.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert ("GET", "/api/webui/auth/check") in routes
+    assert ("GET", "/api/webui/plugins/config/{plugin_id}/bundle") in routes
