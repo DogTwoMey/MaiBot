@@ -4,9 +4,6 @@
 以及插件依赖/Python 包依赖的解析逻辑。
 """
 
-import json
-import re
-import tomllib
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -17,6 +14,10 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+import json
+import re
+import tomllib
 
 from src.common.logger import get_logger
 from src.plugin_runtime import detect_host_application_version

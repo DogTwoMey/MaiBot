@@ -10,6 +10,25 @@
 
 ---
 
+## 2026-06-22 upstream 同步基线
+
+本次同步依次合并：
+
+- `refs/remotes/upstream/main`：`ca4b0720`
+- `refs/remotes/upstream/dev`：`2193a39d`
+
+已采用 dev 的 Maisaka 新控制模式、思考阶段工具调用、表达向量选取、行为/黑话学习重构、v31 数据库迁移，以及对应的 WebUI 和多语言 prompt 更新。冲突处理仍保留以下 fork 约束：
+
+- D3：被 @ 或明确提及时，低 `talk_value` 场景仍可强制唤醒；与新模式策略并存。
+- D4：不恢复 `_log_prompt_cache_usage` 的 INFO 日志。
+- D5：发送 LLM 请求前继续执行 tool result 邻接整理和孤儿 tool call 裁剪。
+- D7：`chat.talk_value_rules` 继续使用 `ChatTalkValueRulesVisualHook`。
+- 数据库 schema 使用 v31，配置模板版本使用 `8.14.11`。
+
+`src/A_memorix/core/` 的向量存储和摘要导入改动来自 MaiBot upstream dev，而非 fork 本地补丁；后续同步时仍需确认这些实现已与 A_Memorix `MaiBot_branch` 对齐。
+
+---
+
 ## 🗂 索引
 
 | 编号 | 分歧点 | 涉及模块 | 状态 |
@@ -18,7 +37,7 @@
 | [D2](#d2-webui-静态资源源) | WebUI 静态资源源（本地 dist only） | `src/webui/app.py` | 已落地 |
 | [D3](#d3-提及--talk_value-低频时保活) | @/mention 在 talk_value 低时的保活 | `src/maisaka/runtime.py` | 已落地 |
 | [D4](#d4-kv-cache-命中率日志revert) | KV cache 命中率日志 (长期 revert) | `src/maisaka/chat_loop_service.py` | ⚠️ 每次 sync 都会被撤销 |
-| [D5](#d5-孤儿-tool-call-运行时兜底) | 孤儿 tool_call 的运行时兜底 | `src/maisaka/chat_loop_service.py` + `history_utils` | 已落地 |
+| [D5](#d5-孤儿-tool-call-运行时兜底) | 孤儿 tool_call 的运行时兜底 | `src/maisaka/chat_loop_service.py` + `context/history.py` | 已落地 |
 | [D6](#d6-talk_value-精度) | `talk_value` 配置精度 0.01 | `src/config/official_configs.py` | 已落地 |
 | [D7](#d7-group-chat-rules-可视化-hook) | Talk Value Rules 可视化 Hook | `dashboard/src/routes/config/bot/hooks/` | 已落地 |
 | [D8](#d8-apisource-切换与计费模板) | APISource 切换脚本与计费模板 | `apisource/` | 已落地 |
@@ -26,7 +45,9 @@
 | [D10](#d10-deepseek-v4-flash-payload-补丁) | DeepSeek v4-flash payload 修复 | `src/llm_models/` | 已落地 |
 | [D11](#d11-bot-级-user-id-感知) | Bot 级 user_id 感知（同 id 不同名问题） | `src/maisaka/runtime.py` | 已落地 |
 | [D12](#d12-启发自-fork-但上游已官方支持的项) | 启发自 fork、但上游已官方支持的项 | 多处 | 合并时需转用上游方案 |
-| [D13](#d13-合并时需特别注意的-convergent-bug-修复) | 合并时需特别注意的 convergent bug 修复 | — | 每次 sync 检查 |
+| [D13](#d13-已收敛的表达与黑话学习开关修复) | 已收敛的表达与黑话学习开关修复 | `src/maisaka/runtime.py` | 已转用 upstream 拆分方案 |
+| [D14](#d14-德蕾琪娜自我视觉识别插件分支) | 德蕾琪娜自我视觉识别插件分支 | `plugins/sengokucola_self-identity-plugin/` | 插件分支落地 |
+| [D15](#d15-消息合批静默窗口与最大等待上限) | 消息合批静默窗口与最大等待上限 | `src/maisaka/runtime.py` + `ChatReplyTimingConfig` | 已落地 |
 
 ---
 
@@ -39,11 +60,7 @@
 - `to_stored_path(absolute_path) -> str`：入库前把项目根替换为项目相对路径（`data/emoji/xxx.jpg`）
 - `resolve_stored_path(stored_path) -> Path`：读取时按当前项目根解析回绝对路径
 
-**接入点**：
-- [`src/webui/routers/emoji/routes.py`](../../src/webui/routers/emoji/routes.py)（5 个使用点）
-- [`src/common/data_models/image_data_model.py`](../../src/common/data_models/image_data_model.py)
-- [`src/common/utils/utils_file.py`](../../src/common/utils/utils_file.py)
-- [`src/emoji_system/emoji_manager.py`](../../src/emoji_system/emoji_manager.py)
+**接入点**：当前直接接入集中在 [`src/common/utils/utils_file.py`](../../src/common/utils/utils_file.py)，二进制文件写入时调用 `to_stored_path`，读取时调用 `resolve_stored_path`；图片和表情包模块通过该公共文件接口间接使用路径抽象。
 
 **⚠️ 合并风险**：upstream 周期性会独立改 emoji 相关的路径计算（如修正 `PROJECT_ROOT` 的 parent 链、新增 `_resolve_existing_emoji_path` 本地 helper）。自动合并会**留下两套机制共存**，需要在每次 sync 后手工巡检 `emoji_system/emoji_manager.py` 是否还有 `Path(raw).absolute().resolve()` 之类绕过 path_utils 的调用。
 
@@ -109,7 +126,7 @@ def _resolve_static_path() -> Path | None:
 **fork 方案**：在 `chat_loop_service.py` 发送前兜底：
 1. `_enforce_tool_result_adjacency(messages)` — 把散落的 `role=tool` 响应重排紧贴各自的 assistant
 2. `_prune_orphan_tool_calls(messages)` — 清除没有响应的 tool_call
-3. [`src/maisaka/history_utils.py::normalize_tool_result_order`](../../src/maisaka/history_utils.py) — 历史入上下文时同步做一次排序
+3. [`src/maisaka/context/history.py::normalize_tool_result_order`](../../src/maisaka/context/history.py) — 历史入上下文时同步做一次排序
 
 **设计理念**：
 - 运行时兜底 ≠ 上游缺失。upstream 倾向于"发生时修业务上游路径"，fork 倾向于"在调用 LLM 前绝对保证格式正确"——兜底是**最后一道防线**
@@ -194,6 +211,38 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 
 ---
 
+## D14: 德蕾琪娜自我视觉识别插件分支
+
+**起因**：仅靠 prompt 做“这张图是不是我”的判断时容易两头出错：过严时会把已经在本地图库中的德蕾琪娜二创图否掉，过宽时又会把普通银发少女认作自己。
+
+**fork 方案**：在 `plugins/sengokucola_self-identity-plugin/` 的 `codex/self-visual-identity` 分支上扩展插件工具，而不是改主程序视觉链路：
+
+- 新增 `identify_self_in_image` 工具：先对目标图与 `self_image/` 原图做 SHA1 精确匹配，再分批调用 VLM 与图库缩略图比对。
+- VLM prompt 必须分别输出三项评分：发型/发色/发饰、瞳色、服装/装束结构；闭眼或低清时瞳色不可编造，普通战术服、枪械、兔主题、银白发和幼态只作为弱辅助或负向区分线索。
+- 工具返回 `confirmed / likely / possible / unlikely / not_self`，并携带 `component_scores`；插件侧会按分项阈值二次收紧模型结论，避免单项相似被抬高成确认。
+- 本地 `bot_config.toml` 和 `data/custom_prompts/zh-CN/*` 已调整为：需要自我图像判断时优先调用工具；单凭银发/幼态不强认，但多项核心视觉锚点接近时不再因为缺少标题文字直接否定。
+
+**合并策略**：主程序上游合并时不应把这项当成核心 runtime 分歧；它是本地插件仓库分支能力。若 upstream 后续提供官方视觉 identity stage，可以把 prompt 调用迁移到官方能力，并保留 `self_image` 图库作为参考数据源。
+
+---
+
+## D15: 消息合批静默窗口与最大等待上限
+
+**起因**：用户连续发送“图片/链接/卡片 + 补充文字”时，上游默认会在第一条消息到达后立即进入 Planner，容易把补充说明放到下一轮处理。典型表现是先对无文字图片做自我辨识或猜测，随后才看到用户紧跟的角色名、出处或问题。
+
+**fork 方案**：在 [`src/maisaka/runtime.py`](../../src/maisaka/runtime.py) 为消息触发的 Planner 轮次增加可配置的合批等待：
+
+- `message_debounce_seconds`：最后一条消息后安静多久再进入 Planner，默认 `4.0` 秒。
+- `message_debounce_max_seconds`：同一波连续发言最多等待多久，默认 `10.0` 秒，避免群聊高活跃时静默窗口被无限刷新导致 bot 无暇回复。
+- 第一条唤醒消息也会标记静默等待，不再只在运行中被打断时等待。
+- 等待状态清理时同步清除 `_message_debounce_started_at`，防止下一波消息继承旧时间戳。
+
+**前端配置**：两个字段都维护在 [`ChatReplyTimingConfig`](../../src/config/official_configs.py) 中，并带有 `json_schema_extra`，WebUI 通过配置 schema 自动展示在“聊天 / 什么时候发言”的高级设置里。`pytests/webui/test_config_schema.py` 覆盖了字段、控件类型、图标和约束范围。
+
+**合并策略**：如果 upstream 后续实现了类似消息批处理机制，优先复用 upstream 调度入口，但保留“静默窗口 + 最大等待上限”的双阈值语义；不要退回只按最后一条消息无限刷新等待的实现。
+
+---
+
 ## D12: 启发自 fork、但上游已官方支持的项
 
 这些项当初在 fork 侧做了主动改造，后来 upstream 用类似思路或更好方案官方化了。**下次合并时应当切换到上游方案**，避免长期维护两套：
@@ -207,34 +256,34 @@ uv run python apisource/manage.py --provider deepseek --tier high --apply
 
 ---
 
-## D13: 合并时需特别注意的 convergent bug 修复
+## D13: 已收敛的表达与黑话学习开关修复
 
-**这些是 fork 和 upstream 都触到的静默 bug，upstream 已修但 fork 需跟进**：
+旧实现由 `ExpressionConfigUtils.get_expression_config_for_chat` 一次返回表达使用、表达学习和黑话学习三个开关，fork 曾因返回值顺序错误交换后两个开关。
 
-| 文件 | Bug | upstream 修复 |
-|---|---|---|
-| `src/maisaka/runtime.py` L120 | `ExpressionConfigUtils.get_expression_config_for_chat` 的返回值顺序**是 `(expr_use, expr_learn, jargon_learn)`**，但 fork 侧（继承自较早 upstream）用的是 `(expr_use, jargon_learn, expr_learn)`——**表达学习开关和黑话学习开关一直互换** | upstream 已修。合并时必须跟 upstream |
+upstream dev 已拆分职责：
 
-**每次合并后的验证命令**：
-```bash
-grep -n "ExpressionConfigUtils.get_expression_config_for_chat" src/maisaka/runtime.py
-# 应返回：expr_use, expr_learn, jargon_learn（正确顺序）
-```
+- `ExpressionConfigUtils.get_expression_config_for_chat` 只返回表达使用和表达学习。
+- `JargonConfigUtils.get_jargon_config_for_chat` 独立解析黑话学习。
+- `runtime.py` 分别创建 `ExpressionLearner` 与 `JargonLearner`。
+
+本 fork 已转用该拆分方案，不应再恢复旧的三返回值兼容代码。
 
 ---
 
 ## 🧭 合并前必做清单
 
-每次 `sync_upstream.py` 或手动 `git merge upstream/main` **之前**先跑一次：
+每次 `sync_upstream.py` 或手动合并 upstream **之前**先跑一次。仓库历史上存在名为 `upstream/main`、`upstream/dev` 的本地分支，因此命令必须使用完整远端引用 `refs/remotes/upstream/*`：
 
 ```bash
 # 1. 预合并冲突扫描
 git fetch upstream
-git merge-tree $(git merge-base main upstream/main) main upstream/main \
+git merge-tree $(git merge-base main refs/remotes/upstream/main) main refs/remotes/upstream/main \
   | grep "^changed in both" | wc -l
 
-# 2. 预览有哪些本 fork 关键文件被 upstream 动了
-git diff --name-only $(git merge-base main upstream/main)..upstream/main | grep -E \
+# 2. 分别预览 main 和 dev 对本 fork 关键文件的改动
+git diff --name-only $(git merge-base main refs/remotes/upstream/main)..refs/remotes/upstream/main | grep -E \
+  "runtime.py|chat_loop_service.py|app.py|official_configs.py|path_utils|emoji_manager"
+git diff --name-only $(git merge-base main refs/remotes/upstream/dev)..refs/remotes/upstream/dev | grep -E \
   "runtime.py|chat_loop_service.py|app.py|official_configs.py|path_utils|emoji_manager"
 ```
 
@@ -244,20 +293,25 @@ git diff --name-only $(git merge-base main upstream/main)..upstream/main | grep 
 # 1. KV cache 日志是否被带回来（D4）
 grep -n "_log_prompt_cache_usage" src/maisaka/chat_loop_service.py  # 应空
 
-# 2. ExpressionConfig 顺序（D13）
-grep "expr_use.*=.*ExpressionConfigUtils" src/maisaka/runtime.py    # 应见 expr_learn, jargon_learn 顺序
+# 2. 表达/黑话学习已拆分（D13）
+grep -n "ExpressionConfigUtils\|JargonConfigUtils" src/maisaka/runtime.py  # 应同时存在
 
 # 3. Visual Hook 接回（D7）
-grep -n "ChatTalkValueRulesHook" dashboard/src/routes/config/bot.tsx  # 应只见 Visual 版本
+grep -n "ChatTalkValueRulesVisualHook\|ChatTalkValueRulesHook" dashboard/src/routes/config/bot.tsx  # 应只见 Visual 版本
 
 # 4. 本地 dist 策略（D2）
 grep -n "pip install maibot-dashboard" src/webui/app.py  # 应空
 
 # 5. 孤儿 tool call 兜底（D5）
-grep -n "normalize_tool_result_order\|_enforce_tool_result_adjacency" src/maisaka/chat_loop_service.py  # 应在
+grep -n "_enforce_tool_result_adjacency\|_prune_orphan_tool_calls" src/maisaka/chat_loop_service.py  # 两者都应在
+grep -n "normalize_tool_result_order" src/maisaka/context/history.py  # 应在
 
 # 6. path_utils 接入点（D1）
-grep -n "resolve_stored_path\|to_stored_path" src/webui/routers/emoji/routes.py  # 应至少 5 处
+grep -n "resolve_stored_path\|to_stored_path" src/common/utils/utils_file.py  # 应有导入、读、写三处
+
+# 7. 数据库迁移和配置模板版本
+grep -n "LATEST_SCHEMA_VERSION = 31" src/common/database/migrations/builtin.py
+grep -n 'CONFIG_VERSION: str = "8.14.11"' src/config/config.py
 ```
 
 ---

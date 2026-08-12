@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MaiCore & NapCat Adapter一键安装脚本 by Cookie_987
+# MaiBot 一键安装脚本 by Cookie_987
 # 适用于macOS/Arch/Ubuntu 24.10/Debian 12/CentOS 9
 # 请小心使用任何一键脚本！
 
@@ -26,7 +26,6 @@ REQUIRED_PACKAGES_MACOS="git gnupg python"
 # 服务名称
 SERVICE_NAME="maicore"
 SERVICE_NAME_WEB="maicore-web"
-SERVICE_NAME_NBADAPTER="maibot-napcat-adapter"
 
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_HOME="$(eval echo "~${SERVICE_USER}" 2>/dev/null)"
@@ -49,16 +48,13 @@ fi
 LAUNCHD_DOMAIN=""
 LAUNCHD_AGENT_DIR=""
 LAUNCHD_LABEL_MAIN="com.maicore.${SERVICE_NAME}"
-LAUNCHD_LABEL_NBADAPTER="com.maicore.${SERVICE_NAME_NBADAPTER}"
 LAUNCHD_PLIST_MAIN=""
-LAUNCHD_PLIST_NBADAPTER=""
 
 if [[ "$IS_MACOS" == true ]]; then
     SERVICE_UID="$(id -u "${SERVICE_USER}" 2>/dev/null || id -u)"
     LAUNCHD_DOMAIN="gui/${SERVICE_UID}"
     LAUNCHD_AGENT_DIR="${SERVICE_HOME}/Library/LaunchAgents"
     LAUNCHD_PLIST_MAIN="${LAUNCHD_AGENT_DIR}/${LAUNCHD_LABEL_MAIN}.plist"
-    LAUNCHD_PLIST_NBADAPTER="${LAUNCHD_AGENT_DIR}/${LAUNCHD_LABEL_NBADAPTER}.plist"
 fi
 
 get_required_packages() {
@@ -153,9 +149,6 @@ launchd_label_for_service() {
     ${SERVICE_NAME})
         echo "$LAUNCHD_LABEL_MAIN"
         ;;
-    ${SERVICE_NAME_NBADAPTER})
-        echo "$LAUNCHD_LABEL_NBADAPTER"
-        ;;
     *)
         return 1
         ;;
@@ -167,9 +160,6 @@ launchd_plist_for_service() {
     case "$service" in
     ${SERVICE_NAME})
         echo "$LAUNCHD_PLIST_MAIN"
-        ;;
-    ${SERVICE_NAME_NBADAPTER})
-        echo "$LAUNCHD_PLIST_NBADAPTER"
         ;;
     *)
         return 1
@@ -262,34 +252,8 @@ create_launchd_services() {
 </plist>
 EOF
 
-    cat > "${LAUNCHD_PLIST_NBADAPTER}" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${LAUNCHD_LABEL_NBADAPTER}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${INSTALL_DIR}/venv/bin/python3</string>
-    <string>main.py</string>
-  </array>
-  <key>WorkingDirectory</key>
-  <string>${INSTALL_DIR}/MaiBot-Napcat-Adapter</string>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${INSTALL_DIR}/logs/${SERVICE_NAME_NBADAPTER}.log</string>
-  <key>StandardErrorPath</key>
-  <string>${INSTALL_DIR}/logs/${SERVICE_NAME_NBADAPTER}.error.log</string>
-</dict>
-</plist>
-EOF
-
     if [[ "$(id -u)" -eq 0 && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-        chown "${SUDO_USER}" "${LAUNCHD_PLIST_MAIN}" "${LAUNCHD_PLIST_NBADAPTER}" "${LAUNCHD_AGENT_DIR}" 2>/dev/null || true
+        chown "${SUDO_USER}" "${LAUNCHD_PLIST_MAIN}" "${LAUNCHD_AGENT_DIR}" 2>/dev/null || true
     fi
 }
 
@@ -315,16 +279,13 @@ load_install_info() {
 # 显示管理菜单
 show_menu() {
     while true; do
-        choice=$(whiptail --title "MaiCore管理菜单" --menu "请选择要执行的操作：" 15 60 7 \
+        choice=$(whiptail --title "MaiCore管理菜单" --menu "请选择要执行的操作：" 15 60 6 \
             "1" "启动MaiCore" \
             "2" "停止MaiCore" \
             "3" "重启MaiCore" \
-            "4" "启动NapCat Adapter" \
-            "5" "停止NapCat Adapter" \
-            "6" "重启NapCat Adapter" \
-            "7" "拉取最新MaiCore仓库" \
-            "8" "切换分支" \
-            "9" "退出" 3>&1 1>&2 2>&3)
+            "4" "拉取最新MaiCore仓库" \
+            "5" "切换分支" \
+            "6" "退出" 3>&1 1>&2 2>&3)
 
         [[ $? -ne 0 ]] && exit 0
 
@@ -342,24 +303,12 @@ show_menu() {
                 whiptail --msgbox "🔄MaiCore已重启" 10 60
                 ;;
             4)
-                start_service "${SERVICE_NAME_NBADAPTER}"
-                whiptail --msgbox "✅NapCat Adapter已启动" 10 60
-                ;;
-            5)
-                stop_service "${SERVICE_NAME_NBADAPTER}"
-                whiptail --msgbox "🛑NapCat Adapter已停止" 10 60
-                ;;
-            6)
-                restart_service "${SERVICE_NAME_NBADAPTER}"
-                whiptail --msgbox "🔄NapCat Adapter已重启" 10 60
-                ;;
-            7)
                 update_dependencies
                 ;;
-            8)
+            5)
                 switch_branch
                 ;;
-            9)
+            6)
                 exit 0
                 ;;
             *)
@@ -780,7 +729,7 @@ run_installation() {
     # 确认安装
     confirm_install() {
         local confirm_msg="请确认以下更改：\n\n"
-        confirm_msg+="📂 安装MaiCore、NapCat Adapter到: $INSTALL_DIR\n"
+        confirm_msg+="📂 安装MaiCore（含默认 NapCat Adapter 插件）到: $INSTALL_DIR\n"
         confirm_msg+="🔀 分支: $BRANCH\n"
         [[ $IS_INSTALL_DEPENDENCIES == true ]] && confirm_msg+="📦 安装依赖：${missing_packages[@]}\n"
         [[ $IS_INSTALL_NAPCAT == true ]] && confirm_msg+="📦 安装额外组件：\n"
@@ -838,13 +787,6 @@ run_installation() {
         exit 1
     }
 
-    echo -e "${GREEN}克隆 nonebot-plugin-maibot-adapters 仓库...${RESET}"
-    git clone $GITHUB_REPO/MaiM-with-u/MaiBot-Napcat-Adapter.git || {
-        echo -e "${RED}克隆 MaiBot-Napcat-Adapter.git 仓库失败！${RESET}"
-        exit 1
-    }
-
-
     echo -e "${GREEN}安装Python依赖...${RESET}"
     select_pypi_index_url
     pip install -r MaiBot/requirements.txt
@@ -856,11 +798,6 @@ run_installation() {
     echo -e "${GREEN}安装maim_message依赖...${RESET}"
     cd maim_message
     uv pip install "${UV_PIP_INDEX_OPTION[@]}" -e .
-    cd ..
-
-    echo -e "${GREEN}部署MaiBot Napcat Adapter...${RESET}"
-    cd MaiBot-Napcat-Adapter
-    uv pip install "${UV_PIP_INDEX_OPTION[@]}" -r requirements.txt
     cd ..
 
     echo -e "${GREEN}同意协议...${RESET}"
@@ -878,13 +815,12 @@ run_installation() {
         echo -e "${GREEN}创建 launchctl 服务...${RESET}"
         create_launchd_services
         stop_service "${SERVICE_NAME}" >/dev/null 2>&1 || true
-        stop_service "${SERVICE_NAME_NBADAPTER}" >/dev/null 2>&1 || true
     else
         echo -e "${GREEN}创建系统服务...${RESET}"
         cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
 Description=MaiCore
-After=network.target ${SERVICE_NAME_NBADAPTER}.service
+After=network.target
 
 [Service]
 Type=simple
@@ -913,22 +849,6 @@ EOF
 # WantedBy=multi-user.target
 # EOF
 
-        cat > /etc/systemd/system/${SERVICE_NAME_NBADAPTER}.service <<EOF
-[Unit]
-Description=MaiBot Napcat Adapter
-After=network.target mongod.service ${SERVICE_NAME}.service
-
-[Service]
-Type=simple
-WorkingDirectory=${INSTALL_DIR}/MaiBot-Napcat-Adapter
-ExecStart=$INSTALL_DIR/venv/bin/python3 main.py
-Restart=always
-RestartSec=10s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
         systemctl daemon-reload
     fi
 
@@ -936,9 +856,9 @@ EOF
     save_install_info
 
     if [[ "$IS_MACOS" == true ]]; then
-        whiptail --title "🎉 安装完成" --msgbox "MaiCore安装完成！\n已创建 launchctl 服务：${LAUNCHD_LABEL_MAIN}、${LAUNCHD_LABEL_NBADAPTER}\n\n首次加载：launchctl bootstrap ${LAUNCHD_DOMAIN} ${LAUNCHD_PLIST_MAIN}\n重启服务：launchctl kickstart -k ${LAUNCHD_DOMAIN}/${LAUNCHD_LABEL_MAIN}\n查看状态：launchctl print ${LAUNCHD_DOMAIN}/${LAUNCHD_LABEL_MAIN}" 14 100
+        whiptail --title "🎉 安装完成" --msgbox "MaiCore安装完成！默认 NapCat Adapter 插件将随 MaiCore 启动。\n已创建 launchctl 服务：${LAUNCHD_LABEL_MAIN}\n\n首次加载：launchctl bootstrap ${LAUNCHD_DOMAIN} ${LAUNCHD_PLIST_MAIN}\n重启服务：launchctl kickstart -k ${LAUNCHD_DOMAIN}/${LAUNCHD_LABEL_MAIN}\n查看状态：launchctl print ${LAUNCHD_DOMAIN}/${LAUNCHD_LABEL_MAIN}" 14 100
     else
-        whiptail --title "🎉 安装完成" --msgbox "MaiCore安装完成！\n已创建系统服务：${SERVICE_NAME}、${SERVICE_NAME_WEB}、${SERVICE_NAME_NBADAPTER}\n\n使用以下命令管理服务：\n启动服务：systemctl start ${SERVICE_NAME}\n查看状态：systemctl status ${SERVICE_NAME}" 14 60
+        whiptail --title "🎉 安装完成" --msgbox "MaiCore安装完成！默认 NapCat Adapter 插件将随 MaiCore 启动。\n已创建系统服务：${SERVICE_NAME}、${SERVICE_NAME_WEB}\n\n使用以下命令管理服务：\n启动服务：systemctl start ${SERVICE_NAME}\n查看状态：systemctl status ${SERVICE_NAME}" 14 60
     fi
 }
 

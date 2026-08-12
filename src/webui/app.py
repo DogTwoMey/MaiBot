@@ -24,10 +24,12 @@ logger = get_logger("webui.app")
 
 
 _DASHBOARD_PACKAGE_NAME = "maibot-dashboard"
+_DASHBOARD_MODULE_NAME = "maibot_dashboard"
 _LOCAL_DASHBOARD_ENV = "MAIBOT_WEBUI_USE_LOCAL_DASHBOARD"
 _STATISTICS_REPORT_PATH_ENV = "MAIBOT_STATISTICS_REPORT_PATH"
 _DEFAULT_STATISTICS_REPORT_PATH = "maibot_statistics.html"
 _MANUAL_INSTALL_COMMAND = f"pip install {_DASHBOARD_PACKAGE_NAME}"
+
 
 def _resolve_safe_static_file_path(static_path: Path, full_path: str) -> Path | None:
     static_root = static_path.resolve()
@@ -272,6 +274,14 @@ def _log_webui_version_compatibility(static_path: Path) -> None:
 
 
 def _resolve_static_path() -> Path | None:
+    try:
+        dashboard_module = import_module(_DASHBOARD_MODULE_NAME)
+        package_dist = Path(dashboard_module.get_dist_path())
+        if package_dist.is_dir():
+            return package_dist
+    except (AttributeError, ImportError, OSError, TypeError):
+        pass
+
     if _is_local_dashboard_enabled():
         static_path = _get_project_root() / "dashboard" / "dist"
         if static_path.is_dir() and (static_path / "index.html").exists():

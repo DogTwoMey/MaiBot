@@ -11,7 +11,7 @@ Usage:
     python scripts/sync_upstream.py                         # dry-run: just show diffs
     python scripts/sync_upstream.py --apply                 # merge + push all
     python scripts/sync_upstream.py --apply --rebase        # rebase instead of merge
-    python scripts/sync_upstream.py --only adapter          # single submodule
+    python scripts/sync_upstream.py --only napcat-src       # single submodule
     python scripts/sync_upstream.py --apply --skip-main     # submodules only
 """
 

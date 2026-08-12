@@ -9,7 +9,7 @@
 - ``host_application``: 补齐 ``max_version``
 - ``sdk``: 默认 ``2.0.0`` ~ ``2.99.99``
 - ``dependencies``: 归一化为 ``List[Dict]`` 形式
-- ``capabilities``: 保留已有；v1 无此概念时留空，并通过 context.warn 提醒
+- ``capabilities``: 保留已有，并补充旧版适配器初始化所需的组件快照能力
 - ``i18n``: 聚合 v1 的顶层 ``default_locale`` / ``locales_path`` / ``supported_locales``
 - ``id``: 强制小写 + ``-`` 分隔；自动替换下划线
 - 清理 v1 专有字段：``keywords`` / ``categories`` / ``repository_url`` /
@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from .base import MigrationContext, VersionMigrator
 from .registry import register_migrator
@@ -63,6 +63,8 @@ _V2_ALLOWED_TOPLEVEL_KEYS: frozenset[str] = frozenset(
         "id",
     }
 )
+
+_LEGACY_ADAPTER_REQUIRED_CAPABILITIES: tuple[str, ...] = ("component.get_all_plugins",)
 
 
 @register_migrator
@@ -205,12 +207,15 @@ class V1ToV2Migrator(VersionMigrator):
     def _build_capabilities(manifest: Dict[str, Any], context: MigrationContext) -> List[str]:
         caps = manifest.get("capabilities")
         if isinstance(caps, list):
-            return [str(c) for c in caps if c]
-        context.warn(
-            "capabilities 在 v1 中不存在；已置为空列表。"
-            "运行期调用未声明能力时，请根据日志提示补齐。"
-        )
-        return []
+            normalized = [str(capability) for capability in caps if capability]
+        else:
+            normalized = []
+            context.warn("capabilities 在 v1 中不存在；插件业务能力仍需根据运行日志显式补齐。")
+
+        for capability in _LEGACY_ADAPTER_REQUIRED_CAPABILITIES:
+            if capability not in normalized:
+                normalized.append(capability)
+        return normalized
 
     @staticmethod
     def _build_i18n(manifest: Dict[str, Any]) -> Dict[str, Any]:

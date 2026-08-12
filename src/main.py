@@ -227,7 +227,6 @@ class MainSystem:
                 periodic_emoji_cache_cleanup(),
                 periodic_image_cache_cleanup(),
                 self.app.run(),
-                self.server.run(),
             ]
             if global_config.debug.enable_console_input:
                 if sys.stdin.isatty():

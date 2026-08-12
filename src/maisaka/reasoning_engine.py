@@ -114,7 +114,6 @@ BEHAVIOR_SCENARIO_CONSTRAINT_TEXT = (
     "不要输出 kind、phase、risk、tags、name 或 cluster_key。"
 )
 
-
 @dataclass(frozen=True, slots=True)
 class CycleEnd:
     """内部循环结束原因。"""
