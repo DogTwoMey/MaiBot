@@ -22,6 +22,7 @@ from .path_utils import BASE_DIR, build_reply_effect_chat_dir, normalize_preview
 LEGACY_RETRYABLE_EVALUATION_ERRORS = {
     "回复效果评审连续两次校验失败：Connection error.",
     "回复效果评审连续两次校验失败：Request timed out.",
+    "回复效果评审连续两次校验失败：评审结果未覆盖全部后续消息",
 }
 logger = get_logger("maisaka_reply_effect_storage")
 
@@ -156,7 +157,8 @@ class ReplyEffectStorage:
             row.prompt_fingerprint = record.reply.prompt_fingerprint
             row.evaluation_version = record.evaluation_version
             row.response_score = scores.response_score if scores else None
-            row.reception_score = scores.reception_score if scores else None
+            # v6 起情绪反馈保留为分类，旧数值列不再写入。
+            row.reception_score = None
             row.conversation_score = scores.conversation_score if scores else None
             row.confidence = scores.confidence if scores and scores.confidence is not None else 0.0
             row.record_json = "{}"

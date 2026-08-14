@@ -134,10 +134,13 @@ def test_judge_prompt_has_total_limit_and_keeps_required_ids() -> None:
     assert len(prompt) <= MAX_PROMPT_CHARS
     assert "目标消息" in prompt
     assert record.followup_messages[-1].message_id in prompt
-    assert candidates[-1].effect_id in prompt
-    assert "回复效果评估标准版本：v5。" in prompt
+    assert "candidate_id=c60" in prompt
+    assert "回复效果评估标准版本：v6。" in prompt
+    assert "Bot 身份名称：" in prompt
+    assert "紧邻消息继续评价 Bot 的回答、能力、人格或近期表现" in prompt
     assert "观察窗口中的消息不一定与 Bot 有关" in prompt
     assert '"message_id": "无关联消息ID", "associations": []' in prompt
+    assert '"candidate_id": "c1"' in prompt
     assert "显式引用关系已经由程序锁定" not in prompt
     assert f"time={record.created_at}" in prompt
     assert prompt.endswith("}")
@@ -178,7 +181,23 @@ def test_judge_prompt_keeps_only_conversation_context_and_removes_internal_field
     assert "user_id=" not in prompt
     assert "latency=" not in prompt
     assert "locked=" not in prompt
-    assert f"允许候选（不代表相关）={record.followup_messages[0].candidate_effect_ids}" in prompt
+    assert "允许候选（不代表相关）=['c1']" in prompt
+
+
+def test_judge_prompt_never_truncates_followup_ids_when_candidates_are_crowded() -> None:
+    record = build_record(followup_count=15)
+    candidates = [record, *(build_record(f"crowded-effect-{index}") for index in range(10))]
+    candidate_ids = [candidate.effect_id for candidate in candidates]
+    for followup in record.followup_messages:
+        followup.candidate_effect_ids = list(candidate_ids)
+        followup.visible_text = "很长的后续消息" * 100
+        followup.plain_text = followup.visible_text
+
+    prompt = build_judge_prompt(record, candidates)
+
+    assert len(prompt) <= MAX_PROMPT_CHARS
+    assert all(f"message_id={followup.message_id}" in prompt for followup in record.followup_messages)
+    assert "允许候选（不代表相关）=['c1', 'c2', 'c3'" in prompt
 
 
 def test_reply_effect_context_snapshot_separates_sender_metadata_from_text() -> None:
@@ -362,7 +381,7 @@ async def test_start_restores_ready_pending_record() -> None:
 
     assert record.status == ReplyEffectStatus.FINALIZED
     assert record.finalize_reason == "session_followups_limit"
-    assert record.evaluation_version == 5
+    assert record.evaluation_version == 6
 
 
 @pytest.mark.asyncio
@@ -388,7 +407,7 @@ async def test_incomplete_observation_is_not_scored() -> None:
     assert record.scores is None
     assert record.confidence_note == "观察窗口不完整，未进行评分。"
     assert record.finalize_reason == "runtime_stop"
-    assert record.evaluation_version == 5
+    assert record.evaluation_version == 6
 
 
 @pytest.mark.asyncio
