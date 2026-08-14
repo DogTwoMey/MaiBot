@@ -1201,7 +1201,9 @@ class LLMOrchestrator:
             LLMExecutionResult: 单次模型执行结果对象。
         """
         failed_models_this_request: Set[str] = set()
-        max_attempts = 1 if str(model_name or "").strip() else len(self.model_for_task.model_list)
+        requested_model_name = str(model_name or "").strip()
+        candidate_model_names = [requested_model_name] if requested_model_name else list(self.model_for_task.model_list)
+        max_attempts = len(candidate_model_names)
         last_exception: Optional[Exception] = None
         last_model_name = ""
         trace_context = RequestTraceContext(
@@ -1294,21 +1296,39 @@ class LLMOrchestrator:
                     update_failed_request_attempt(last_exception, status="switching_model")
 
                 if isinstance(last_exception, RespNotOkException) and last_exception.status_code == 400:
-                    # 内容审核类硬错误在同服务商所有 VLM 上结果一致（审核器是统一的），
-                    # 继续挨个尝试只会浪费时间/log/token。遇到就提前退出轮询。
                     full_err = (last_exception.message or "").lower()
                     if (
                         "data_inspection_failed" in full_err
                         or "inappropriate content" in full_err
                         or "datainspectionfailed" in full_err
                     ):
+                        # 内容审核通常是 Provider 统一执行的：跳过同 Provider 候选，
+                        # 但仍要继续尝试其它 Provider，不能让单个百炼拒绝终止整个任务。
+                        same_provider_models = {
+                            candidate_name
+                            for candidate_name in candidate_model_names
+                            if TempMethodsLLMUtils.get_model_info_by_name(candidate_name).api_provider
+                            == model_info.api_provider
+                        }
+                        failed_models_this_request.update(same_provider_models)
+                        skipped_models = sorted(same_provider_models - {model_info.name})
+                        remaining_models = [
+                            candidate_name
+                            for candidate_name in candidate_model_names
+                            if candidate_name not in failed_models_this_request
+                        ]
                         logger.warning(
                             f"检测到内容审核拒绝（data_inspection_failed），"
-                            f"同服务商其它 VLM 模型大概率也会拒，提前终止 '{self.request_type or '未知任务'}' 任务的模型轮询。"
+                            f"已跳过同服务商候选={skipped_models or '无'}，"
+                            f"继续尝试其它服务商候选={remaining_models or '无'}。"
                         )
-                        break
-                    logger.warning("收到客户端错误 (400)，跳过当前模型并继续尝试其他模型。")
-                    continue
+                    else:
+                        logger.warning("收到客户端错误 (400)，跳过当前模型并继续尝试其他模型。")
+
+                if not any(
+                    candidate_name not in failed_models_this_request for candidate_name in candidate_model_names
+                ):
+                    break
 
         logger.error(f"所有 {max_attempts} 个模型均尝试失败。")
         if last_exception:
