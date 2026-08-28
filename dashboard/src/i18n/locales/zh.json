@@ -237,7 +237,12 @@
       "conversations": "聊天会话",
       "emptyPreview": "暂无消息",
       "identityHint": "本地聊天室身份",
+      "myChats": "与麦麦聊天",
       "newVirtual": "新建虚拟身份对话",
+      "observedAvatarAlt": "{{name}} 的头像",
+      "observedBadge": "观察",
+      "observedChats": "麦麦的聊天流",
+      "observedPreview": "只读观察",
       "online": "在线",
       "offline": "离线",
       "subtitle": "{{count}} 个会话",
@@ -248,7 +253,8 @@
       "editName": "编辑昵称",
       "saveName": "保存",
       "savingAvatar": "正在保存头像",
-      "userAvatarAlt": "{{name}} 的头像"
+      "userAvatarAlt": "{{name}} 的头像",
+      "waitingObservedChats": "等待聊天流…"
     },
     "dialog": {
       "create": "创建对话",
@@ -682,11 +688,11 @@
     "steps": {
       "botProfile": {
         "title": "基础与人格",
-        "description": "配置昵称、人格和表达风格"
+        "description": ""
       },
       "customToken": {
-        "title": "设置登录 Token",
-        "description": "将本次启动的随机 Token 改为固定自定义 Token"
+        "title": "设置登录密码",
+        "description": ""
       },
       "botBasic": {
         "title": "Bot基础",
@@ -698,11 +704,11 @@
       },
       "apiProvider": {
         "title": "API配置",
-        "description": "配置 API 提供商"
+        "description": ""
       },
       "modelSetup": {
         "title": "模型配置",
-        "description": "配置 planner 和 replyer 模型"
+        "description": ""
       }
     },
     "loading": {
@@ -711,7 +717,7 @@
     },
     "header": {
       "title": "首次配置向导",
-      "description": "让我们一起完成麦麦的初始配置"
+      "description": ""
     },
     "progress": {
       "stepCounter": "步骤 {{current}} / {{total}}"
@@ -726,7 +732,7 @@
       "enterApiKey": "请输入 API Key",
       "enterPlannerModelIdentifier": "请输入 planner 模型标识符",
       "enterReplyerModelIdentifier": "请输入 replyer 模型标识符",
-      "customTokenInvalid": "Token 不符合要求：{{failedRules}}"
+      "customTokenInvalid": "密码不符合要求：{{failedRules}}"
     },
     "toast": {
       "loadFailedTitle": "加载配置失败",
@@ -739,8 +745,8 @@
       "completeSuccessDescription": "{{appName}} 配置已保存并生效。",
       "completeFailedTitle": "配置失败",
       "skipFailedTitle": "跳过失败",
-      "customTokenSuccessTitle": "Token 已更新",
-      "customTokenSuccessDescription": "请使用新的自定义 Token 重新登录，然后继续配置。",
+      "customTokenSuccessTitle": "密码已更新",
+      "customTokenSuccessDescription": "请使用新的自定义密码重新登录，然后继续配置。",
       "unknownError": "未知错误"
     },
     "actions": {
@@ -748,7 +754,7 @@
       "next": "下一步",
       "skip": "跳过向导",
       "complete": "完成配置",
-      "saveToken": "保存 Token",
+      "saveToken": "保存密码",
       "saving": "保存中...",
       "completing": "完成中..."
     },
@@ -775,14 +781,14 @@
     },
     "forms": {
       "customToken": {
-        "noticeTitle": "当前仍在使用启动时随机 Token",
-        "noticeDescription": "随机 Token 会在下次启动时变化。请设置一个固定的自定义 Token，之后登录 WebUI 都使用它。",
-        "label": "自定义 Token *",
-        "placeholder": "请输入一个安全且容易保存的 Token",
-        "description": "保存后当前登录会失效，需要用新的 Token 重新登录。",
-        "requirements": "Token 要求",
-        "show": "显示 Token",
-        "hide": "隐藏 Token"
+        "noticeTitle": "当前仍在使用启动时随机密码",
+        "noticeDescription": "需要修改登录密码，如果不修改，每次会随机生成密码",
+        "label": "自定义密码 *",
+        "placeholder": "请输入一个安全且容易保存的密码",
+        "description": "",
+        "requirements": "密码要求",
+        "show": "显示密码",
+        "hide": "隐藏密码"
       },
       "botBasic": {
         "platform": {
@@ -898,8 +904,8 @@
       "modelSetup": {
         "planner": {
           "identifier": {
-            "label": "用于规划的 模型 名称 *",
-            "description": "API 服务商提供的真实模型 ID"
+            "label": "用于规划的 模型 名称",
+            "description": "填写 API 服务商对应的模型标识，例如 deepseek-chat。"
           },
           "visual": {
             "label": "启用视觉"
@@ -907,14 +913,13 @@
         },
         "replyer": {
           "identifier": {
-            "label": "用于回复的 模型 名称 *",
-            "description": "API 服务商提供的真实模型 ID"
+            "label": "用于回复的 模型 名称",
+            "description": "填写 API 服务商对应的模型标识，例如 deepseek-chat。"
           },
           "visual": {
             "label": "启用视觉"
           }
-        },
-        "saveHint": "你可以稍后配置更详细的任务分配。"
+        }
       }
     }
   },
@@ -1068,12 +1073,45 @@
     "navigatedTo": "已导航至 {{page}}"
   },
   "memory": {
+    "records": {
+      "status": {
+        "active": "有效",
+        "inactive": "已停用",
+        "deleted": "已删除",
+        "conflicted": "有冲突",
+        "superseded": "已取代",
+        "retracted": "已撤回"
+      },
+      "evidenceType": {
+        "paragraph": "段落",
+        "relation": "关系",
+        "entity": "实体",
+        "fact": "事实",
+        "episode": "情景",
+        "profile": "画像",
+        "manual": "人工",
+        "unknown": "未知"
+      },
+      "evidenceStance": {
+        "support": "支持",
+        "refute": "反证"
+      },
+      "graphJobStatus": {
+        "pending": "待处理",
+        "running": "处理中",
+        "failed": "失败",
+        "completed": "已完成",
+        "cancelled": "已取消"
+      }
+    },
     "tuning": {
       "task": {
         "title": "记忆搜索调优",
         "description": "评估并改善记忆搜索效果"
       },
       "form": {
+        "parameters": "调优参数",
+        "parametersDescription": "这些设置只影响下一次调优任务，一般保持默认即可。",
         "strategy": "调优策略",
         "objective": "优化目标",
         "intensity": "评估强度",

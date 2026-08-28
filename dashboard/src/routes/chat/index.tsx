@@ -13,6 +13,8 @@ import {
   type StageStatusEvent,
 } from '@/lib/maisaka-monitor-client'
 import { loadUserEmojiPayload, type UserEmojiItem } from '@/lib/user-emoji-api'
+import { MaisakaMonitor } from '@/routes/monitor/maisaka-monitor'
+import { useMaisakaMonitor } from '@/routes/monitor/use-maisaka-monitor'
 
 import { ChatComposer } from './ChatComposer'
 import { ChatTabBar } from './ChatTabBar'
@@ -43,6 +45,13 @@ const MAX_CHAT_IMAGES = 8
 const MAX_MESSAGES_PER_CHAT_TAB = 1000
 const MAX_PROCESSED_MESSAGE_KEYS = 100
 const MAX_USER_AVATAR_BYTES = 5 * 1024 * 1024
+
+function getRequestedObservedSessionId(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  return new URLSearchParams(window.location.search).get('observe')
+}
 
 function appendRecentMessage(messages: ChatMessage[], message: ChatMessage): ChatMessage[] {
   if (messages.length < MAX_MESSAGES_PER_CHAT_TAB) {
@@ -211,6 +220,11 @@ function buildRuntimeStatusFromStage(data: StageStatusEvent): ChatRuntimeStatus 
 
 export function ChatPage() {
   const { t, i18n } = useTranslation()
+  const {
+    sessions: observedSessions,
+    stageStatuses: observedStageStatuses,
+    setSelectedSession: setSelectedObservedSession,
+  } = useMaisakaMonitor()
 
   // 默认本地聊天标签页
   const defaultTab: ChatTab = {
@@ -251,6 +265,9 @@ export function ChatPage() {
   // 多标签页状态
   const [tabs, setTabs] = useState<ChatTab[]>(initializeTabs)
   const [activeTabId, setActiveTabId] = useState('webui-default')
+  const [activeObservedSessionId, setActiveObservedSessionId] = useState(
+    getRequestedObservedSessionId
+  )
 
   // 当前活动标签页
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
@@ -264,7 +281,7 @@ export function ChatPage() {
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false)
 
   // 持久化用户 ID
-  const userIdRef = useRef(getOrCreateUserId())
+  const [userId] = useState(getOrCreateUserId)
 
   const messageIdCounterRef = useRef(0)
   const monitorStatusesRef = useRef<Map<string, StageStatusEvent>>(new Map())
@@ -276,6 +293,12 @@ export function ChatPage() {
   useEffect(() => {
     tabsRef.current = tabs
   }, [tabs])
+
+  useEffect(() => {
+    if (activeObservedSessionId) {
+      setSelectedObservedSession(activeObservedSessionId)
+    }
+  }, [activeObservedSessionId, setSelectedObservedSession])
 
   // 生成唯一消息 ID
   const generateMessageId = (prefix: string) => {
@@ -328,11 +351,17 @@ export function ChatPage() {
                 matchesMonitorTarget(nextTab, status)
               )
               if (!currentStatus) {
-                return nextTab
+                return {
+                  ...nextTab,
+                  isTyping: false,
+                  runtimeStatus: null,
+                }
               }
+              const runtimeStatus = buildRuntimeStatusFromStage(currentStatus)
               return {
                 ...nextTab,
-                runtimeStatus: buildRuntimeStatusFromStage(currentStatus),
+                isTyping: runtimeStatus?.kind === 'typing',
+                runtimeStatus,
               }
             })
           )
@@ -350,7 +379,7 @@ export function ChatPage() {
         case 'user_message': {
           updateTab(tabId, { runtimeStatus: null })
           const senderUserId = data.sender?.user_id
-          const currentUserId = tabType === 'virtual' && config ? config.userId : userIdRef.current
+          const currentUserId = tabType === 'virtual' && config ? config.userId : userId
 
           const normalizeSenderId = senderUserId ? senderUserId.replace(/^webui_user_/, '') : ''
           const normalizeCurrentId = currentUserId ? currentUserId.replace(/^webui_user_/, '') : ''
@@ -509,7 +538,7 @@ export function ChatPage() {
           break
       }
     },
-    [addMessageToTab, t, toast, updateTab]
+    [addMessageToTab, t, toast, updateTab, userId]
   )
 
   const ensureSessionListener = useCallback(
@@ -545,7 +574,7 @@ export function ChatPage() {
         } else {
           await chatWsClient.openSession(tabId, {
             client: { type: 'webui', name: 'MaiBot WebUI' },
-            user_id: userIdRef.current,
+            user_id: userId,
             user_name: userName,
           })
         }
@@ -561,7 +590,7 @@ export function ChatPage() {
         })
       }
     },
-    [ensureSessionListener, t, toast, updateTab, userName]
+    [ensureSessionListener, t, toast, updateTab, userId, userName]
   )
 
   // 用于追踪组件是否已卸载
@@ -625,13 +654,14 @@ export function ChatPage() {
           )
           setTabs((prev) =>
             prev.map((tab) => {
+              // 阶段快照描述的是服务端“此刻”的完整状态。刷新后此前回放的
+              // llm.error 可能已过期，未命中快照时必须清空，不能保留旧状态。
               const status = event.data.entries.find((entry) => matchesMonitorTarget(tab, entry))
-              if (!status) {
-                return tab
-              }
+              const runtimeStatus = status ? buildRuntimeStatusFromStage(status) : null
               return {
                 ...tab,
-                runtimeStatus: buildRuntimeStatusFromStage(status),
+                isTyping: runtimeStatus?.kind === 'typing',
+                runtimeStatus,
               }
             })
           )
@@ -646,9 +676,6 @@ export function ChatPage() {
                 return tab
               }
               const nextStatus = buildRuntimeStatusFromStage(event.data)
-              if (!nextStatus && tab.runtimeStatus?.kind === 'error') {
-                return tab
-              }
               return {
                 ...tab,
                 runtimeStatus: nextStatus,
@@ -926,7 +953,7 @@ export function ChatPage() {
 
       setIsUploadingUserAvatar(true)
       try {
-        await uploadWebuiUserAvatar(userIdRef.current, file)
+        await uploadWebuiUserAvatar(userId, file)
         const nextAvatarVersion = Date.now()
         setUserAvatarVersion(nextAvatarVersion)
         saveUserAvatarVersion(nextAvatarVersion)
@@ -946,7 +973,7 @@ export function ChatPage() {
         setIsUploadingUserAvatar(false)
       }
     },
-    [t, toast]
+    [t, toast, userId]
   )
 
   // 关闭标签页
@@ -991,7 +1018,13 @@ export function ChatPage() {
 
   // 切换标签页
   const switchTab = (tabId: string) => {
+    setActiveObservedSessionId(null)
     setActiveTabId(tabId)
+  }
+
+  const selectObservedSession = (sessionId: string) => {
+    setSelectedObservedSession(sessionId)
+    setActiveObservedSessionId(sessionId)
   }
 
   return (
@@ -1013,11 +1046,15 @@ export function ChatPage() {
         <ChatWorkspaceSidebar
           tabs={tabs}
           activeTabId={activeTabId}
-          userId={userIdRef.current}
+          activeObservedSessionId={activeObservedSessionId}
+          observedSessions={observedSessions}
+          observedStageStatuses={observedStageStatuses}
+          userId={userId}
           userName={userName}
           userAvatarVersion={userAvatarVersion}
           isUploadingUserAvatar={isUploadingUserAvatar}
           onSwitch={switchTab}
+          onSelectObserved={selectObservedSession}
           onClose={closeTab}
           onUpdateUserAvatar={handleUpdateUserAvatar}
           onUpdateUserName={handleUpdateUserName}
@@ -1043,50 +1080,64 @@ export function ChatPage() {
           <ChatTabBar
             tabs={tabs}
             activeTabId={activeTabId}
-            userId={userIdRef.current}
+            activeObservedSessionId={activeObservedSessionId}
+            observedSessions={observedSessions}
+            userId={userId}
             userName={userName}
             userAvatarVersion={userAvatarVersion}
             isUploadingUserAvatar={isUploadingUserAvatar}
             onSwitch={switchTab}
+            onSelectObserved={selectObservedSession}
             onClose={closeTab}
             onUpdateUserAvatar={handleUpdateUserAvatar}
           />
         </div>
 
-        <MessageList
-          key={activeTab?.id ?? 'empty-chat'}
-          messages={activeTab?.messages ?? []}
-          isLoadingHistory={isLoadingHistory}
-          botDisplayName={activeTab?.sessionInfo.bot_name || t('chat.botNameFallback')}
-          botQq={activeTab?.sessionInfo.bot_qq}
-          userName={userName}
-          userAvatarPlatform={
-            activeTab?.type === 'virtual'
-              ? activeTab.virtualConfig?.platform
-              : userAvatarVersion
-                ? 'webui'
-                : undefined
-          }
-          userAvatarId={
-            activeTab?.type === 'virtual' ? activeTab.virtualConfig?.userId : userIdRef.current
-          }
-          userAvatarVersion={activeTab?.type === 'virtual' ? undefined : userAvatarVersion}
-          language={i18n.language}
-          runtimeStatus={activeTab?.runtimeStatus ?? null}
-        />
+        {activeObservedSessionId ? (
+          <div className="min-h-0 min-w-0 flex-1" data-chat-observed-session>
+            <MaisakaMonitor
+              embedded
+              reasoningReturnTo={`/chat?observe=${encodeURIComponent(activeObservedSessionId)}`}
+            />
+          </div>
+        ) : (
+          <>
+            <MessageList
+              key={activeTab?.id ?? 'empty-chat'}
+              messages={activeTab?.messages ?? []}
+              isLoadingHistory={isLoadingHistory}
+              botDisplayName={activeTab?.sessionInfo.bot_name || t('chat.botNameFallback')}
+              botQq={activeTab?.sessionInfo.bot_qq}
+              userName={userName}
+              userAvatarPlatform={
+                activeTab?.type === 'virtual'
+                  ? activeTab.virtualConfig?.platform
+                  : userAvatarVersion
+                    ? 'webui'
+                    : undefined
+              }
+              userAvatarId={
+                activeTab?.type === 'virtual' ? activeTab.virtualConfig?.userId : userId
+              }
+              userAvatarVersion={activeTab?.type === 'virtual' ? undefined : userAvatarVersion}
+              language={i18n.language}
+              runtimeStatus={activeTab?.runtimeStatus ?? null}
+            />
 
-        <ChatComposer
-          value={inputValue}
-          onChange={setInputValue}
-          onAddImages={handleAddImages}
-          onRemoveImage={handleRemoveImage}
-          onSendEmoji={sendUserEmoji}
-          onSend={() => void sendMessage()}
-          disabled={!activeTab?.isConnected}
-          images={selectedImages}
-          isConnected={!!activeTab?.isConnected}
-          userId={userIdRef.current}
-        />
+            <ChatComposer
+              value={inputValue}
+              onChange={setInputValue}
+              onAddImages={handleAddImages}
+              onRemoveImage={handleRemoveImage}
+              onSendEmoji={sendUserEmoji}
+              onSend={() => void sendMessage()}
+              disabled={!activeTab?.isConnected}
+              images={selectedImages}
+              isConnected={!!activeTab?.isConnected}
+              userId={userId}
+            />
+          </>
+        )}
       </motion.div>
     </div>
   )

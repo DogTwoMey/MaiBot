@@ -1,7 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Generator
 
 import json
+import os
 import subprocess
 import sys
 
@@ -16,6 +18,21 @@ from src.A_memorix.core.utils.web_import_manager import ImportTaskManager
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONVERT_SCRIPT = REPO_ROOT / "src" / "A_memorix" / "scripts" / "convert_lpmm.py"
+CONFIG_PATH = REPO_ROOT / "config" / "a_memorix.toml"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _provide_lpmm_converter_config() -> Generator[None, None, None]:
+    if CONFIG_PATH.exists():
+        yield
+        return
+
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text('[embedding]\nmodel_name = "auto"\n', encoding="utf-8")
+    try:
+        yield
+    finally:
+        CONFIG_PATH.unlink()
 
 
 def _write_parquet(path: Path, rows: list[dict[str, object]]) -> None:
@@ -40,6 +57,7 @@ def _run_convert(input_dir: Path, output_dir: Path, *, dimension: int = 2) -> su
             "--skip-relation-vector-rebuild",
         ],
         cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         check=False,
         capture_output=True,
         text=True,
@@ -72,6 +90,7 @@ def test_lpmm_converter_rejects_paths_outside_import_root(tmp_path: Path) -> Non
             str(data_dir),
         ],
         cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         check=False,
         capture_output=True,
         text=True,
@@ -153,6 +172,7 @@ def test_lpmm_converter_writes_loadable_dual_pools_and_refuses_overwrite(tmp_pat
         get_embedding_fingerprint=lambda *, dimension: {
             **manifest["embedding_fingerprint"],
             "dimension": dimension,
+            "source": "observed",
         }
     )
     assert kernel._dual_vector_ready(expected_dimension=2) is True

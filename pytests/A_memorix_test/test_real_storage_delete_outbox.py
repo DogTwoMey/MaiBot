@@ -28,10 +28,9 @@ PARAGRAPH_TEXT = "林澈在杭州与顾遥共同维护离线知识库。"
 class OfflineDeterministicEmbedding:
     """完全离线的确定性 embedding，用于驱动真实 Faiss 存储。"""
 
-    def __init__(self, dimension: int, *, fingerprint: Dict[str, Any] | None = None) -> None:
+    def __init__(self, dimension: int) -> None:
         self.dimension = int(dimension)
         self.model_name = f"pytest-local-cjk-ngram-{self.dimension}"
-        self._fingerprint = dict(fingerprint) if fingerprint is not None else None
         self._initialized = False
         self._encode_count = 0
 
@@ -72,8 +71,6 @@ class OfflineDeterministicEmbedding:
         return self.dimension
 
     def get_embedding_fingerprint(self, *, dimension: int | None = None) -> Dict[str, Any]:
-        if self._fingerprint is not None:
-            return dict(self._fingerprint)
         effective_dimension = int(dimension or self.dimension)
         payload = f"{self.model_name}:{effective_dimension}:offline"
         return {
@@ -81,6 +78,7 @@ class OfflineDeterministicEmbedding:
             "provider": "local",
             "model": self.model_name,
             "dimension": effective_dimension,
+            "source": "observed",
         }
 
     def stats(self) -> Dict[str, Any]:
@@ -126,16 +124,13 @@ async def _open_runtime(data_dir: Path) -> SDKMemoryKernel:
     await kernel.initialize()
     await kernel._stop_background_tasks()
 
-    # The deterministic test encoder replaces the configured adapter only after
-    # startup, so it must retain that adapter's identity across restarts. A
-    # different fingerprint correctly triggers the V2 quarantine path.
-    embedding = OfflineDeterministicEmbedding(
-        EMBEDDING_DIMENSION,
-        fingerprint=kernel._current_embedding_fingerprint(),
-    )
+    embedding = OfflineDeterministicEmbedding(EMBEDDING_DIMENSION)
     await embedding.initialize()
     kernel.embedding_manager = embedding
     kernel.embedding_dimension = EMBEDDING_DIMENSION
+    if kernel._vector_health.get("error_code") == "embedding_fingerprint_unavailable":
+        restored = await kernel._embedding_state_service._restore_vector_channel_after_embedding_recovery()
+        assert restored is True
     if kernel.relation_write_service is not None:
         kernel.relation_write_service.embedding_manager = embedding
     return kernel
@@ -166,6 +161,61 @@ async def _simulate_hard_runtime_exit(kernel: SDKMemoryKernel) -> None:
     kernel.relation_write_service = None
     kernel._initialized = False
     kernel._runtime_writer_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_delete_and_restore_enqueue_person_profile_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kernel: SDKMemoryKernel | None = None
+    try:
+        kernel = await _open_runtime(tmp_path / "profile-refresh")
+        kernel.config["person_profile"]["enabled"] = True
+        result = await kernel.ingest_text(
+            external_id="profile-refresh-delete",
+            source_type="person_fact",
+            text="小明喜欢咖啡。",
+            person_ids=["person-1"],
+        )
+        paragraph_hash = str(result["stored_ids"][0])
+
+        deleted = await kernel._delete_admin_service._execute_delete_action(
+            mode="paragraph",
+            selector={"hashes": [paragraph_hash]},
+            requested_by="pytest",
+            reason="profile_refresh_delete",
+        )
+
+        assert deleted["success"] is True
+        assert deleted["profile_refresh_person_ids"] == ["person-1"]
+        assert kernel.metadata_store is not None
+        refresh_request = kernel.metadata_store.get_person_profile_refresh_request("person-1")
+        assert refresh_request is not None
+        assert refresh_request["reason"] == "delete_admin_execute"
+
+        operation = kernel.metadata_store.get_delete_operation(deleted["operation_id"])
+        assert operation is not None
+        profile_resolution_connections: list[Any] = []
+        delete_service = kernel._delete_admin_service
+        original_profile_resolution = delete_service._profile_person_ids_for_delete_items
+
+        def track_profile_resolution(items: Sequence[Dict[str, Any]], *, conn: Any = None) -> list[str]:
+            profile_resolution_connections.append(conn)
+            return original_profile_resolution(items, conn=conn)
+
+        monkeypatch.setattr(delete_service, "_profile_person_ids_for_delete_items", track_profile_resolution)
+        restored = await kernel._delete_admin_service._restore_delete_operation(operation)
+
+        assert restored["success"] is True
+        assert len(profile_resolution_connections) == 1
+        assert profile_resolution_connections[0] is not None
+        assert restored["profile_refresh_person_ids"] == ["person-1"]
+        refresh_request = kernel.metadata_store.get_person_profile_refresh_request("person-1")
+        assert refresh_request is not None
+        assert refresh_request["reason"] == "delete_admin_restore"
+    finally:
+        await _close_runtime(kernel)
 
 
 async def _seed_linked_memory(kernel: SDKMemoryKernel, *, source: str) -> Dict[str, Any]:

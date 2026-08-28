@@ -203,6 +203,7 @@ def test_maisaka_main_prompts_render_shared_system_guidance(tmp_path: Path) -> N
     prompt_context = {
         "bot_name": "麦麦",
         "group_chat_attention_block": "聊天注意事项",
+        "behavior_style": "行为风格",
         "identity": "身份设定",
         "long_term_memory_block": "长期记忆",
         "planner_idle_focus_rule": "空闲时切换聊天",
