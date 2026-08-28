@@ -6,6 +6,7 @@ import pytest
 
 from src.chat.utils.utils import ProcessedResponseSegment
 from src.maisaka.builtin_tool import context as context_module
+from src.maisaka.builtin_tool import reply as reply_module
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 from src.maisaka.builtin_tool.reply import _invoke_before_post_process_hook, _resolve_segment_reply_context
 from src.maisaka.chat_loop_service import register_maisaka_hook_specs
@@ -140,3 +141,44 @@ async def test_before_post_process_hook_controls_current_reply_only() -> None:
     assert calls[0][0] == "maisaka.reply.before_post_process"
     assert calls[0][1]["session_id"] == "session-1"
     assert calls[0][1]["reply_message_id"] == "message-1"
+
+
+def test_proactive_reply_defaults_to_current_task_and_rejects_historical_anchor() -> None:
+    proactive_message = SimpleNamespace(message_id="proactive:plugin.test:1")
+    historical_message = SimpleNamespace(message_id="offline-review-private-user-old")
+    runtime = SimpleNamespace(
+        get_active_turn_trigger_message=lambda: proactive_message,
+        find_source_message_by_id=lambda message_id: {
+            proactive_message.message_id: proactive_message,
+            historical_message.message_id: historical_message,
+        }.get(message_id),
+    )
+    tool_ctx = SimpleNamespace(runtime=runtime)
+
+    target_id, target_message, proactive = reply_module._resolve_reply_target_message(tool_ctx, "")
+
+    assert target_id == proactive_message.message_id
+    assert target_message is proactive_message
+    assert proactive is True
+    with pytest.raises(ValueError, match="禁止改用历史消息"):
+        reply_module._resolve_reply_target_message(tool_ctx, historical_message.message_id)
+
+
+def test_regular_turn_rejects_historical_offline_review_as_reply_target() -> None:
+    active_message = SimpleNamespace(message_id="current-user-message")
+    offline_review = SimpleNamespace(
+        message_id="offline-review-private-user-old",
+        message_info=SimpleNamespace(additional_config={"offline_review": True}),
+    )
+    runtime = SimpleNamespace(
+        get_active_turn_trigger_message=lambda: active_message,
+        find_source_message_by_id=lambda message_id: (
+            offline_review if message_id == offline_review.message_id else None
+        ),
+    )
+
+    with pytest.raises(ValueError, match="历史系统摘要"):
+        reply_module._resolve_reply_target_message(
+            SimpleNamespace(runtime=runtime),
+            offline_review.message_id,
+        )

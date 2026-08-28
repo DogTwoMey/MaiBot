@@ -902,6 +902,15 @@ class MaisakaReasoningEngine:
         return CycleEnd("tool_pause", "工具要求暂停当前思考循环。")
 
     @staticmethod
+    def _is_terminal_tool_result(
+        invocation: ToolInvocation,
+        result: ToolExecutionResult,
+    ) -> bool:
+        """判断工具成功后是否已经完成当前逻辑轮的用户可见动作。"""
+
+        return invocation.tool_name == "reply" and result.success
+
+    @staticmethod
     def _cycle_end_for_max_rounds(max_internal_rounds: int) -> CycleEnd:
         """返回达到内部思考轮次上限时的结束原因。"""
 
@@ -1085,13 +1094,17 @@ class MaisakaReasoningEngine:
 
                 cached_messages = turn_start_context.cached_messages
                 trigger_message = turn_start_context.trigger_message
+                self._runtime.set_active_turn_trigger_message(trigger_message)
 
                 if turn_start_context.silent_reply_frequency:
-                    await self._handle_silent_turn(
-                        cached_messages=cached_messages,
-                        timeout_triggered=turn_start_context.timeout_triggered,
-                        proactive_triggered=turn_start_context.proactive_triggered,
-                    )
+                    try:
+                        await self._handle_silent_turn(
+                            cached_messages=cached_messages,
+                            timeout_triggered=turn_start_context.timeout_triggered,
+                            proactive_triggered=turn_start_context.proactive_triggered,
+                        )
+                    finally:
+                        self._runtime.clear_active_turn_trigger_message()
                     continue
 
                 try:
@@ -1106,6 +1119,7 @@ class MaisakaReasoningEngine:
                         if pending_round_messages:
                             cached_messages = pending_round_messages
                             trigger_message = pending_round_messages[-1]
+                            self._runtime.set_active_turn_trigger_message(trigger_message)
 
                         cycle_detail, round_text = await self._start_cycle_round(round_index)
                         state = CycleRuntimeState()
@@ -1170,6 +1184,7 @@ class MaisakaReasoningEngine:
                                 round_index += 1
                 finally:
                     self._active_logical_turn_id = None
+                    self._runtime.clear_active_turn_trigger_message()
                     if self._runtime._agent_state == self._runtime._STATE_RUNNING:
                         self._runtime._enter_stop_state()
                     if self._runtime._running:
@@ -2183,6 +2198,13 @@ class MaisakaReasoningEngine:
 
             if not result.success and tool_call.func_name == "reply":
                 logger.warning(f"{self._runtime.log_prefix} 回复工具未生成可见消息，将继续下一轮循环")
+
+            if self._is_terminal_tool_result(invocation, result):
+                self._runtime._end_planner_continuation()
+                self._runtime._enter_stop_state()
+                self._append_tool_post_history_messages(deferred_post_history_messages)
+                logger.info(f"{self._runtime.log_prefix} reply 已发送可见消息，结束当前逻辑轮，避免重复回复")
+                return True, invocation.tool_name, tool_result_summaries, tool_monitor_results
 
             if bool(result.metadata.get("wait_rest", False)):
                 self._runtime._reset_consecutive_wait_count("wait_limit_rest")

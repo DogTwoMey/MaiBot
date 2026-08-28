@@ -812,7 +812,8 @@ class MaisakaChatLoopService:
     def _build_time_user_message(timestamp: datetime) -> str:
         """构建统一格式的时间提示消息。"""
 
-        return f"时间：{timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+        weekday = "一二三四五六日"[timestamp.weekday()]
+        return f"时间：{timestamp.strftime('%Y-%m-%d %H:%M:%S')}（星期{weekday}）"
 
     @staticmethod
     def _build_current_time_user_message() -> str:
@@ -962,6 +963,9 @@ class MaisakaChatLoopService:
             )
             if not context_items:
                 continue
+
+            if include_day_boundary_time_messages and previous_context_timestamp is None:
+                self._append_time_user_message(items, msg.timestamp)
 
             # assistant tool_calls 与其连续 tool 结果是协议原子段，跨日时间提示必须延后到整个结果段之后。
             is_tool_result_entry = all(isinstance(item, FunctionCallOutputItem) for item in context_items)

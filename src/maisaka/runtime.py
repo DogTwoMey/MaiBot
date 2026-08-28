@@ -166,6 +166,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         self._internal_turn_queue: asyncio.Queue[Literal["message", "timeout", "proactive"]] = asyncio.Queue()
         self._proactive_trigger_message: Optional[SessionMessage] = None
         self._proactive_logical_turn_id: Optional[str] = None
+        self._active_turn_trigger_message: Optional[SessionMessage] = None
         self._focus_cooldown_wakeup_scheduled = False
         self._focus_cooldown_timer_task: Optional[asyncio.Task[None]] = None
 
@@ -625,16 +626,15 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             ]
         )
         visible_text = "\n".join(detail_lines)
+        proactive_trigger_message = self._build_proactive_trigger_message(task_id, visible_text)
         self._chat_history.append(
-            SessionBackedMessage(
+            SessionBackedMessage.from_session_message(
+                proactive_trigger_message,
                 raw_message=MessageSequence([TextComponent(visible_text)]),
                 visible_text=visible_text,
-                timestamp=datetime.now(),
-                message_id=task_id,
                 source_kind=f"plugin_proactive:{normalized_plugin_id}",
             )
         )
-        proactive_trigger_message = self._build_proactive_trigger_message(task_id)
         self._arm_forced_turn_state(message_id=task_id, reason="插件主动聊天任务")
         self._queue_proactive_turn(proactive_trigger_message)
         logger.info(f"{self.log_prefix} 已接收插件主动聊天任务: plugin_id={normalized_plugin_id} task_id={task_id}")
@@ -644,7 +644,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             "queued": True,
         }
 
-    def _build_proactive_trigger_message(self, task_id: str) -> SessionMessage:
+    def _build_proactive_trigger_message(self, task_id: str, visible_text: str) -> SessionMessage:
         """构造主动任务触发消息，不写入消息数据库。"""
 
         message = SessionMessage(
@@ -656,10 +656,10 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         message.message_info = MessageInfo(
             user_info=self._build_runtime_user_info(),
             group_info=self._build_group_info(),
-            additional_config={},
+            additional_config={"maisaka_proactive_task": True},
         )
-        message.raw_message = MessageSequence([TextComponent("插件主动聊天任务")])
-        message.processed_plain_text = "插件主动聊天任务"
+        message.raw_message = MessageSequence([TextComponent(visible_text)])
+        message.processed_plain_text = visible_text
         return message
 
     def _queue_proactive_turn(
@@ -1148,6 +1148,21 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             return original_message
 
         return None
+
+    def set_active_turn_trigger_message(self, message: SessionMessage) -> None:
+        """记录当前逻辑轮的真实触发消息，供无显式目标的内置工具使用。"""
+
+        self._active_turn_trigger_message = message
+
+    def get_active_turn_trigger_message(self) -> Optional[SessionMessage]:
+        """返回当前逻辑轮的触发消息。"""
+
+        return self._active_turn_trigger_message
+
+    def clear_active_turn_trigger_message(self) -> None:
+        """清理当前逻辑轮的触发消息。"""
+
+        self._active_turn_trigger_message = None
 
     def _prune_processed_message_cache(self) -> None:
         """裁剪 runtime 已经消费过的旧消息。"""

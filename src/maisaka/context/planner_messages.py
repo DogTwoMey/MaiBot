@@ -132,13 +132,16 @@ def build_planner_user_prefix_from_session_message(
     """
 
     user_info = message.message_info.user_info
-    user_name = user_info.user_nickname or user_info.user_id
+    additional_config = message.message_info.additional_config
+    is_offline_review = additional_config.get("offline_review") is True
+    user_name = "离线消息回顾（系统）" if is_offline_review else user_info.user_nickname or user_info.user_id
+    user_id = "offline-reviewer" if is_offline_review else user_info.user_id
     return build_planner_prefix(
         timestamp=message.timestamp,
         user_name=user_name,
         group_card=user_info.user_cardname or "",
         message_id=message.message_id,
-        user_id=user_info.user_id,
+        user_id=user_id,
         chat_id=message.session_id,
         quote_ids=extract_quote_ids_from_message_sequence(message.raw_message),
         include_message_id=include_message_id and not message.is_notify and bool(message.message_id),

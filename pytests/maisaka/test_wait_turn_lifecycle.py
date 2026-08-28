@@ -1,4 +1,5 @@
 from datetime import datetime
+from types import SimpleNamespace
 
 import asyncio
 import time
@@ -65,3 +66,34 @@ def test_proactive_switch_trigger_carries_source_logical_turn() -> None:
     assert runtime._consume_proactive_trigger_message() is trigger
     assert runtime._consume_proactive_logical_turn_id() == "turn-switch-1"
     assert runtime._internal_turn_queue.get_nowait() == "proactive"
+
+
+@pytest.mark.asyncio
+async def test_proactive_task_is_resolvable_as_reply_target() -> None:
+    runtime = _build_runtime_stub()
+    runtime.session_id = "session-1"
+    runtime.log_prefix = "[test]"
+    runtime._chat_history = []
+    trigger = SimpleNamespace(
+        message_id="",
+        timestamp=datetime(2026, 8, 15, 8, 0, 0),
+    )
+
+    def build_trigger(task_id: str, _visible_text: str) -> SimpleNamespace:
+        trigger.message_id = task_id
+        return trigger
+
+    runtime._build_proactive_trigger_message = build_trigger
+    runtime._arm_forced_turn_state = lambda **_kwargs: None
+    runtime._queue_proactive_turn = lambda _message: None
+
+    result = await runtime.enqueue_proactive_task(
+        plugin_id="plugin.test",
+        intent="morning",
+        reason="早安时间窗到了",
+    )
+
+    task_id = result["task_id"]
+    assert runtime._chat_history[-1].message_id == task_id
+    assert runtime._chat_history[-1].original_message is trigger
+    assert runtime.find_source_message_by_id(task_id) is trigger

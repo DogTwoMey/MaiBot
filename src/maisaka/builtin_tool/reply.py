@@ -86,7 +86,10 @@ def get_tool_spec() -> ToolSpec:
     properties: dict[str, Any] = {
         "msg_id": {
             "type": "string",
-            "description": "要回复的消息msg_id。",
+            "description": (
+                "要回复的消息 msg_id。插件主动聊天任务应填写当前 <plugin_proactive_task> 的 id；"
+                "也可以省略或留空，由系统使用当前主动任务。主动任务中禁止借用历史消息作为目标。"
+            ),
         },
         "set_quote": {
             "type": "boolean",
@@ -188,7 +191,7 @@ def get_tool_spec() -> ToolSpec:
         parameters_schema={
             "type": "object",
             "properties": properties,
-            "required": ["msg_id"],
+            "required": [],
         },
         provider_name="maisaka_builtin",
         provider_type="builtin",
@@ -292,6 +295,60 @@ def _with_duplicate_target_reply_reminder(
     return updated_args
 
 
+def _is_proactive_task_message(message: Any) -> bool:
+    """判断消息是否为当前插件主动聊天任务。"""
+
+    message_id = str(getattr(message, "message_id", "") or "").strip()
+    return message_id.startswith("proactive:")
+
+
+def _is_synthetic_context_message(message: Any) -> bool:
+    """判断消息是否为插件注入的系统上下文。"""
+
+    message_info = getattr(message, "message_info", None)
+    additional_config = getattr(message_info, "additional_config", None)
+    if not isinstance(additional_config, dict):
+        return False
+    return additional_config.get("synthetic_context") is True or additional_config.get("offline_review") is True
+
+
+def _resolve_reply_target_message(
+    tool_ctx: BuiltinToolRuntimeContext,
+    requested_message_id: str,
+) -> tuple[str, Any, bool]:
+    """解析 reply 目标，并阻止主动任务借用历史消息。"""
+
+    target_message_id = str(requested_message_id or "").strip()
+    active_trigger_message = tool_ctx.runtime.get_active_turn_trigger_message()
+    active_trigger_id = str(getattr(active_trigger_message, "message_id", "") or "").strip()
+    is_proactive_task = _is_proactive_task_message(active_trigger_message)
+    is_active_synthetic_context = _is_synthetic_context_message(active_trigger_message)
+
+    if is_proactive_task or is_active_synthetic_context:
+        if target_message_id and target_message_id != active_trigger_id:
+            source_label = "插件主动聊天任务" if is_proactive_task else "系统上下文摘要"
+            raise ValueError(
+                f"当前是{source_label}，只能回复当前触发 {active_trigger_id}，禁止改用历史消息。"
+            )
+        target_message_id = active_trigger_id
+
+    if not target_message_id:
+        raise ValueError("reply 工具需要提供有效的 `msg_id` 参数。")
+
+    if (is_proactive_task or is_active_synthetic_context) and target_message_id == active_trigger_id:
+        target_message = active_trigger_message
+    else:
+        target_message = tool_ctx.runtime.find_source_message_by_id(target_message_id)
+    if target_message is None:
+        raise ValueError(f"未找到要回复的目标消息，msg_id={target_message_id}")
+
+    is_synthetic_context = _is_synthetic_context_message(target_message)
+    if is_synthetic_context and target_message is not active_trigger_message:
+        raise ValueError("禁止把历史系统摘要当作当前用户消息回复；请回复本轮真实触发消息。")
+
+    return target_message_id, target_message, is_proactive_task or is_synthetic_context
+
+
 async def handle_tool(
     tool_ctx: BuiltinToolRuntimeContext,
     invocation: ToolInvocation,
@@ -301,7 +358,7 @@ async def handle_tool(
 
     invocation_arguments = dict(invocation.arguments or {})
     latest_thought = context.reasoning if context is not None else invocation.reasoning
-    target_message_id = str(invocation_arguments.get("msg_id") or "").strip()
+    requested_message_id = str(invocation_arguments.get("msg_id") or "").strip()
     set_quote = bool(invocation_arguments.get("set_quote", True))
     rich_reply_enabled = bool(config_module.global_config.experimental.enable_rich_reply)
     reply_tool_args = {
@@ -315,20 +372,17 @@ async def handle_tool(
     if not _use_expression_intent():
         reply_tool_args.pop("expression_intent", None)
     enable_reply_quote = bool(config_module.global_config.chat.reply_style.enable_reply_quote)
-    effective_set_quote = set_quote and enable_reply_quote
-
-    if not target_message_id:
+    try:
+        target_message_id, target_message, is_proactive_task = _resolve_reply_target_message(
+            tool_ctx,
+            requested_message_id,
+        )
+    except ValueError as exc:
         return tool_ctx.build_failure_result(
             invocation.tool_name,
-            "reply 工具需要提供有效的 `msg_id` 参数。",
+            str(exc),
         )
-
-    target_message = tool_ctx.runtime.find_source_message_by_id(target_message_id)
-    if target_message is None:
-        return tool_ctx.build_failure_result(
-            invocation.tool_name,
-            f"未找到要回复的目标消息，msg_id={target_message_id}",
-        )
+    effective_set_quote = set_quote and enable_reply_quote and not is_proactive_task
 
     try:
         replyer = replyer_manager.get_replyer(

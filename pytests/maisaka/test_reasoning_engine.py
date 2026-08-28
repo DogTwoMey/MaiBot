@@ -6,12 +6,14 @@ from typing import Optional
 import pytest
 
 from src.common.data_models.llm_service_data_models import LLMResponseResult
+from src.core.tooling import ToolExecutionResult, ToolInvocation, ToolSpec
 from src.llm_models.model_client.base_client import GenerationAttempt, GenerationTrace
 from src.llm_models.payload_content.context_item import (
     ContextItemMeta,
     ProviderActivityItem,
 )
 from src.llm_models.payload_content.native_tool import NativeToolCallSummary
+from src.llm_models.payload_content.tool_option import ToolCall
 from src.maisaka.chat_loop_service import ChatResponse, MaisakaChatLoopService
 from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
@@ -141,6 +143,117 @@ def test_planner_without_tool_intent_ends_normally() -> None:
     assert should_end is True
     assert planner_extra_lines == ["状态：已结束本轮思考"]
     assert runtime._chat_history == []
+
+
+def test_successful_reply_is_terminal_for_current_logical_turn() -> None:
+    """可见回复发送成功后，不应继续同一逻辑轮并再次调用 reply。"""
+
+    invocation = ToolInvocation(tool_name="reply", call_id="call-reply-1")
+    result = ToolExecutionResult(tool_name="reply", success=True)
+
+    assert MaisakaReasoningEngine._is_terminal_tool_result(invocation, result)
+
+
+def test_failed_reply_is_not_terminal_for_current_logical_turn() -> None:
+    """reply 发送失败时仍应允许 Planner 修正参数或重试。"""
+
+    invocation = ToolInvocation(tool_name="reply", call_id="call-reply-1")
+    result = ToolExecutionResult(tool_name="reply", success=False)
+
+    assert not MaisakaReasoningEngine._is_terminal_tool_result(invocation, result)
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_calls_pauses_after_successful_reply() -> None:
+    """真实工具执行链应在 reply 成功后立即暂停当前逻辑轮。"""
+
+    class ReplyRegistry:
+        async def list_tools(self, context: object) -> list[ToolSpec]:
+            del context
+            return [ToolSpec(name="reply")]
+
+        async def invoke(self, invocation: ToolInvocation, context: object) -> ToolExecutionResult:
+            del invocation, context
+            return ToolExecutionResult(tool_name="reply", success=True, content="已发送")
+
+    runtime = SimpleNamespace(
+        _tool_registry=ReplyRegistry(),
+        _chat_history=[],
+        session_id="test-session",
+        log_prefix="[测试]",
+        is_action_tool_currently_available=lambda name: True,
+        _update_stage_status=lambda *args, **kwargs: None,
+        _reset_consecutive_wait_count=lambda reason: None,
+        _end_planner_continuation=lambda: None,
+        _enter_stop_state=lambda: None,
+    )
+    engine = MaisakaReasoningEngine(runtime)
+    engine._build_tool_execution_context = lambda latest_thought: SimpleNamespace()
+    engine._build_tool_availability_context = lambda: SimpleNamespace()
+    engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
+    engine._append_tool_execution_result = lambda *args, **kwargs: None
+    engine._append_tool_display_results = lambda **kwargs: None
+
+    paused, tool_name, _, _ = await engine._handle_tool_calls(
+        [ToolCall(call_id="call-reply-1", func_name="reply", args={})],
+        "回复用户",
+    )
+
+    assert paused is True
+    assert tool_name == "reply"
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
+    """模型同批次误发多个 reply 时，只允许第一条成为可见消息。"""
+
+    class ReplyRegistry:
+        def __init__(self) -> None:
+            self.reply_count = 0
+
+        async def list_tools(self, context: object) -> list[ToolSpec]:
+            del context
+            return [ToolSpec(name="reply")]
+
+        async def invoke(self, invocation: ToolInvocation, context: object) -> ToolExecutionResult:
+            del invocation, context
+            self.reply_count += 1
+            return ToolExecutionResult(tool_name="reply", success=True, content="已发送")
+
+    registry = ReplyRegistry()
+    runtime = SimpleNamespace(
+        _tool_registry=registry,
+        _chat_history=[],
+        session_id="test-session",
+        log_prefix="[测试]",
+        is_action_tool_currently_available=lambda name: True,
+        _update_stage_status=lambda *args, **kwargs: None,
+        _reset_consecutive_wait_count=lambda reason: None,
+        _end_planner_continuation=lambda: None,
+        _enter_stop_state=lambda: None,
+    )
+    engine = MaisakaReasoningEngine(runtime)
+    engine._build_tool_execution_context = lambda latest_thought: SimpleNamespace()
+    engine._build_tool_availability_context = lambda: SimpleNamespace()
+    engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
+    engine._append_tool_execution_result = lambda *args, **kwargs: None
+    engine._append_tool_display_results = lambda **kwargs: None
+
+    paused, tool_name, _, _ = await engine._handle_tool_calls(
+        [
+            ToolCall(call_id="call-reply-1", func_name="reply", args={}),
+            ToolCall(call_id="call-reply-2", func_name="reply", args={}),
+        ],
+        "回复用户",
+    )
+
+    assert paused is True
+    assert tool_name == "reply"
+    assert registry.reply_count == 1
+
+
+async def _async_none() -> None:
+    return None
 
 
 @pytest.mark.asyncio
