@@ -93,16 +93,16 @@ def get_tool_spec() -> ToolSpec:
             "description": "以引用回复的方式发送这条回复，当发言人数过多，聊天比较乱时使用。",
             "default": True,
         },
-        "reply_guide": {
-            "type": "string",
-            "description": "回复需要注意的事项和回复指引，包含当前聊天状态，情感态度等等。",
-        },
-        "reference_info": {
+        "reply_reference": {
             "type": "string",
             "description": (
-                "上下文中的关键信息，包括人物关系，情感关系，事实信息，回忆信息，聊天情况。"
-                "这些信息将为回复提供信息参考"
+                "有助于回复的信息，包括当前聊天状态、人物关系、事实信息、回忆信息。"
             ),
+        },
+        "reply_style": {
+            "type": "string",
+            "description": "可选。控制本次回复的篇幅和表达方式；正常回复不会附加额外要求。",
+            "enum": ["简短表达", "正常回复", "长回复"],
         },
     }
     if _use_expression_intent():
@@ -188,7 +188,7 @@ def get_tool_spec() -> ToolSpec:
         parameters_schema={
             "type": "object",
             "properties": properties,
-            "required": ["msg_id", "reference_info"],
+            "required": ["msg_id"],
         },
         provider_name="maisaka_builtin",
         provider_type="builtin",

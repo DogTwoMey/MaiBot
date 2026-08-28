@@ -131,10 +131,9 @@ export function useModelConfig() {
 
   // ---- 搜索 / 分页 / 批量选择 ----
   const [searchQuery, setSearchQuery] = useState('')
+  const [modelProviderFilter, setModelProviderFilter] = useState('')
   const [selectedModels, setSelectedModels] = useState<Set<number>>(new Set())
-  const [selectedProviders, setSelectedProviders] = useState<Set<number>>(new Set())
   const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false)
-  const [providerBatchDeleteDialogOpen, setProviderBatchDeleteDialogOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [jumpToPage, setJumpToPage] = useState('')
@@ -455,6 +454,7 @@ export function useModelConfig() {
         base_url: provider.base_url,
         api_key: provider.api_key,
         client_type: provider.client_type,
+        default_headers: provider.default_headers,
         max_retry: provider.max_retry ?? 2,
         timeout: provider.timeout ?? 30,
         retry_interval: provider.retry_interval ?? 10,
@@ -844,11 +844,16 @@ export function useModelConfig() {
 
   // ---- 模型编辑对话框 ----
   const openEditDialog = useCallback(
-    (model: ModelInfo | null, index: number | null, onOpened?: () => void) => {
+    (
+      model: ModelInfo | null,
+      index: number | null,
+      onOpened?: () => void,
+      preferredProvider?: string
+    ) => {
       // 清除表单验证错误
       setFormErrors({})
 
-      const defaultProvider = providers[0] || ''
+      const defaultProvider = preferredProvider || providers[0] || ''
 
       setEditingModel(
         model || {
@@ -1117,55 +1122,6 @@ export function useModelConfig() {
     setDeletingProviderIndex(null)
   }, [apiProviders, checkDeleteProviderImpact, deletingProviderIndex, syncProviderState, toast])
 
-  // ---- 批量选择 / 删除 ----
-  const toggleProviderSelection = useCallback((index: number) => {
-    setSelectedProviders((prev) => {
-      const nextSelected = new Set(prev)
-      if (nextSelected.has(index)) {
-        nextSelected.delete(index)
-      } else {
-        nextSelected.add(index)
-      }
-      return nextSelected
-    })
-  }, [])
-
-  const toggleSelectAllProviders = useCallback(() => {
-    setSelectedProviders((prev) => {
-      if (prev.size === apiProviders.length) {
-        return new Set()
-      }
-      return new Set(apiProviders.map((_, index) => index))
-    })
-  }, [apiProviders])
-
-  const openProviderBatchDeleteDialog = useCallback(() => {
-    if (selectedProviders.size === 0) {
-      toast({
-        title: '提示',
-        description: '请先选择要删除的提供商',
-        variant: 'default',
-      })
-      return
-    }
-    setProviderBatchDeleteDialogOpen(true)
-  }, [selectedProviders, toast])
-
-  const handleConfirmProviderBatchDelete = useCallback(async () => {
-    const nextProviders = apiProviders.filter((_, index) => !selectedProviders.has(index))
-    const { shouldProceed } = await checkDeleteProviderImpact(nextProviders, 'manual')
-    if (shouldProceed) {
-      const deletedCount = selectedProviders.size
-      syncProviderState(nextProviders)
-      setSelectedProviders(new Set())
-      toast({
-        title: '批量删除成功',
-        description: `已删除 ${deletedCount} 个提供商`,
-      })
-    }
-    setProviderBatchDeleteDialogOpen(false)
-  }, [apiProviders, checkDeleteProviderImpact, selectedProviders, syncProviderState, toast])
-
   const handleConfirmDeleteProviderImpact = useCallback(async () => {
     const isAutoSave = deleteConfirmState.context === 'auto'
     try {
@@ -1187,7 +1143,6 @@ export function useModelConfig() {
         context: 'auto',
         oldProviders: [],
       })
-      setSelectedProviders(new Set())
     } catch (error) {
       toast({
         title: '删除失败',
@@ -1316,6 +1271,7 @@ export function useModelConfig() {
   const filteredModels = useMemo(
     () =>
       models.filter((model) => {
+        if (modelProviderFilter && model.api_provider !== modelProviderFilter) return false
         if (!searchQuery) return true
         const query = searchQuery.toLowerCase()
         return (
@@ -1324,8 +1280,13 @@ export function useModelConfig() {
           model.api_provider.toLowerCase().includes(query)
         )
       }),
-    [models, searchQuery]
+    [modelProviderFilter, models, searchQuery]
   )
+
+  useEffect(() => {
+    setPage(1)
+    setSelectedModels(new Set())
+  }, [modelProviderFilter, searchQuery])
 
   // 切换单个模型选择
   const toggleModelSelection = useCallback((index: number) => {
@@ -1520,19 +1481,13 @@ export function useModelConfig() {
     setBatchDeleteDialogOpen,
     openBatchDeleteDialog,
     handleConfirmBatchDelete,
-    // 提供商批量
-    selectedProviders,
-    toggleProviderSelection,
-    toggleSelectAllProviders,
-    providerBatchDeleteDialogOpen,
-    setProviderBatchDeleteDialogOpen,
-    openProviderBatchDeleteDialog,
-    handleConfirmProviderBatchDelete,
     // 任务配置
     updateTaskConfig,
     // 搜索 / 分页
     searchQuery,
     setSearchQuery,
+    modelProviderFilter,
+    setModelProviderFilter,
     filteredModels,
     paginatedModels,
     page,

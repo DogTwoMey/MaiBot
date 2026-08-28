@@ -789,6 +789,7 @@ class MetadataStore(
         source: Optional[str] = None,
         limit: int = 100,
         allow_created_fallback: bool = True,
+        allowed_hashes: Optional[Sequence[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         查询时序命中的段落（区间相交语义）。
@@ -807,6 +808,12 @@ class MetadataStore(
 
         conditions = ["(p.is_deleted IS NULL OR p.is_deleted = 0)"]
         params: List[Any] = []
+        if allowed_hashes is not None:
+            normalized_allowed = self._normalize_hash_sequence(allowed_hashes)
+            if not normalized_allowed:
+                return []
+            conditions.append("p.hash IN (SELECT value FROM json_each(?))")
+            params.append(json.dumps(normalized_allowed, ensure_ascii=False))
 
         if source:
             conditions.append("p.source = ?")
@@ -1408,6 +1415,27 @@ class MetadataStore(
         self._conn.commit()
         return cursor.rowcount > 0
 
+    def reset_vector_projection_state(self) -> Dict[str, int]:
+        """切换向量世代时重置派生状态，不修改正文、实体和关系本身。"""
+        cursor = self._conn.cursor()
+        cursor.execute(
+            """
+            UPDATE relations
+            SET vector_state = 'none',
+                vector_updated_at = NULL,
+                vector_error = NULL,
+                vector_retry_count = 0
+            """
+        )
+        relation_count = max(0, int(cursor.rowcount))
+        cursor.execute("DELETE FROM paragraph_vector_backfill")
+        backfill_count = max(0, int(cursor.rowcount))
+        self._conn.commit()
+        return {
+            "relations_reset": relation_count,
+            "paragraph_backfill_cleared": backfill_count,
+        }
+
     def list_relations_by_vector_state(
         self,
         states: List[str],
@@ -1903,6 +1931,7 @@ class MetadataStore(
         reason: str = "",
         updated_by: str = "",
         result: Optional[Dict[str, Any]] = None,
+        conn: Optional[sqlite3.Connection] = None,
     ) -> Dict[str, Any]:
         operation_id = f"v5_{uuid.uuid4().hex}"
         created_at = datetime.now().timestamp()
@@ -1916,7 +1945,8 @@ class MetadataStore(
             "resolved_hashes": [str(item or "").strip() for item in (resolved_hashes or []) if str(item or "").strip()],
             "result": result or {},
         }
-        cursor = self._conn.cursor()
+        connection = self._resolve_conn(conn)
+        cursor = connection.cursor()
         cursor.execute(
             """
             INSERT INTO memory_v5_operations (
@@ -1934,7 +1964,8 @@ class MetadataStore(
                 self._json_dumps(payload["result"]),
             ),
         )
-        self._conn.commit()
+        if conn is None:
+            connection.commit()
         return payload
 
     def create_fuzzy_modify_plan(
@@ -2676,9 +2707,14 @@ class MetadataStore(
         resolved = str(row[0])
         return [resolved]
 
-    def rebuild_relation_hash_aliases(self) -> Dict[str, Any]:
+    def rebuild_relation_hash_aliases(
+        self,
+        *,
+        conn: Optional[sqlite3.Connection] = None,
+    ) -> Dict[str, Any]:
         """重建 32 位 relation hash 别名映射。"""
-        cursor = self._conn.cursor()
+        connection = self._resolve_conn(conn)
+        cursor = connection.cursor()
         # 历史库兜底：缺表时先创建，避免迁移过程直接中断。
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS relation_hash_aliases (
@@ -2715,7 +2751,8 @@ class MetadataStore(
                 "INSERT INTO relation_hash_aliases(alias32, hash) VALUES (?, ?)",
                 (alias, full_hash),
             )
-        self._conn.commit()
+        if conn is None:
+            connection.commit()
         return {
             "inserted": len(alias_map) - len(conflicts),
             "conflict_count": len(conflicts),

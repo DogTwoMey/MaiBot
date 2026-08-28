@@ -1,4 +1,4 @@
-from typing import Final, List, Literal, Optional
+from typing import Dict, Final, List, Literal, Optional
 
 import re
 
@@ -117,9 +117,9 @@ class BotConfig(ConfigBase):
         default="",
         json_schema_extra={
             "label": {
-                "zh_CN": "平台",
-                "en_US": "Platform",
-                "ja_JP": "プラットフォーム",
+                "zh_CN": "备用主平台",
+                "en_US": "Fallback primary platform",
+                "ja_JP": "予備のメインプラットフォーム",
             },
             "x-widget": "input",
             "x-layout": "inline-right",
@@ -127,15 +127,15 @@ class BotConfig(ConfigBase):
             "x-row": "bot-platform-account",
         },
     )
-    """麦麦主账号所在的平台，例如 qq。"""
+    """适配器没有上报身份时使用的备用主平台，例如 qq。"""
 
     qq_account: str = Field(
         default="",
         json_schema_extra={
             "label": {
-                "zh_CN": "QQ账号",
-                "en_US": "QQ account",
-                "ja_JP": "QQアカウント",
+                "zh_CN": "备用 QQ 账号",
+                "en_US": "Fallback QQ account",
+                "ja_JP": "予備の QQ アカウント",
             },
             "x-widget": "input",
             "x-layout": "inline-right",
@@ -143,20 +143,20 @@ class BotConfig(ConfigBase):
             "x-row": "bot-platform-account",
         },
     )
-    """麦麦主账号 ID，用来识别哪些消息是麦麦自己发的。"""
+    """适配器没有上报 QQ 身份时使用的备用账号 ID。"""
 
     platforms: list[str] = Field(
         default_factory=lambda: [],
         json_schema_extra={
             "label": {
-                "zh_CN": "其他平台",
-                "en_US": "Other platforms",
-                "ja_JP": "他のプラットフォーム",
+                "zh_CN": "其他备用平台",
+                "en_US": "Other fallback platforms",
+                "ja_JP": "その他の予備プラットフォーム",
             },
             "x-widget": "custom",
         },
     )
-    """其他平台账号，格式为 platform:账号；没有多平台时不用填。"""
+    """其他平台的备用账号，格式为 platform:账号；适配器身份存在时不参与判断。"""
 
     nickname: str = Field(
         default="麦麦",
@@ -193,7 +193,7 @@ class PersonalityConfig(ConfigBase):
     __ui_label__ = "人格"
 
     personality: str = Field(
-        default="你是一个大二女大学生，现在正在上网和群友聊天。",
+        default="是一个大二女大学生，现在正在上网和群友聊天。善于用人类的角度思考问题，聊天偏日常。",
         json_schema_extra={
             "label": {
                 "zh_CN": "人格设定",
@@ -210,8 +210,7 @@ class PersonalityConfig(ConfigBase):
 
     behavior_style: str = Field(
         default=(
-            "先观察聊天上下文和他人的反应，再决定是否参与。只在被提及、对话题感兴趣或确实能推进聊天时行动，"
-            "不需要回应每条消息；不适合参与时保持安静。"
+            "是大二女大学生，现在正在上网和群友聊天。善于用人类的角度思考问题，聊天偏日常。不会没话题硬找话题，"
         ),
         json_schema_extra={
             "label": {
@@ -228,7 +227,7 @@ class PersonalityConfig(ConfigBase):
     """Planner 使用的行动准则，例如何时参与聊天、如何观察局面以及何时保持安静。"""
 
     reply_style: str = Field(
-        default="你的风格平淡简短。可以参考贴吧，知乎和微博的回复风格。不浮夸不长篇大论，不要过分修辞和复杂句。尽量回复的简短一些，平淡一些",
+        default="你的风格平淡简短，可以参考贴吧的回复风格。不滥用比喻或者生硬句子。视情况省略主语或者进行倒装，风格较为随意。",
         json_schema_extra={
             "label": {
                 "zh_CN": "表达风格",
@@ -935,20 +934,6 @@ class ChatConfig(ConfigBase):
     )
     """最多保留多少条聊天回想；设为 0 表示不保留。"""
 
-    self_message_special_mark: bool = Field(
-        default=True,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "自身消息特殊标注",
-                "en_US": "Special mark for self messages",
-                "ja_JP": "自分のメッセージ特別マーク",
-            },
-            "x-widget": "switch",
-            "x-row": "self-message-mark",
-        },
-    )
-    """加强标记麦麦自己的消息，减少把自己当成别人的情况。"""
-
     reply_timing: ChatReplyTimingConfig = Field(default_factory=ChatReplyTimingConfig)
     """什么时候回复、回复频率与等待退避配置。"""
 
@@ -1108,7 +1093,6 @@ class ExperimentalBrowserConfig(ConfigBase):
     )
     """每次仅向模型披露当前页面中排序靠前的少量语义动作。"""
 
-
 class ExperimentalConfig(ConfigBase):
     """实验性功能配置类"""
 
@@ -1158,9 +1142,6 @@ class ExperimentalConfig(ConfigBase):
         },
     )
     """实验性人格情绪特点；理性冷静和多愁善感会追加人格后缀，中性不追加内容。"""
-
-    browser: ExperimentalBrowserConfig = Field(default_factory=ExperimentalBrowserConfig)
-    """动作票据式网页浏览实验能力。"""
 
     attention_drift: AttentionDriftConfig = Field(default_factory=AttentionDriftConfig)
     """注意力漂移实验模式；让麦麦在群聊/私聊中表现出更活跃的联想和轻微话题漂移。"""
@@ -4132,15 +4113,15 @@ class ExpressionConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "label": {
-                "zh_CN": "仅用人工检查表达",
-                "en_US": "Use human-reviewed expressions only",
-                "ja_JP": "人間が確認した表現のみ使用",
+                "zh_CN": "使用精选表达",
+                "en_US": "Use curated expressions",
+                "ja_JP": "厳選した表現を使用",
             },
             "x-widget": "switch",
             "x-row": "expression-learning-switches",
         },
     )
-    """只使用人工确认过的表达方式，更稳但学习效果会慢一些。"""
+    """仅使用人工精选的表达。"""
 
     expression_self_reflect: bool = Field(
         default=True,
@@ -4156,7 +4137,7 @@ class ExpressionConfig(ConfigBase):
     )
     """写入表达方式前先让 AI 检查，减少学到奇怪内容。"""
 
-    expression_selection_mode: Literal["legacy", "vector", "vector_intent"] = Field(
+    expression_selection_mode: Literal["legacy", "vector_intent"] = Field(
         default="legacy",
         json_schema_extra={
             "label": {
@@ -4166,20 +4147,18 @@ class ExpressionConfig(ConfigBase):
             },
             "x-widget": "select",
             "advanced": False,
-            "options": ["legacy", "vector", "vector_intent"],
+            "options": ["legacy", "vector_intent"],
             "x-option-labels": {
                 "legacy": "随手",
-                "vector": "精细",
                 "vector_intent": "超级精细",
             },
             "x-option-descriptions": {
                 "legacy": "使用 LLM 进行选择，效果一般",
-                "vector": "使用嵌入模型进行选择，效果较好（需要配置嵌入模型）",
                 "vector_intent": "使用特殊构建的回复方式加上嵌入模型进行选择，效果非常好（需要配置嵌入模型）",
             },
         },
     )
-    """表达方式的使用策略：legacy 使用 LLM 选择，vector 使用嵌入召回，vector_intent 会额外使用表达选择意图。"""
+    """表达方式的使用策略：legacy 随手抽取候选，vector_intent 使用表达意图与嵌入召回。"""
 
     expression_vector_index_path: str = Field(
         default="data/expression_selection/expression_vector_index.json",
@@ -5924,6 +5903,16 @@ class MCPConfig(ConfigBase):
         return super().model_post_init(context)
 
 
+class CommandPermissionConfig(ConfigBase):
+    """单个命令的额外放行规则。"""
+
+    allow_users: list[str] = Field(default_factory=list)
+    """允许执行命令的用户，格式如 qq:123456789。"""
+
+    allow_chats: list[str] = Field(default_factory=list)
+    """允许执行命令的真实聊天流 ID。"""
+
+
 class PluginConfig(ConfigBase):
     """插件管理配置类"""
 
@@ -5944,6 +5933,12 @@ class PluginConfig(ConfigBase):
         },
     )
     """允许用聊天命令管理插件的用户，格式如 qq:123456789。"""
+
+    command_permissions: Dict[str, CommandPermissionConfig] = Field(
+        default_factory=dict,
+        json_schema_extra={"hidden": True},
+    )
+    """受保护命令按用户和真实聊天流配置的额外放行规则。"""
 
 
 class PluginRuntimeRenderConfig(ConfigBase):

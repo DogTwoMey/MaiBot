@@ -104,8 +104,8 @@ def test_rich_reply_adds_reply_attachment_parameters(monkeypatch) -> None:
     assert "attach_pic" in properties
     assert "attach_emoji" in properties
     assert "attach_at" in properties
-    assert "reference_info" in properties
-    assert "reference_info" in required
+    assert "reference_info" not in properties
+    assert "reference_info" not in required
 
 
 def test_reply_attachment_parameters_are_hidden_when_rich_reply_disabled(monkeypatch) -> None:
@@ -118,8 +118,8 @@ def test_reply_attachment_parameters_are_hidden_when_rich_reply_disabled(monkeyp
     assert "attach_pic" not in properties
     assert "attach_emoji" not in properties
     assert "attach_at" not in properties
-    assert "reference_info" in properties
-    assert "reference_info" in required
+    assert "reference_info" not in properties
+    assert "reference_info" not in required
 
 
 @pytest.mark.asyncio
@@ -339,7 +339,7 @@ def test_reply_necessity_trigger_is_optional(monkeypatch) -> None:
 def test_wait_completed_message_includes_elapsed_seconds() -> None:
     class DummyRuntime:
         def _consume_pending_wait_state(self):
-            return "wait-1", 3.2, 10.0
+            return "wait-1", "turn-1", 3.2, 10.0
 
     engine = MaisakaReasoningEngine.__new__(MaisakaReasoningEngine)
     engine._runtime = DummyRuntime()
@@ -488,8 +488,8 @@ async def test_wait_tool_rejects_after_consecutive_limit(monkeypatch) -> None:
         def __init__(self) -> None:
             self.count = 0
 
-        def _try_enter_wait_state(self, seconds=None, tool_call_id=None):
-            del seconds, tool_call_id
+        def _try_enter_wait_state(self, seconds=None, tool_call_id=None, logical_turn_id=None):
+            del seconds, tool_call_id, logical_turn_id
             max_count = int(global_config.chat.reply_timing.max_consecutive_wait_count)
             if self.count >= max_count:
                 return False, self.count, max_count
@@ -498,6 +498,7 @@ async def test_wait_tool_rejects_after_consecutive_limit(monkeypatch) -> None:
 
     tool_ctx = BuiltinToolRuntimeContext.__new__(BuiltinToolRuntimeContext)
     tool_ctx.runtime = DummyRuntime()
+    tool_ctx.engine = SimpleNamespace(active_logical_turn_id="turn-1")
     invocation = ToolInvocation(tool_name="wait", arguments={"seconds": 1}, call_id="wait-1")
 
     for _ in range(5):

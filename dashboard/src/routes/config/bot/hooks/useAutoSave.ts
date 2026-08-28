@@ -27,6 +27,7 @@ export interface UseAutoSaveReturn {
 }
 
 interface SectionSaveState {
+  pendingData: unknown
   revision: number
   savedRevision: number
   timer: ReturnType<typeof setTimeout> | null
@@ -53,6 +54,7 @@ export function useAutoSave(
     if (existingState) return existingState
 
     const nextState: SectionSaveState = {
+      pendingData: undefined,
       revision: 0,
       savedRevision: 0,
       timer: null,
@@ -120,6 +122,7 @@ export function useAutoSave(
       const sectionState = getSectionState(sectionName)
       sectionState.revision += 1
       const revision = sectionState.revision
+      sectionState.pendingData = sectionData
       updateUnsavedState()
 
       if (sectionState.timer) {
@@ -128,7 +131,9 @@ export function useAutoSave(
 
       sectionState.timer = setTimeout(() => {
         sectionState.timer = null
-        void enqueueSave(sectionName, sectionData, revision)
+        const pendingData = sectionState.pendingData
+        sectionState.pendingData = undefined
+        void enqueueSave(sectionName, pendingData, revision)
       }, debounceMs)
     },
     [debounceMs, enqueueSave, getSectionState, isInitialLoad, updateUnsavedState]
@@ -141,6 +146,7 @@ export function useAutoSave(
         clearTimeout(sectionState.timer)
         sectionState.timer = null
       }
+      sectionState.pendingData = undefined
 
       sectionState.revision += 1
       const revision = sectionState.revision
@@ -159,6 +165,7 @@ export function useAutoSave(
           clearTimeout(sectionState.timer)
           sectionState.timer = null
         }
+        sectionState.pendingData = undefined
         revisionsAtStart.set(sectionName, sectionState.revision)
         activeSaveChains.push(sectionState.saveChain)
       }
@@ -207,6 +214,7 @@ export function useAutoSave(
         clearTimeout(sectionState.timer)
         sectionState.timer = null
       }
+      sectionState.pendingData = undefined
       activeSaveChains.push(sectionState.saveChain)
     }
 
@@ -219,6 +227,7 @@ export function useAutoSave(
         clearTimeout(sectionState.timer)
         sectionState.timer = null
       }
+      sectionState.pendingData = undefined
       sectionState.savedRevision = sectionState.revision
     }
     updateUnsavedState()
@@ -229,14 +238,18 @@ export function useAutoSave(
     const sectionStates = sectionStatesRef.current
     return () => {
       isMountedRef.current = false
-      for (const sectionState of sectionStates.values()) {
+      // 切换路由会卸载页面；立即提交尚处于防抖期的最新配置，避免编辑丢失。
+      for (const [sectionName, sectionState] of sectionStates) {
         if (sectionState.timer) {
           clearTimeout(sectionState.timer)
           sectionState.timer = null
+          const pendingData = sectionState.pendingData
+          sectionState.pendingData = undefined
+          void enqueueSave(sectionName, pendingData, sectionState.revision)
         }
       }
     }
-  }, [])
+  }, [enqueueSave])
 
   return {
     triggerAutoSave,

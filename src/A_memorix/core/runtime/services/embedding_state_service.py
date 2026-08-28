@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
+import asyncio
 import json
 import time
 
 from src.common.logger import get_logger
 
-from ...storage import VectorStore
+from ...storage import VectorStore, VectorStoreIntegrityError
 from .base import KernelServiceBase
 
 logger = get_logger("A_Memorix.SDKMemoryKernel")
@@ -85,6 +86,18 @@ class MemoryEmbeddingStateService(KernelServiceBase):
             logger.warning(f"生成 embedding 指纹失败: {exc}")
             return None
 
+    def _current_embedding_fingerprint_for_validation(
+        self,
+        *,
+        dimension: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        fingerprint = self._current_embedding_fingerprint(dimension=dimension)
+        if fingerprint is None:
+            return None
+        if str(fingerprint.get("source", "") or "").strip().lower() != "observed":
+            return None
+        return fingerprint
+
     def _stored_embedding_fingerprint(self, store: Optional[VectorStore] = None) -> Optional[Dict[str, Any]]:
         ready_manifest = (
             self._read_dual_vector_ready_manifest()
@@ -117,7 +130,7 @@ class MemoryEmbeddingStateService(KernelServiceBase):
         current_dimension = self._current_embedding_status_dimension()
         if stored_dimension is None or int(stored_dimension) != int(current_dimension):
             return False
-        current_fingerprint = self._current_embedding_fingerprint(dimension=current_dimension)
+        current_fingerprint = self._current_embedding_fingerprint_for_validation(dimension=current_dimension)
         if current_fingerprint is None:
             return False
         stored_fingerprint = self._stored_embedding_fingerprint(store)
@@ -146,17 +159,12 @@ class MemoryEmbeddingStateService(KernelServiceBase):
         return "matched" if str(current.get("hash", "")) == str(stored.get("hash", "")) else "mismatched"
 
     def _stored_vectors_compatible_with_current_embedding(self, store: Optional[VectorStore] = None) -> bool:
-        current = self._current_embedding_fingerprint()
+        current = self._current_embedding_fingerprint_for_validation()
         stored = self._stored_embedding_fingerprint(store)
         if current is None:
             return False
         if stored is None:
-            stamped = self._stamp_missing_embedding_fingerprint_if_dimension_matches(store or self.vector_store)
-            if not stamped:
-                return False
-            stored = self._stored_embedding_fingerprint(store)
-            if stored is None:
-                return False
+            return False
         return str(current.get("hash", "") or "") == str(stored.get("hash", "") or "")
 
     def _vector_mismatch_error(self, *, stored_dimension: int, detected_dimension: int) -> str:
@@ -217,6 +225,10 @@ class MemoryEmbeddingStateService(KernelServiceBase):
                 "since": None,
                 "last_check": now,
             }
+        self._set_runtime_capability(
+            "embedding",
+            not active and self.embedding_manager is not None,
+        )
         if bool(prev.get("active", False)) != bool(active):
             if active:
                 logger.warning(
@@ -235,7 +247,8 @@ class MemoryEmbeddingStateService(KernelServiceBase):
         if not callable(setter):
             return
         try:
-            setter(self._is_embedding_degraded())
+            sparse_only = self._is_embedding_degraded() or not self._runtime_capabilities["vector_read"]
+            setter(sparse_only)
         except Exception as exc:
             logger.warning(f"设置 retriever sparse-only 运行时状态失败: {exc}")
 
@@ -324,6 +337,104 @@ class MemoryEmbeddingStateService(KernelServiceBase):
         except Exception as exc:
             logger.warning(f"登记 paragraph 向量回填任务失败: {exc}")
 
+    async def _restore_vector_channel_after_embedding_recovery(self) -> bool:
+        if str(self._vector_health.get("error_code", "") or "") != "embedding_fingerprint_unavailable":
+            return False
+
+        def load_or_recover() -> Tuple[bool, bool]:
+            try:
+                self.vector_store = self._make_vector_store(
+                    self._vectors_root(),
+                    dimension=self._current_embedding_status_dimension(),
+                )
+                if self._dual_vector_pools_config_enabled():
+                    loaded = self._reload_dual_vector_stores_from_disk()
+                    if not loaded:
+                        raise RuntimeError("Embedding 恢复后未找到可加载的双池向量世代")
+                else:
+                    expected_fingerprint = self._current_embedding_fingerprint_for_validation()
+                    if expected_fingerprint is None:
+                        raise VectorStoreIntegrityError(
+                            "当前 Embedding 指纹尚未经过真实请求确认",
+                            error_code="embedding_fingerprint_unavailable",
+                            dimension_status="unknown",
+                            fingerprint_status="unknown",
+                        )
+                    if not self.vector_store.has_data():
+                        raise RuntimeError("Embedding 恢复后未找到可加载的单池向量世代")
+                    self.vector_store.load(
+                        expected_embedding_fingerprint=expected_fingerprint,
+                        v1_valid_hashes=self._v1_valid_hashes_for_pool("single"),
+                        v1_evidence_root=self._v1_reconciliation_evidence_root(),
+                    )
+                    self.vector_store.warmup_index(force_train=True)
+                    self.paragraph_vector_store = self._make_vector_store(self._paragraph_vector_dir())
+                    self.graph_vector_store = self._make_vector_store(self._graph_vector_dir())
+                    loaded = True
+            except VectorStoreIntegrityError as exc:
+                if not self._recover_known_vector_failure(exc):
+                    raise
+                return self._dual_vector_pools_enabled(), False
+            return True, True
+
+        async with self._vector_rebuild_lock:
+            if str(self._vector_health.get("error_code", "") or "") != "embedding_fingerprint_unavailable":
+                return False
+            worker = asyncio.create_task(
+                asyncio.to_thread(load_or_recover),
+                name="A_Memorix.embedding_vector_restore.worker",
+            )
+            try:
+                vector_available, loaded_directly = await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                try:
+                    await worker
+                except Exception as exc:
+                    logger.warning(f"Embedding 恢复后的向量加载取消收尾异常: {exc}")
+                raise
+            except Exception as exc:
+                self._disable_vector_channel(exc)
+                return False
+
+            if not vector_available:
+                return False
+
+            from .. import sdk_memory_kernel as kernel_module
+
+            runtime_bundle = kernel_module.build_search_runtime(
+                plugin_config=self._build_runtime_config(),
+                logger_obj=kernel_module.logger,
+                owner_tag="sdk_kernel_embedding_recovery",
+                log_prefix="[sdk]",
+            )
+            if not runtime_bundle.ready:
+                logger.warning(runtime_bundle.error or "Embedding 恢复后检索运行时重建失败")
+                return False
+
+            self._runtime_bundle = runtime_bundle
+            self.retriever = runtime_bundle.retriever
+            self.threshold_filter = runtime_bundle.threshold_filter
+            self.sparse_index = runtime_bundle.sparse_index or self.sparse_index
+            self._set_runtime_capability("vector_read", True)
+            self._set_runtime_capability("vector_write", True)
+            if loaded_directly:
+                self._set_vector_health(
+                    state="healthy",
+                    error_code="",
+                    reason="",
+                    trusted_coverage=1.0,
+                    recovery_stage="idle",
+                    operation_id="",
+                    copy_progress={},
+                )
+            self._refresh_relation_write_service()
+            self._refresh_runtime_dependents(preserve_managers=True)
+            self._apply_runtime_sparse_mode()
+            if self._legacy_vector_view is not None:
+                await self._start_background_tasks()
+            logger.info("Embedding 指纹恢复后已重新启用向量通道")
+            return True
+
     async def _recover_embedding_once(self, *, sample_text: str = "A_Memorix runtime self check") -> Dict[str, Any]:
         report = await self._refresh_runtime_self_check(sample_text=sample_text)
         checked_at = float(report.get("checked_at") or time.time())
@@ -340,6 +451,7 @@ class MemoryEmbeddingStateService(KernelServiceBase):
 
         if ok:
             self._set_embedding_degraded(active=False, checked_at=checked_at)
+            await self._restore_vector_channel_after_embedding_recovery()
             backfill_result: Dict[str, Any] = {}
             if self._paragraph_vector_backfill_enabled():
                 backfill_result = await self._run_paragraph_backfill_once(

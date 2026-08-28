@@ -203,8 +203,8 @@ async def test_ai_self_reflect_expression_stays_unchecked(
             return "prompt"
 
     class FakeLearnModel:
-        async def generate_response_with_messages(self, builder, options, session_id: str):
-            del builder, options, session_id
+        async def generate_response_with_context(self, context_builder, options, session_id: str):
+            del context_builder, options, session_id
             return SimpleNamespace(response="response", provider_response=None)
 
     class FakeRuntimeManager:

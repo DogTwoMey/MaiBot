@@ -80,6 +80,13 @@ function AuthRetroGears() {
   )
 }
 
+function resolvePostAuthTarget(): '/' | '/chat/embed' {
+  if (typeof window === 'undefined') return '/'
+  return new URLSearchParams(window.location.search).get('redirect') === '/chat/embed'
+    ? '/chat/embed'
+    : '/'
+}
+
 export function AuthPage() {
   const [token, setToken] = useState('')
   const [isValidating, setIsValidating] = useState(false)
@@ -91,6 +98,7 @@ export function AuthPage() {
   const showRetroGears = themeConfig.dashboardStyle === 'future-retro'
   // 避免 React StrictMode 下重复触发 URL token 自动登录。
   const urlTokenHandledRef = useRef(false)
+  const tokenAutofocusedRef = useRef(false)
 
   // 从 URL 中提取 token（支持 query 与 hash 两种位置）。
   // 允许 ?token=xxx 、&token=xxx（query）以及 #/foo?token=xxx、#token=xxx（hash）。
@@ -194,7 +202,7 @@ export function AuthPage() {
           if (data.requires_custom_token || data.is_first_setup) {
             navigate({ to: '/setup' })
           } else {
-            navigate({ to: '/' })
+            navigate({ to: resolvePostAuthTarget() })
           }
           return true
         }
@@ -228,7 +236,10 @@ export function AuthPage() {
           stripTokenFromUrl()
           const setupStatus = await getSetupStatus()
           navigate({
-            to: setupStatus?.requires_custom_token || setupStatus?.is_first_setup ? '/setup' : '/',
+            to:
+              setupStatus?.requires_custom_token || setupStatus?.is_first_setup
+                ? '/setup'
+                : resolvePostAuthTarget(),
           })
           return
         }
@@ -314,7 +325,12 @@ export function AuthPage() {
                   onChange={(e) => setToken(e.target.value)}
                   className={cn('pl-10', error && 'border-red-500 focus-visible:ring-red-500')}
                   disabled={isValidating}
-                  autoFocus
+                  ref={(element) => {
+                    if (element && !tokenAutofocusedRef.current) {
+                      tokenAutofocusedRef.current = true
+                      element.focus()
+                    }
+                  }}
                   autoComplete="off"
                   aria-invalid={error ? true : undefined}
                   aria-describedby={error ? 'token-error' : undefined}
