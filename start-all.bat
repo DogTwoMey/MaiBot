@@ -1,5 +1,10 @@
 @echo off
-chcp 65001 >nul 2>&1
+if not defined MAIBOT_UTF8_CMD_READY (
+    chcp 65001 >nul 2>&1
+    set "MAIBOT_UTF8_CMD_READY=1"
+    "%ComSpec%" /d /c call "%~f0"
+    exit /b
+)
 setlocal EnableExtensions EnableDelayedExpansion
 
 :: ============================================================
