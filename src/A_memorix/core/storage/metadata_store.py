@@ -710,7 +710,7 @@ class MetadataStore(
         self,
         hash_values: Sequence[str],
     ) -> Dict[str, Dict[str, Any]]:
-        """批量获取段落，按输入 hash 去重后返回 hash -> paragraph。"""
+        """批量获取有效段落，按输入 hash 去重后返回 hash -> paragraph。"""
         normalized = self._normalize_hash_sequence(hash_values)
         if not normalized:
             return {}
@@ -723,6 +723,7 @@ class MetadataStore(
                 f"""
                 SELECT * FROM paragraphs
                 WHERE hash IN ({placeholders})
+                  AND (is_deleted IS NULL OR is_deleted = 0)
                 """,
                 tuple(batch),
             )
@@ -2911,6 +2912,7 @@ class MetadataStore(
             "memory_feedback_action_logs",
             "paragraph_stale_relation_marks",
             "person_profile_refresh_queue",
+            "person_profile_alias_overrides",
             "fact_transitions",
             "fact_evidence",
             "fact_claims",

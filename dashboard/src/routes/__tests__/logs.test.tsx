@@ -111,6 +111,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   window.localStorage.clear()
 })
 
@@ -421,6 +422,8 @@ describe('LogViewerPage 终端面板', () => {
   })
 
   it('日期筛选只保留窗口内日志，清除后恢复全部', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 13, 12))
     const user = userEvent.setup()
     logWsMocks.getAllLogs.mockReturnValue([
       makeLog('early', { message: '月初日志', timestamp: '2026-08-01 08:00:00' }),
@@ -434,7 +437,7 @@ describe('LogViewerPage 终端面板', () => {
 
     await user.click(screen.getByRole('button', { name: /开始日期/ }))
     const startCalendar = await screen.findByRole('grid')
-    await user.click(within(startCalendar).getByRole('button', { name: /10/ }))
+    await user.click(within(startCalendar).getByRole('button', { name: /2026年8月10日/ }))
 
     expect(screen.queryAllByText('月初日志')).toHaveLength(0)
     expect(screen.getAllByText('月中日志').length).toBeGreaterThan(0)
@@ -443,7 +446,7 @@ describe('LogViewerPage 终端面板', () => {
 
     await user.click(screen.getByRole('button', { name: /结束日期/ }))
     const endCalendar = await screen.findByRole('grid')
-    await user.click(within(endCalendar).getByRole('button', { name: /15/ }))
+    await user.click(within(endCalendar).getByRole('button', { name: /2026年8月15日/ }))
 
     expect(screen.getAllByText('月中日志').length).toBeGreaterThan(0)
     expect(screen.queryAllByText('月末日志')).toHaveLength(0)

@@ -168,11 +168,15 @@ uv run python scripts/launcher.py stop
 ### 6.4 升级依赖
 
 ```powershell
-uv sync --upgrade
+uv sync --locked --inexact
 pnpm -C external/napcat-src install
 ```
 
 Adapter 已使用主仓环境，不再执行单独的依赖同步。
+
+已安装插件的实例使用 `--inexact` 保留插件额外依赖；Windows 上更新被运行进程占用的依赖前，先停止对应 Bot。维护者升级版本时先更新并验证锁文件，再分发给运行实例。
+
+两套实例分别维护 `config/` 和 `data/custom_prompts/`：MaiBot 使用古米，MaiBot2 使用德蕾琪娜。共享 `prompts/` 中的身份引用使用 `{bot_name}`，实例专属作品背景留在各自覆盖文件中；同步源码不复制覆盖文件、插件配置或运行数据。
 
 ## 7. Git 与迁移规则
 
