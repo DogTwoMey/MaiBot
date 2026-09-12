@@ -8,6 +8,7 @@ from src.common.i18n import set_locale
 from src.common.prompt_i18n import (
     PROMPTS_ROOT,
     clear_prompt_cache,
+    extract_prompt_placeholders,
     iter_prompt_files,
     list_prompt_templates,
     load_prompt,
@@ -220,6 +221,9 @@ def test_maisaka_main_prompts_render_shared_system_guidance(tmp_path: Path) -> N
             custom_prompts_root=custom_prompts_root,
             bot_name=prompt_context["bot_name"],
         )
+        assert prompt_context["bot_name"] in system_guidance
+        for instance_name in ("古米", "德蕾琪娜", "挽昼", "Dracaene", "Wanzhou"):
+            assert instance_name not in system_guidance, f"{locale} 共享指导含有实例身份"
         context = prompt_context | {"system_guidance": system_guidance}
 
         for prompt_name in ("maisaka_chat", "maisaka_chat_focus", "maisaka_replyer"):
@@ -231,6 +235,22 @@ def test_maisaka_main_prompts_render_shared_system_guidance(tmp_path: Path) -> N
             )
 
             assert system_guidance in rendered
+
+
+def test_builtin_emoji_content_analysis_templates_are_localized_consistently() -> None:
+    expected_placeholders = {"image_type"}
+
+    for locale in ("zh-CN", "en-US", "ja-JP"):
+        prompt_path = PROMPTS_ROOT / locale / "emoji_content_analysis.prompt"
+
+        assert prompt_path.is_file()
+        assert extract_prompt_placeholders(prompt_path.read_text(encoding="utf-8")) == expected_placeholders
+
+        template_info = list_prompt_templates(locale=locale)["emoji_content_analysis"]
+        assert template_info.path == prompt_path
+        assert template_info.metadata.display_name
+        assert template_info.metadata.advanced is True
+        assert template_info.metadata.description
 
 
 def test_list_prompt_templates_reports_duplicate_name_with_custom_root(tmp_path: Path) -> None:

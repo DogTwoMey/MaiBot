@@ -392,6 +392,7 @@ packages/
 ## Claude Code and OMC data
 .claude/
 .omc/
+.zcode/
 /.venv312
 /src/A_memorix/algorithm_redesign
 agentlite/
