@@ -9,13 +9,13 @@
 | [GET v1/models](https://api.sillytraven.dev/api/ai/v1/models) | 无鉴权请求返回 200，共 45 项，OpenAI 模型列表格式 | 可用于 v1 模型发现 |
 | [GET v2/models](https://api.sillytraven.dev/api/ai/v2/models) | 无鉴权请求返回 200，共 43 项，提供 id、name、context_window | 可确认标识符与上下文长度 |
 | [POST v1/chat/completions](https://api.sillytraven.dev/api/ai/v1/chat/completions) | 使用现有 DZMM token、x-apex-neo-16k 和普通短消息返回 200，正文 OK，usage 为 9 输入 / 1 输出 token | 已验证该账户、该模型的非流式生成 |
-| [POST v2/chat/completions](https://api.sillytraven.dev/api/ai/v2/chat/completions) | 空对象请求返回 400，SSE 错误为 model is required | 错误响应也可能是 SSE |
+| [POST v2/chat/completions](https://api.sillytraven.dev/api/ai/v2/chat/completions) | 按角色卡格式调用返回 200；缺少 user_name/card 或传入 system 消息均返回 400 | 成功与错误响应均可能是 SSE；需要输入适配 |
 
 用户提供的 `temp/card-chat-v2.js` 是接口示例，作为协议资料读取，没有执行其中的生成请求。示例从环境变量 `DZMM_API_TOKEN` 读取 Bearer token，默认值是占位符。经用户确认后，本次使用现有 DZMM token 对新 v1 地址完成了普通短消息验证。
 
 v2 示例请求包括 `model`、`style`、`user_name`、`user_id`、`conversation_id`、`request_id`、`card`、`context`、`messages`、`max_tokens`、`temperature`。角色卡包含 name、description、personality、scenario、first_message、system_prompt。示例通过 SSE 的 `choices[0].delta.content` 取增量文本，通过 `usage` 读取用量。
 
-这些字段来自示例；是否必填、长度限制、计费口径、stream 参数行为及服务端会话留存规则仍待正式文档或鉴权测试确认。公开模型列表成功不等于生成权限有效。
+这些字段来自示例；后续测试确认 user_name/card 必填，messages 仅接受 user/assistant 的字符串内容。其它字段是否必填、长度限制、计费口径及服务端会话留存规则仍待确认。公开模型列表成功不等于生成权限有效。
 
 补充验证：向 v1 发送不含密钥的普通短消息，指定 `x-apex-dash-0826-16k`、max_tokens=8、stream=false，接口返回 HTTP 400 与 `bad_request` 错误，没有取得生成结果。因此也不能仅凭 HTTP 状态码将这类错误归为 JSON 格式问题。
 
@@ -61,6 +61,6 @@ v2 示例请求包括 `model`、`style`、`user_name`、`user_id`、`conversatio
 
 MaiBot 的通用接入优先验证 v1，base_url 为 `https://api.sillytraven.dev/api/ai/v1`，模型发现为 `/models`。现有 OpenAI 兼容客户端可作为验证入口。v2 需要角色卡映射及 SSE 行为验证，不应仅替换 URL 就认定兼容。
 
-已使用无私人上下文的普通短消息验证 token、Neo-16K 的非流式生成与实际 usage。Dash 各容量档位尚未进行带鉴权生成测试，价格、v2 生成及流式兼容性也仍待验证，不能把未知计费写成免费结论。
+已用合成对话验证 Neo-16K、Dash-0826-16K 的非流式生成、Neo 的 v1 流式正文，以及正确角色卡格式下的 v2 生成。其它容量档位、价格和完整工具调用兼容性仍待验证。比较与跨供应商接力结果见 [单次回复替换测试](dzmm-substitution-smoke.md)。
 
 本次产出调研、候选目录及可配置的通用回复路由。两套运行配置、模型选择策略和服务进程均未修改。启用时分别配置各实例，保留它们的温度、模型池和凭据差异。

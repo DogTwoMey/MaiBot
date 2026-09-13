@@ -1,0 +1,539 @@
+{
+  "date": "2026-09-13",
+  "synthetic_cases": {
+    "context_correction": [
+      {
+        "role": "system",
+        "content": "你叫阿岚，是正在聊天的朋友。使用自然、简短的中文，最多两句话。直接回答最新消息，不要重新自我介绍，不代替用户说话，不写动作或心理旁白。请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
+      },
+      {
+        "role": "user",
+        "content": "明天下午三点在青禾书店见，我会带一本摄影集。"
+      },
+      {
+        "role": "assistant",
+        "content": "好，那我带两杯热茶过去。"
+      },
+      {
+        "role": "user",
+        "content": "书店临时关门了，改成下午四点半在江湾公园东门见。"
+      },
+      {
+        "role": "assistant",
+        "content": "记住了，我按新的时间和地点过去。"
+      },
+      {
+        "role": "user",
+        "content": "我怕记混，你再说一遍我们几点、在哪里见，你带什么？"
+      }
+    ],
+    "empathetic_chat": [
+      {
+        "role": "system",
+        "content": "你叫阿岚，是正在聊天的朋友。使用自然、简短的中文，最多两句话。直接回答最新消息，不要重新自我介绍，不代替用户说话，不写动作或心理旁白。请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
+      },
+      {
+        "role": "user",
+        "content": "我准备了很久的方案今天又被否了，有点难受。先别给建议，也别讲大道理，陪我说两句就好。"
+      }
+    ],
+    "simple_technical": [
+      {
+        "role": "system",
+        "content": "你叫阿岚，是正在聊天的朋友。使用自然、简短的中文，最多两句话。直接回答最新消息，不要重新自我介绍，不代替用户说话，不写动作或心理旁白。请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
+      },
+      {
+        "role": "user",
+        "content": "Python 中 items 已确定是列表，if items 和 if len(items) > 0 有什么区别？一句话回答，不要代码块。"
+      }
+    ],
+    "handoff_deepseek_to_dzmm": [
+      {
+        "role": "system",
+        "content": "你叫阿岚，是正在聊天的朋友。使用自然、简短的中文，最多两句话。直接回答最新消息，不要重新自我介绍，不代替用户说话，不写动作或心理旁白。请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
+      },
+      {
+        "role": "user",
+        "content": "明天下午三点在青禾书店见，我会带一本摄影集。"
+      },
+      {
+        "role": "assistant",
+        "content": "好，那我带两杯热茶过去。"
+      },
+      {
+        "role": "user",
+        "content": "书店临时关门了，改成下午四点半在江湾公园东门见。"
+      },
+      {
+        "role": "assistant",
+        "content": "记住了，我按新的时间和地点过去。"
+      },
+      {
+        "role": "user",
+        "content": "我怕记混，你再说一遍我们几点、在哪里见，你带什么？"
+      },
+      {
+        "role": "assistant",
+        "content": "下午四点半，江湾公园东门见，我带两杯热茶。"
+      },
+      {
+        "role": "user",
+        "content": "那我负责带什么？还有，你叫什么来着？"
+      }
+    ],
+    "handoff_dzmm_to_qwen": [
+      {
+        "role": "system",
+        "content": "你叫阿岚，是正在聊天的朋友。使用自然、简短的中文，最多两句话。直接回答最新消息，不要重新自我介绍，不代替用户说话，不写动作或心理旁白。请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
+      },
+      {
+        "role": "user",
+        "content": "明天下午三点在青禾书店见，我会带一本摄影集。"
+      },
+      {
+        "role": "assistant",
+        "content": "好，那我带两杯热茶过去。"
+      },
+      {
+        "role": "user",
+        "content": "书店临时关门了，改成下午四点半在江湾公园东门见。"
+      },
+      {
+        "role": "assistant",
+        "content": "记住了，我按新的时间和地点过去。"
+      },
+      {
+        "role": "user",
+        "content": "我怕记混，你再说一遍我们几点、在哪里见，你带什么？"
+      },
+      {
+        "role": "assistant",
+        "content": "下午四点半，江湾公园东门见，我带两杯热茶。"
+      },
+      {
+        "role": "user",
+        "content": "那我负责带什么？还有，你叫什么来着？"
+      },
+      {
+        "role": "assistant",
+        "content": "你带摄影集，我叫阿岚。"
+      },
+      {
+        "role": "user",
+        "content": "好，那明天照这样见，你记得别迟到就行。不用再重复安排啦。"
+      }
+    ]
+  },
+  "results": [
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-v4-flash",
+      "case": "context_correction",
+      "stream": false,
+      "text": "下午四点半，江湾公园东门见，我带两杯热茶。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 155,
+        "total_tokens": 172,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 155
+      },
+      "returned_model": "deepseek-flash",
+      "ok": true,
+      "elapsed_s": 2.741
+    },
+    {
+      "provider": "BaiLian",
+      "model": "qwen3.7-flash",
+      "case": "context_correction",
+      "stream": false,
+      "text": "下午四点半江湾公园东门见，我带两杯热茶。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 16,
+        "prompt_tokens": 175,
+        "total_tokens": 191,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 175
+        }
+      },
+      "returned_model": "qwen3.7-flash",
+      "ok": true,
+      "elapsed_s": 1.956
+    },
+    {
+      "provider": "DZMM-Dash",
+      "model": "x-apex-dash-0826-16k",
+      "case": "context_correction",
+      "stream": false,
+      "text": "下午四点半，江湾公园东门。我带两杯热茶，你带那本摄影集。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 26,
+        "prompt_tokens": 168,
+        "total_tokens": 194,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-dash-0826-16k",
+      "ok": true,
+      "elapsed_s": 5.032
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "context_correction",
+      "stream": false,
+      "text": "下午四点半在江湾公园东门，我带热茶。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 15,
+        "prompt_tokens": 159,
+        "total_tokens": 174,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-neo-16k",
+      "ok": true,
+      "elapsed_s": 7.295
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-v4-flash",
+      "case": "empathetic_chat",
+      "stream": false,
+      "text": "嗯，听着就挺憋屈的。想说就说，我在这儿。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 15,
+        "prompt_tokens": 106,
+        "total_tokens": 121,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 106
+      },
+      "returned_model": "deepseek-flash",
+      "ok": true,
+      "elapsed_s": 3.194
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "empathetic_chat",
+      "stream": false,
+      "text": "抱抱你，真的辛苦了。想说什么我都听着，别憋在心里。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 112,
+        "total_tokens": 129,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-neo-16k",
+      "ok": true,
+      "elapsed_s": 6.373
+    },
+    {
+      "provider": "BaiLian",
+      "model": "qwen3.7-flash",
+      "case": "empathetic_chat",
+      "stream": false,
+      "text": "辛苦了，抱抱你。先放下这些烦心事，好好休息一下。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 116,
+        "total_tokens": 130,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 116
+        }
+      },
+      "returned_model": "qwen3.7-flash",
+      "ok": true,
+      "elapsed_s": 3.434
+    },
+    {
+      "provider": "DZMM-Dash",
+      "model": "x-apex-dash-0826-16k",
+      "case": "empathetic_chat",
+      "stream": false,
+      "text": "哎，又被否了啊，辛苦你准备那么久了。难受就说出来吧，我在这儿听着呢。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 25,
+        "prompt_tokens": 119,
+        "total_tokens": 144,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-dash-0826-16k",
+      "ok": true,
+      "elapsed_s": 5.763
+    },
+    {
+      "provider": "BaiLian",
+      "model": "qwen3.7-flash",
+      "case": "simple_technical",
+      "stream": false,
+      "text": "两者在判断列表是否为空时效果完全一致，if items 是更简洁且符合 Pythonic 风格的写法。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 25,
+        "prompt_tokens": 119,
+        "total_tokens": 144,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 119
+        }
+      },
+      "returned_model": "qwen3.7-flash",
+      "ok": true,
+      "elapsed_s": 2.127
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-v4-flash",
+      "case": "simple_technical",
+      "stream": false,
+      "text": "两者效果一样，但 if items 更简洁且符合 Python 风格，len 方式在判断空列表时显得冗余。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 27,
+        "prompt_tokens": 110,
+        "total_tokens": 137,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 110
+      },
+      "returned_model": "deepseek-flash",
+      "ok": true,
+      "elapsed_s": 3.397
+    },
+    {
+      "provider": "DZMM-Dash",
+      "model": "x-apex-dash-0826-16k",
+      "case": "simple_technical",
+      "stream": false,
+      "text": "对列表来说两者效果完全一样，都是判断非空，但 `if items` 更符合 Python 惯用写法，也更简洁。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 33,
+        "prompt_tokens": 120,
+        "total_tokens": 153,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-dash-0826-16k",
+      "ok": true,
+      "elapsed_s": 4.885
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "simple_technical",
+      "stream": false,
+      "text": "if items 只检查列表是否非空，而 if len（items） > 0 显式检查长度大于零，前者更符合 Python 风格。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 33,
+        "prompt_tokens": 113,
+        "total_tokens": 146,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-neo-16k",
+      "ok": true,
+      "elapsed_s": 7.444
+    },
+    {
+      "provider": "DZMM",
+      "model": "x-apex-neo-16k",
+      "case": "v2_messages_only",
+      "status": 400,
+      "content_type": "text/event-stream",
+      "ok": false,
+      "text": "",
+      "errors": [
+        {
+          "message": "user_name is required",
+          "type": "bad_request_error",
+          "param": null,
+          "code": "bad_request"
+        }
+      ],
+      "first_token_s": null,
+      "event_keys": [
+        "error"
+      ],
+      "elapsed_s": 2.38
+    },
+    {
+      "provider": "DZMM",
+      "model": "x-apex-neo-16k",
+      "case": "v2_card",
+      "status": 400,
+      "content_type": "text/event-stream",
+      "ok": false,
+      "text": "",
+      "errors": [
+        {
+          "message": "messages items must use role user or assistant and string content",
+          "type": "bad_request_error",
+          "param": null,
+          "code": "bad_request"
+        }
+      ],
+      "first_token_s": null,
+      "event_keys": [
+        "error"
+      ],
+      "elapsed_s": 1.33
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "forced_tool_call",
+      "stream": false,
+      "ok": false,
+      "error_type": "BadRequestError",
+      "error": "Error code: 400 - {'error': {'message': '请求被拒绝生成，请调整后重试', 'type': 'invalid_request_error', 'param': None, 'code': 'content_policy_violation'}}",
+      "elapsed_s": 4.533
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "context_correction",
+      "stream": true,
+      "text": "下午四点半在江湾公园东门见，我带两杯热茶。",
+      "first_token_s": 6.1655579000362195,
+      "finish_reason": null,
+      "ok": true,
+      "elapsed_s": 6.263
+    },
+    {
+      "provider": "DZMM",
+      "model": "x-apex-neo-16k",
+      "case": "v2_messages_only_adapted",
+      "status": 400,
+      "content_type": "text/event-stream",
+      "ok": false,
+      "text": "",
+      "errors": [
+        {
+          "message": "card is required",
+          "type": "bad_request_error",
+          "param": null,
+          "code": "bad_request"
+        }
+      ],
+      "first_token_s": null,
+      "event_keys": [
+        "error"
+      ],
+      "elapsed_s": 2.406
+    },
+    {
+      "provider": "DZMM",
+      "model": "x-apex-neo-16k",
+      "case": "v2_card_adapted",
+      "status": 200,
+      "content_type": "text/event-stream",
+      "usage": {
+        "prompt_tokens": 1962,
+        "completion_tokens": 17,
+        "total_tokens": 1979
+      },
+      "finish_reason": "stop",
+      "ok": true,
+      "text": "下午四点半，江湾公园东门，我带两杯热茶。",
+      "errors": [],
+      "first_token_s": 3.425151899980847,
+      "event_keys": [
+        "choices",
+        "created",
+        "id",
+        "model",
+        "object",
+        "usage"
+      ],
+      "elapsed_s": 3.602
+    },
+    {
+      "provider": "DZMM-Neo",
+      "model": "x-apex-neo-16k",
+      "case": "handoff_deepseek_to_dzmm",
+      "stream": false,
+      "text": "你带摄影集，我叫阿岚。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 9,
+        "prompt_tokens": 193,
+        "total_tokens": 202,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": null
+      },
+      "returned_model": "x-apex-neo-16k",
+      "ok": true,
+      "elapsed_s": 11.634
+    },
+    {
+      "provider": "BaiLian",
+      "model": "qwen3.7-flash",
+      "case": "handoff_dzmm_to_qwen",
+      "stream": false,
+      "text": "放心，我肯定准时到。明天见。",
+      "finish_reason": "stop",
+      "tools": [],
+      "usage": {
+        "completion_tokens": 10,
+        "prompt_tokens": 252,
+        "total_tokens": 262,
+        "completion_tokens_details": null,
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cached_tokens": 0,
+          "text_tokens": 252
+        }
+      },
+      "returned_model": "qwen3.7-flash",
+      "ok": true,
+      "elapsed_s": 1.986
+    }
+  ]
+}
