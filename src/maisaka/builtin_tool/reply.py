@@ -3,6 +3,7 @@
 from typing import Any, Optional
 import traceback
 
+from src.chat.replyer.model_routing import build_reply_model_routing_schema
 from src.chat.replyer.replyer_manager import replyer_manager
 from src.cli.maisaka_cli_sender import CLI_PLATFORM_NAME, render_cli_message
 from src.common.data_models.reply_generation_data_models import ReplyGenerationResult, build_reply_monitor_detail
@@ -184,6 +185,10 @@ def get_tool_spec() -> ToolSpec:
             "items": {"type": "string"},
             "default": [],
         }
+
+    routing_schema = build_reply_model_routing_schema()
+    if routing_schema is not None:
+        properties["reply_model"] = routing_schema
 
     return ToolSpec(
         name="reply",

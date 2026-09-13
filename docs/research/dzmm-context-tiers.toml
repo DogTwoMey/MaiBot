@@ -1,0 +1,25 @@
+# 研究用上下文容量目录；不是运行配置或能力排名。
+verified_on = "2026-09-13"
+source = "https://api.sillytraven.dev/api/ai/v2/models"
+base_url = "https://api.sillytraven.dev/api/ai/v1"
+model_list_endpoint = "/models"
+auth_type = "bearer"
+tier_basis = "context_window"
+pricing_status = "unverified"
+generation_status = "unverified"
+
+[tiers.low]
+model_identifier = "x-apex-dash-0826-16k"
+context_window = 16000
+
+[tiers.mid]
+model_identifier = "x-apex-dash-0826"
+context_window = 32000
+
+[tiers.high]
+model_identifier = "x-apex-dash-0826-64k"
+context_window = 64000
+
+[tiers.ultra]
+model_identifier = "x-apex-dash-0826-128k"
+context_window = 128000

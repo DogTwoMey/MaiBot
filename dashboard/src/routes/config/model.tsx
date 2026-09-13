@@ -1032,6 +1032,7 @@ function ModelConfigPageContent() {
                       advanced={selectedTaskField.advanced}
                       showAdvancedSettings={advancedTaskSettingsVisible}
                       singleModel={selectedTaskField.name === 'embedding'}
+                      showRoutingPrompt={selectedTaskField.name === 'replyer'}
                       dataTour="task-model-select"
                     />
                   </motion.div>

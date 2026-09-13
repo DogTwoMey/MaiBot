@@ -45,6 +45,7 @@ export interface TaskConfig {
   slow_threshold?: number
   hard_timeout?: number
   selection_strategy?: string
+  routing_prompt?: string
 }
 
 /**

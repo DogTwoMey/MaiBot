@@ -59,6 +59,7 @@ from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.plugin_runtime.hook_payloads import deserialize_prompt_items, serialize_prompt_items
 
 from .maisaka_expression_selector import maisaka_expression_selector
+from .model_routing import resolve_reply_model
 
 logger = get_logger("replyer")
 
@@ -1053,6 +1054,12 @@ class BaseMaisakaReplyGenerator:
             return finalize(False)
 
         active_reply_tool_args = self._normalize_reply_tool_args(reply_tool_args)
+        try:
+            routed_model_name = resolve_reply_model(active_reply_tool_args)
+        except ValueError as exc:
+            result.error_message = str(exc)
+            logger.error(f"回复模型路由失败: {exc}")
+            return finalize(False)
         if chat_history is None:
             result.error_message = "聊天历史为空"
             return finalize(False)
@@ -1117,7 +1124,7 @@ class BaseMaisakaReplyGenerator:
                     session_id=preview_chat_id,
                     request_type=self.request_type,
                     task_name=default_task_name,
-                    model_name="",
+                    model_name=routed_model_name or "",
                     extra_prompt="",
                     attempt=retry_count + 1,
                     retry_count=retry_count,
@@ -1137,7 +1144,7 @@ class BaseMaisakaReplyGenerator:
             active_task_name = str(before_request_kwargs.get("task_name") or default_task_name).strip()
             if not active_task_name:
                 active_task_name = default_task_name
-            active_model_name = str(before_request_kwargs.get("model_name") or "").strip() or None
+            active_model_name = str(before_request_kwargs.get("model_name") or routed_model_name or "").strip() or None
             active_reply_requirements = self._build_reply_requirements(
                 str(before_request_kwargs.get("extra_prompt") or ""),
                 retry_constraints,

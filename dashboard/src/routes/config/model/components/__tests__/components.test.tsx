@@ -264,6 +264,23 @@ describe('ModelCardList', () => {
 })
 
 describe('TaskConfigCard', () => {
+  it('回复路由提示词支持编辑与清空，并且按任务隐藏', () => {
+    const onChange = vi.fn()
+    const props = {
+      title: '回复模型', description: '用于回复', modelNames: ['alpha'], onChange,
+      taskConfig: { model_list: ['alpha'], routing_prompt: '日常交流使用 Aliyun。' },
+    }
+    const { rerender } = render(<TaskConfigCard {...props} showRoutingPrompt />)
+    const prompt = screen.getByLabelText('供应商路由提示词')
+    expect(prompt).toHaveValue('日常交流使用 Aliyun。')
+    fireEvent.change(prompt, { target: { value: '技术问题使用 DeepSeek。' } })
+    expect(onChange).toHaveBeenCalledWith('routing_prompt', '技术问题使用 DeepSeek。')
+    fireEvent.change(prompt, { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith('routing_prompt', '')
+    rerender(<TaskConfigCard {...props} />)
+    expect(screen.queryByLabelText('供应商路由提示词')).not.toBeInTheDocument()
+  })
+
   const baseTask: TaskConfig = {
     model_list: ['alpha'],
     temperature: 0.7,

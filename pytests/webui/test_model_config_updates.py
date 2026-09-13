@@ -95,6 +95,27 @@ async def test_update_model_config_reloads_runtime_config(
 
 
 @pytest.mark.asyncio
+async def test_reply_routing_prompt_is_saved_and_cleared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reload_calls: list[list[str]]
+) -> None:
+    config_path = tmp_path / "model_config.toml"
+    _write_complete_model_config(config_path)
+    with config_path.open("a", encoding="utf-8") as config_file:
+        config_file.write('\n[model_task_config.replyer]\nmodel_list = ["gpt-test"]\n')
+    monkeypatch.setattr(config_routes, "CONFIG_DIR", tmp_path)
+
+    for prompt in ("技术问题使用 openai。", ""):
+        response = await config_routes.update_model_config_section(
+            "model_task_config",
+            {"replyer": {"model_list": ["gpt-test"], "routing_prompt": prompt}},
+        )
+        assert response["success"] is True
+        saved = tomlkit.loads(config_path.read_text(encoding="utf-8")).unwrap()
+        assert saved["model_task_config"]["replyer"]["routing_prompt"] == prompt
+    assert reload_calls == [["model"], ["model"]]
+
+
+@pytest.mark.asyncio
 async def test_update_api_providers_still_rejects_empty_provider_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reload_calls: list[list[str]]
 ) -> None:

@@ -7,6 +7,7 @@ import { Info } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { Textarea } from '@/components/ui/textarea'
 import { MultiSelect } from '@/components/ui/multi-select'
 import { StreamlineIcon } from '@/components/ui/streamline-icon'
 import {
@@ -38,6 +39,7 @@ interface TaskConfigCardProps {
   showAdvancedSettings?: boolean
   dataTour?: string
   singleModel?: boolean
+  showRoutingPrompt?: boolean
 }
 
 const selectionStrategyOptions = [
@@ -74,8 +76,10 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
   showAdvancedSettings = false,
   dataTour,
   singleModel = false,
+  showRoutingPrompt = false,
 }: TaskConfigCardProps) {
   const temperatureInputId = React.useId()
+  const routingPromptId = React.useId()
   const selectedModels = taskConfig.model_list || []
 
   const handleModelChange = (values: string[]) => {
@@ -108,6 +112,22 @@ export const TaskConfigCard = React.memo(function TaskConfigCard({
             singleSelect={singleModel}
           />
         </div>
+
+        {showRoutingPrompt && (
+          <div className="grid gap-2">
+            <Label htmlFor={routingPromptId}>供应商路由提示词</Label>
+            <Textarea
+              id={routingPromptId}
+              value={taskConfig.routing_prompt ?? ''}
+              onChange={(event) => onChange('routing_prompt', event.target.value)}
+              placeholder="例如：技术问题使用 DeepSeek，日常对话使用 Aliyun。请填写已配置的供应商或模型名称。"
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Planner 根据规则从上方模型列表选择本次回复模型，模型所属供应商决定请求去向。留空关闭；未匹配规则时使用模型选择策略。
+            </p>
+          </div>
+        )}
 
         {/* 推理参数 */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

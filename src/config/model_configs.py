@@ -406,6 +406,10 @@ class TaskConfig(ConfigBase):
     """任务硬超时（秒），到点未返回则取消请求并尝试切换下一个模型；防止上游代理静默排队导致主循环饥饿"""
 
 
+    routing_prompt: str = Field(default="", json_schema_extra={"x-widget": "textarea"})
+    """仅 replyer 使用的供应商路由提示词；Planner 从回复模型池选择模型，留空关闭路由。"""
+
+
 class ModelTaskConfig(ConfigBase):
     """模型配置类"""
 
