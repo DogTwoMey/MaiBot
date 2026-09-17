@@ -70,6 +70,7 @@ import { CorrectionTab } from './knowledge-base/tabs/CorrectionTab'
 import { DeleteTab } from './knowledge-base/tabs/DeleteTab'
 import { FeedbackTab } from './knowledge-base/tabs/FeedbackTab'
 import { ImportTab } from './knowledge-base/tabs/ImportTab'
+import { ImagesTab } from './knowledge-base/tabs/ImagesTab'
 import { MemoryRecordsTab } from './knowledge-base/tabs/MemoryRecordsTab'
 import { TuningTab } from './knowledge-base/tabs/TuningTab'
 import { KnowledgeGraphPage } from './knowledge-graph'
@@ -77,10 +78,10 @@ import { KnowledgeGraphPage } from './knowledge-graph'
 const MEMORY_QUICK_START_DISMISSED_KEY = 'memory-quick-start-dismissed'
 type MemoryConsoleTab =
   | 'records'
+  | 'images'
   | 'graph'
   | 'timeline'
   | 'import'
-  | 'episodes'
   | 'profiles'
   | 'inspection'
   | 'delete'
@@ -92,19 +93,22 @@ type LoadableMemoryTab = Extract<
 
 const MEMORY_CONSOLE_TABS: MemoryConsoleTab[] = [
   'records',
+  'images',
   'graph',
   'timeline',
   'import',
-  'episodes',
   'profiles',
   'inspection',
   'delete',
   'feedback',
 ]
 
+// 情景记忆管理并入记忆检修后的子模式
+type InspectionMode = 'maintenance' | 'correction' | 'tuning' | 'episodes'
+
 interface KnowledgeBaseDeepLinkState {
   tab: MemoryConsoleTab
-  inspectionMode?: 'maintenance' | 'correction' | 'tuning'
+  inspectionMode?: InspectionMode
   chatId?: string
   timeStart?: number
   timeEnd?: number
@@ -128,22 +132,27 @@ function parseOptionalTimestampQuery(value: string | null): number | undefined {
 
 function readKnowledgeBaseDeepLink(): KnowledgeBaseDeepLinkState {
   if (typeof window === 'undefined') {
-    return { tab: 'graph' }
+    return { tab: 'records' }
   }
   const params = new URLSearchParams(window.location.search)
   const rawTab = params.get('tab')
   const legacyInspectionMode =
     rawTab === 'maintenance' || rawTab === 'correction' || rawTab === 'tuning' ? rawTab : undefined
-  const tabParam = legacyInspectionMode ? 'inspection' : rawTab as MemoryConsoleTab | null
-  const tab = tabParam && MEMORY_CONSOLE_TABS.includes(tabParam) ? tabParam : 'graph'
+  // 情景记忆曾是独立标签，旧链接 tab=episodes 迁移为 inspection 的子模式
+  const legacyEpisodesTab = rawTab === 'episodes'
+  const tabParam =
+    legacyInspectionMode || legacyEpisodesTab ? 'inspection' : (rawTab as MemoryConsoleTab | null)
+  // 图谱已从标签栏移到右上角入口，旧链接 tab=graph 与无效 tab 都回落到记忆查询
+  const tab = tabParam && MEMORY_CONSOLE_TABS.includes(tabParam) ? tabParam : 'records'
   const taskId = parseOptionalTimestampQuery(params.get('task_id'))
+  const rawMode = params.get('mode')
+  const modeParam =
+    rawMode === 'maintenance' || rawMode === 'tuning' || rawMode === 'episodes'
+      ? (rawMode as InspectionMode)
+      : undefined
   return {
     tab,
-    inspectionMode: legacyInspectionMode ?? (
-      params.get('mode') === 'maintenance' || params.get('mode') === 'tuning'
-        ? params.get('mode') as 'maintenance' | 'tuning'
-        : 'correction'
-    ),
+    inspectionMode: legacyInspectionMode ?? modeParam ?? (legacyEpisodesTab ? 'episodes' : 'correction'),
     chatId: params.get('chat_id') || undefined,
     timeStart: parseOptionalTimestampQuery(params.get('from') ?? params.get('time_start')),
     timeEnd: parseOptionalTimestampQuery(params.get('to') ?? params.get('time_end')),
@@ -476,7 +485,7 @@ export function KnowledgeBasePage() {
     return window.localStorage.getItem(MEMORY_QUICK_START_DISMISSED_KEY) !== 'true'
   })
   const [visitedMemoryTabs, setVisitedMemoryTabs] = useState<Set<MemoryConsoleTab>>(
-    () => new Set(['graph', deepLinkRef.current.tab])
+    () => new Set<MemoryConsoleTab>([deepLinkRef.current.tab])
   )
   const [tabLoading, setTabLoading] = useState<Partial<Record<LoadableMemoryTab, boolean>>>({})
   const loadedPanelDataRef = useRef<Set<LoadableMemoryTab>>(new Set())
@@ -500,7 +509,7 @@ export function KnowledgeBasePage() {
   )
   const [maintenanceInitialAction, setMaintenanceInitialAction] =
     useState<MemoryMaintenanceAction>('reinforce')
-  const [inspectionMode, setInspectionMode] = useState<'maintenance' | 'correction' | 'tuning'>(
+  const [inspectionMode, setInspectionMode] = useState<InspectionMode>(
     deepLinkRef.current.inspectionMode ?? 'correction'
   )
 
@@ -672,7 +681,8 @@ export function KnowledgeBasePage() {
           timeStart: episode?.event_time_start ?? undefined,
           timeEnd: episode?.event_time_end ?? undefined,
         })
-        switchMemoryTab('episodes', { episode_id: targetId })
+        setInspectionMode('episodes')
+        switchMemoryTab('inspection', { mode: 'episodes', episode_id: targetId })
         return
       }
 
@@ -730,12 +740,8 @@ export function KnowledgeBasePage() {
         return
       }
 
-      const tab = rawTab as MemoryConsoleTab
-      if (!MEMORY_CONSOLE_TABS.includes(tab)) {
-        return
-      }
-
-      if (tab === 'episodes') {
+      // 情景记忆已并入记忆检修；后端跳转目标仍是 episodes，这里转译为 inspection 子模式
+      if (rawTab === 'episodes') {
         const episodeId = readJumpParam(target, 'episode_id')
         const source = readJumpParam(target, 'source')
         const timeStart = readJumpNumber(target, 'time_start')
@@ -746,12 +752,19 @@ export function KnowledgeBasePage() {
           timeStart,
           timeEnd,
         })
-        switchMemoryTab('episodes', {
+        setInspectionMode('episodes')
+        switchMemoryTab('inspection', {
+          mode: 'episodes',
           episode_id: episodeId,
           source,
           time_start: timeStart,
           time_end: timeEnd,
         })
+        return
+      }
+
+      const tab = rawTab as MemoryConsoleTab
+      if (!MEMORY_CONSOLE_TABS.includes(tab)) {
         return
       }
 
@@ -941,6 +954,13 @@ export function KnowledgeBasePage() {
                   <Activity className="h-4 w-4" />
                   查看记忆状态
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  onSelect={() => switchMemoryTab('graph')}
+                >
+                  <Database className="h-4 w-4" />
+                  打开图谱
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -1112,12 +1132,12 @@ export function KnowledgeBasePage() {
               </Button>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="space-y-1.5 lg:max-w-sm">
-                  <h2 className="text-lg leading-tight font-semibold">快速开始：先从这三件事入手</h2>
+                  <h2 className="text-lg leading-tight font-semibold">快速开始：先从这两件事入手</h2>
                   <p className="text-muted-foreground text-sm">
                     不知道该做什么？挑一个最常用的入口，下面的标签页里有更详细的设置。
                   </p>
                 </div>
-                <div className="grid w-full gap-2 sm:grid-cols-3 lg:max-w-3xl">
+                <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-2xl">
                   <button
                     type="button"
                     onClick={() => switchMemoryTab('import')}
@@ -1127,9 +1147,9 @@ export function KnowledgeBasePage() {
                       <Upload className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold">导入资料</div>
+                      <div className="text-sm font-semibold">导入或导出资料</div>
                       <div className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
-                        把文件、聊天记录写进记忆库
+                        写入资料，或迁移可分享记忆包
                       </div>
                     </div>
                   </button>
@@ -1148,21 +1168,6 @@ export function KnowledgeBasePage() {
                       <div className="text-sm font-semibold">检索调优</div>
                       <div className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                         让回忆变得更准、更聪明
-                      </div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchMemoryTab('graph')}
-                    className="group border-border/70 bg-background/80 hover:border-primary/50 hover:bg-background flex items-start gap-2 rounded-lg border p-3 text-left transition hover:shadow-md"
-                  >
-                    <div className="flex-none rounded-lg bg-violet-500/10 p-2 text-violet-500 transition-transform group-hover:scale-105">
-                      <Database className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold">打开图谱</div>
-                      <div className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
-                        可视化已存的实体和关系
                       </div>
                     </div>
                   </button>
@@ -1188,9 +1193,8 @@ export function KnowledgeBasePage() {
                       label: '记忆查询',
                       description: '查询数据库权威记录与关联内容',
                     },
-                    { value: 'graph', label: '图谱', description: '实体关系图与证据视图' },
+                    { value: 'images', label: '图片记忆', description: '图片向量、认知与关联记忆' },
                     { value: 'timeline', label: '审计时间线', description: '核对聊天流记忆变动' },
-                    { value: 'episodes', label: '情景记忆', description: '查看和重建情景记忆' },
                     { value: 'profiles', label: '人物画像', description: '查询和维护人物画像' },
                   ].map((item) => (
                     <DashboardTabTrigger
@@ -1208,7 +1212,11 @@ export function KnowledgeBasePage() {
                   className="w-full max-w-full grid-cols-3 sm:w-fit sm:auto-cols-max sm:grid-flow-col sm:grid-cols-none"
                 >
                   {[
-                    { value: 'import', label: '导入', description: '创建并管理导入任务' },
+                    {
+                      value: 'import',
+                      label: '导入导出',
+                      description: '导入资料并管理可分享记忆包',
+                    },
                     { value: 'inspection', label: '记忆检修', description: '维护记忆状态并修正记忆内容' },
                     { value: 'delete', label: '删除', description: '批量删除与历史回溯' },
                     { value: 'feedback', label: '纠错历史', description: '查看反馈与回滚' },
@@ -1230,16 +1238,22 @@ export function KnowledgeBasePage() {
               <MemoryRecordsTab onAction={handleMemoryRecordAction} />
             )}
 
-            <TabsContent
-              value="graph"
-              className="border-border/60 bg-background h-[calc(100vh-132px)] min-h-[820px] overflow-hidden rounded-2xl border shadow-sm"
-            >
-              <KnowledgeGraphPage
-                embedded
-                initialParagraphHash={graphInitialParagraphHash}
-                onOpenConsole={() => switchMemoryTab('import')}
-              />
-            </TabsContent>
+            {shouldRenderMemoryTab('images') && <ImagesTab />}
+
+            {/* 图谱已从标签栏移到右上角「打开图谱」入口；这里保留面板，
+                以便旧链接 tab=graph 与审计时间线等携带 paragraph_hash 的跳转仍能直接定位图谱 */}
+            {shouldRenderMemoryTab('graph') && (
+              <TabsContent
+                value="graph"
+                className="border-border/60 bg-background h-[calc(100vh-132px)] min-h-[820px] overflow-hidden rounded-2xl border shadow-sm"
+              >
+                <KnowledgeGraphPage
+                  embedded
+                  initialParagraphHash={graphInitialParagraphHash}
+                  onOpenConsole={() => switchMemoryTab('import')}
+                />
+              </TabsContent>
+            )}
 
             {shouldRenderMemoryTab('timeline') &&
               (shouldShowPanelFallback('timeline') ? (
@@ -1256,20 +1270,9 @@ export function KnowledgeBasePage() {
                 </TabsContent>
               ))}
 
-            {/* 导入面板的数据由 useImportQueue/useImportForm 自管加载（useQuery enabled:active），
+            {/* 导入导出面板的数据由 useImportQueue/useImportForm 自管加载（useQuery enabled:active），
                 不再走 loadedPanelDataRef 懒加载门控；表单即时可交互，任务列表异步填充 */}
             {shouldRenderMemoryTab('import') && <ImportTab queue={importQueue} form={importForm} />}
-
-            <TabsContent value="episodes" className="space-y-4">
-              {shouldRenderMemoryTab('episodes') ? (
-                <MemoryEpisodeManager
-                  initialEpisodeId={episodeInitialTarget.episodeId}
-                  initialSource={episodeInitialTarget.source}
-                  initialTimeStart={episodeInitialTarget.timeStart}
-                  initialTimeEnd={episodeInitialTarget.timeEnd}
-                />
-              ) : null}
-            </TabsContent>
 
             <TabsContent value="profiles" className="space-y-4">
               {shouldRenderMemoryTab('profiles') ? (
@@ -1282,16 +1285,17 @@ export function KnowledgeBasePage() {
                 <Tabs
                   value={inspectionMode}
                   onValueChange={(value) => {
-                    const nextMode = value as 'maintenance' | 'correction' | 'tuning'
+                    const nextMode = value as InspectionMode
                     setInspectionMode(nextMode)
                     updateKnowledgeBaseDeepLink('inspection', { mode: nextMode })
                   }}
                   className="space-y-4"
                 >
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="correction">内容修正</TabsTrigger>
                     <TabsTrigger value="maintenance">状态维护</TabsTrigger>
                     <TabsTrigger value="tuning">检索调优</TabsTrigger>
+                    <TabsTrigger value="episodes">情景记忆</TabsTrigger>
                   </TabsList>
                   <CorrectionTab correction={memoryCorrection} />
                   <TabsContent value="maintenance" className="space-y-4">
@@ -1299,6 +1303,14 @@ export function KnowledgeBasePage() {
                       initialTarget={maintenanceInitialTarget}
                       initialAction={maintenanceInitialAction}
                       onChanged={refreshMemoryRecords}
+                    />
+                  </TabsContent>
+                  <TabsContent value="episodes" className="space-y-4">
+                    <MemoryEpisodeManager
+                      initialEpisodeId={episodeInitialTarget.episodeId}
+                      initialSource={episodeInitialTarget.source}
+                      initialTimeStart={episodeInitialTarget.timeStart}
+                      initialTimeEnd={episodeInitialTarget.timeEnd}
                     />
                   </TabsContent>
                   <TuningTab tuning={memoryTuning} />
@@ -1326,7 +1338,7 @@ export function KnowledgeBasePage() {
         executing={memoryDelete.deleteExecuting}
         restoring={memoryDelete.deleteRestoring}
         error={memoryDelete.deletePreviewError}
-        onExecute={() => void memoryDelete.executePendingDelete()}
+        onExecute={(reason) => void memoryDelete.executePendingDelete(reason)}
         onRestore={() =>
           void (memoryDelete.deleteResult?.operation_id
             ? memoryDelete.restoreDeleteOperation(memoryDelete.deleteResult.operation_id)

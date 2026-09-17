@@ -1,5 +1,6 @@
+import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useToast } from '@/hooks/use-toast'
@@ -9,6 +10,8 @@ import {
   maisakaMonitorClient,
   type LlmErrorEvent,
   type LlmRetryEvent,
+  type MessageIngestedEvent,
+  type MessageSentEvent,
   type StageRemovedEvent,
   type StageStatusEvent,
 } from '@/lib/maisaka-monitor-client'
@@ -27,6 +30,7 @@ import type {
   ChatMessage,
   ChatRuntimeStatus,
   MessageSegment,
+  ObservedMessagePreview,
   SavedVirtualTab,
   VirtualIdentityConfig,
   WsMessage,
@@ -177,6 +181,19 @@ function resolveRetryStatusKind(data: LlmRetryEvent): ChatRuntimeStatus['kind'] 
   return 'acting'
 }
 
+// 侧边栏观察聊天流的最新消息预览：优先正文，纯媒体消息退回媒体占位文案
+function buildObservedMessagePreview(
+  data: MessageIngestedEvent | MessageSentEvent
+): ObservedMessagePreview {
+  const content = data.content.trim()
+  const mediaText = (data.media ?? []).find((media) => media.text.trim())?.text.trim() ?? ''
+  return {
+    speakerName: data.speaker_name,
+    content,
+    mediaText,
+  }
+}
+
 function matchesMonitorTarget(
   tab: ChatTab,
   data: StageStatusEvent | StageRemovedEvent | LlmRetryEvent | LlmErrorEvent
@@ -219,12 +236,29 @@ function buildRuntimeStatusFromStage(data: StageStatusEvent): ChatRuntimeStatus 
 }
 
 export function ChatPage() {
+  const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const {
     sessions: observedSessions,
     stageStatuses: observedStageStatuses,
+    allTimeline,
     setSelectedSession: setSelectedObservedSession,
   } = useMaisakaMonitor()
+
+  // 每个观察聊天流的最新一条消息，用于侧边栏预览（时间线按时间升序，后写覆盖先写）
+  const observedLatestMessages = useMemo(() => {
+    const latestMessages = new Map<string, ObservedMessagePreview>()
+    for (const entry of allTimeline) {
+      if (entry.type !== 'message.ingested' && entry.type !== 'message.sent') {
+        continue
+      }
+      latestMessages.set(
+        entry.sessionId,
+        buildObservedMessagePreview(entry.data as MessageIngestedEvent | MessageSentEvent)
+      )
+    }
+    return latestMessages
+  }, [allTimeline])
 
   // 默认本地聊天标签页
   const defaultTab: ChatTab = {
@@ -1027,6 +1061,10 @@ export function ChatPage() {
     setActiveObservedSessionId(sessionId)
   }
 
+  const openObservedSettings = (sessionId: string) => {
+    void navigate({ to: '/chat-management', search: { session_id: sessionId } })
+  }
+
   return (
     <div className="bg-background flex h-full min-h-0">
       {/* 桌面端：左侧会话侧边栏 */}
@@ -1049,12 +1087,14 @@ export function ChatPage() {
           activeObservedSessionId={activeObservedSessionId}
           observedSessions={observedSessions}
           observedStageStatuses={observedStageStatuses}
+          observedLatestMessages={observedLatestMessages}
           userId={userId}
           userName={userName}
           userAvatarVersion={userAvatarVersion}
           isUploadingUserAvatar={isUploadingUserAvatar}
           onSwitch={switchTab}
           onSelectObserved={selectObservedSession}
+          onOpenObservedSettings={openObservedSettings}
           onClose={closeTab}
           onUpdateUserAvatar={handleUpdateUserAvatar}
           onUpdateUserName={handleUpdateUserName}
@@ -1088,6 +1128,7 @@ export function ChatPage() {
             isUploadingUserAvatar={isUploadingUserAvatar}
             onSwitch={switchTab}
             onSelectObserved={selectObservedSession}
+            onOpenObservedSettings={openObservedSettings}
             onClose={closeTab}
             onUpdateUserAvatar={handleUpdateUserAvatar}
           />

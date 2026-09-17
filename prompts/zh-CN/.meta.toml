@@ -1,3 +1,8 @@
+[a_memorix_chat_summary]
+display_name = "长期记忆增量摘要"
+advanced = true
+description = "提取聊天中的新增事实、实体关系及图片证据，供长期记忆写入使用。"
+
 [behavior_scene_analyze]
 display_name = "行为场景分析"
 advanced = true

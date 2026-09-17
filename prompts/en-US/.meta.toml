@@ -1,3 +1,8 @@
+[a_memorix_chat_summary]
+display_name = "Incremental Memory Summary"
+advanced = true
+description = "Extracts new facts, entity relations, and image evidence from chat for long-term memory."
+
 [behavior_scene_analyze]
 display_name = "Behavior Scene Analysis"
 advanced = true
