@@ -60,6 +60,7 @@ from src.plugin_runtime.hook_payloads import deserialize_prompt_items, serialize
 
 from .maisaka_expression_selector import maisaka_expression_selector
 from .model_routing import resolve_reply_model
+from .retro_prompt import RetroReplyPromptMixin
 
 logger = get_logger("replyer")
 
@@ -77,7 +78,7 @@ class MaisakaReplyContext:
     selected_expressions: List[Dict[str, Any]] = field(default_factory=list)
 
 
-class BaseMaisakaReplyGenerator:
+class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
     """Maisaka replyer 的共享实现。"""
 
     def __init__(
@@ -724,7 +725,21 @@ class BaseMaisakaReplyGenerator:
         stream_id: Optional[str] = None,
         enable_visual_message: bool = False,
         reply_tool_args: Optional[Dict[str, Any]] = None,
+        think_level: int = 1,
     ) -> List[ContextItem]:
+        # 复古模式把所有回复指令集中到一份完整模板里，整段作为一条 user 消息发送
+        if global_config.experimental.replyer_retro_prompt:
+            return self._build_retro_request_messages(
+                chat_history=chat_history,
+                reply_message=reply_message,
+                reply_reason=reply_reason,
+                expression_habits=expression_habits,
+                reply_requirements=reply_requirements,
+                stream_id=stream_id,
+                think_level=think_level,
+                reply_tool_args=reply_tool_args,
+            )
+
         items: List[ContextItem] = []
         keywords_reaction_prompt = self._build_keyword_reaction_prompt(
             chat_history=chat_history,
@@ -1046,7 +1061,6 @@ class BaseMaisakaReplyGenerator:
         del from_plugin
         del log_reply
         del reply_time_point
-        del think_level
         del unknown_words
 
         result = ReplyGenerationResult()
@@ -1163,6 +1177,7 @@ class BaseMaisakaReplyGenerator:
                     reply_requirements=active_reply_requirements,
                     stream_id=stream_id,
                     reply_tool_args=active_reply_tool_args,
+                    think_level=think_level,
                 )
             except Exception as exc:
                 import traceback
@@ -1202,6 +1217,7 @@ class BaseMaisakaReplyGenerator:
                     stream_id=stream_id,
                     enable_visual_message=self._resolve_enable_visual_message(model_info),
                     reply_tool_args=dict(reply_tool_args_for_attempt),
+                    think_level=think_level,
                 )
                 request_messages = await self._invoke_before_model_request_hook(
                     request_messages=built_request_messages,

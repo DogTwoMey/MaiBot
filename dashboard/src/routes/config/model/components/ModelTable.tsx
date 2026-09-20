@@ -2,7 +2,7 @@
  * 模型列表 - 桌面端表格视图
  */
 import React from 'react'
-import { Loader2, Pencil, Trash2, Zap } from 'lucide-react'
+import { Loader2, Pencil, Plus, Trash2, Zap } from 'lucide-react'
 
 import type { ModelTestResult } from '@/lib/config-api'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { StreamlineIcon } from '@/components/ui/streamline-icon'
 
 import type { ModelInfo } from '../types'
 
@@ -46,6 +45,8 @@ interface ModelTableProps {
   modelTestResults: Map<string, ModelTestResult>
   /** 搜索关键词 */
   searchQuery: string
+  /** 添加模型回调 */
+  onAdd: () => void
 }
 
 function getModelTestStatus(result: ModelTestResult | undefined, isTesting: boolean) {
@@ -64,8 +65,12 @@ function getModelTestStatus(result: ModelTestResult | undefined, isTesting: bool
   }
 
   if (result.success) {
+    const isEmbeddingTest = result.test_kind === 'text_embedding' || result.test_kind === 'image_embedding'
+    const summary = isEmbeddingTest
+      ? `测试通过：嵌入向量正常${result.embedding_dimension ? `（维度 ${result.embedding_dimension}）` : ''}`
+      : `测试通过：文本${result.visual_tested ? '、视觉' : ''}与工具调用正常`
     return {
-      description: `测试通过：文本${result.visual_tested ? '、视觉' : ''}与工具调用正常${
+      description: `${summary}${
         result.latency_ms != null ? `，耗时 ${(result.latency_ms / 1000).toFixed(2)}s` : ''
       }`,
       className: 'border-green-500',
@@ -92,6 +97,7 @@ export const ModelTable = React.memo(function ModelTable({
   testingModels,
   modelTestResults,
   searchQuery,
+  onAdd,
 }: ModelTableProps) {
   return (
     <div
@@ -115,9 +121,20 @@ export const ModelTable = React.memo(function ModelTable({
               <TableHead>模型标识符</TableHead>
               <TableHead>提供商</TableHead>
               <TableHead className="w-14 text-center whitespace-nowrap">视觉</TableHead>
-              <TableHead className="text-right whitespace-nowrap">输入</TableHead>
-              <TableHead className="text-right whitespace-nowrap">输出</TableHead>
-              <TableHead className="text-right" />
+              <TableHead className="text-right whitespace-nowrap">默认输入</TableHead>
+              <TableHead className="text-right whitespace-nowrap">默认输出</TableHead>
+              <TableHead className="text-right">
+                <Button
+                  onClick={onAdd}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  data-tour="add-model-button"
+                >
+                  <Plus className="mr-1 h-4 w-4" strokeWidth={2} fill="none" />
+                  <span className="text-sm">添加</span>
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -161,6 +178,11 @@ export const ModelTable = React.memo(function ModelTable({
                       >
                         {model.name}
                       </span>
+                      {!!model.price_periods?.length && (
+                        <span className="ml-2 inline-block text-xs font-normal text-muted-foreground">
+                          {model.price_periods.length} 个价格时段
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-xs truncate" title={model.model_identifier}>
                       {model.model_identifier}
@@ -204,11 +226,7 @@ export const ModelTable = React.memo(function ModelTable({
                           title="编辑"
                           aria-label={`编辑模型 ${model.name}`}
                         >
-                          <StreamlineIcon
-                            name="edit-pdf-solid"
-                            fallback={Pencil}
-                            className="h-4 w-4"
-                          />
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
@@ -218,11 +236,7 @@ export const ModelTable = React.memo(function ModelTable({
                           title="删除"
                           aria-label={`删除模型 ${model.name}`}
                         >
-                          <StreamlineIcon
-                            name="delete-2-solid"
-                            fallback={Trash2}
-                            className="h-4 w-4"
-                          />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>

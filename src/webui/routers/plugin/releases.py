@@ -3,11 +3,12 @@
 from time import monotonic
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, HTTPException
 from packaging.version import Version
 from pydantic import BaseModel, Field, ValidationError
 
 from src.plugin_runtime.runner.manifest_validator import ManifestValidator
+from src.webui.core import auth_cookie
 from src.webui.services.git_mirror_service import get_git_mirror_service
 
 from .support import require_plugin_token
@@ -133,7 +134,7 @@ async def resolve_release(plugin_id: str, version: str) -> Tuple[PluginReleaseEn
 
 
 @router.get("/releases")
-async def get_plugin_releases(maibot_session: Optional[str] = Cookie(None)) -> Dict[str, Any]:
+async def get_plugin_releases(maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     index = await load_release_index()
     return {"plugins": [describe_entry(entry) for entry in index.plugins]}

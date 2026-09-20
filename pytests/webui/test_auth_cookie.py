@@ -78,3 +78,25 @@ def test_create_app_registers_dashboard_api_routes() -> None:
 
     assert ("GET", "/api/webui/auth/check") in routes
     assert ("GET", "/api/webui/plugins/config/{plugin_id}/bundle") in routes
+
+
+def test_plugin_release_list_uses_current_instance_cookie(monkeypatch) -> None:
+    from src.webui.routers.plugin import releases, support
+
+    async def load_empty_index():
+        return releases.PluginReleaseIndex(schema_version=1, plugins=[])
+
+    monkeypatch.setattr(releases, "load_release_index", load_empty_index)
+    app = FastAPI()
+    app.include_router(releases.router)
+    other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
+    with patch.object(support, "get_token_manager") as manager:
+        manager.return_value.verify_token.side_effect = lambda token: token == "test-token"
+        for cookie_name, expected in (
+            (auth_module.COOKIE_NAME, 200),
+            (auth_module.build_auth_cookie_name(other_port), 401),
+            ("maibot_session", 401),
+        ):
+            client = TestClient(app)
+            client.cookies.set(cookie_name, "test-token")
+            assert client.get("/releases").status_code == expected

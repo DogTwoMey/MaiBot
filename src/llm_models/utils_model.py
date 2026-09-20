@@ -96,6 +96,7 @@ class LLMExecutionResult:
 
     api_response: APIResponse
     model_info: ModelInfo
+    request_started_at: datetime
 
 
 class LLMOrchestrator:
@@ -354,7 +355,9 @@ class LLMOrchestrator:
         time_cost = time.time() - start_time
         self._check_slow_request(time_cost, model_info.name)
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await asyncio.to_thread(
+                llm_usage_recorder.record_usage_to_database,
+                request_started_at=execution_result.request_started_at,
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -444,7 +447,9 @@ class LLMOrchestrator:
         logger.debug(f"LLM请求总耗时: {time.time() - start_time}")
 
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await asyncio.to_thread(
+                llm_usage_recorder.record_usage_to_database,
+                request_started_at=execution_result.request_started_at,
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -509,7 +514,9 @@ class LLMOrchestrator:
 
         self._check_slow_request(time_cost, model_info.name)
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await asyncio.to_thread(
+                llm_usage_recorder.record_usage_to_database,
+                request_started_at=execution_result.request_started_at,
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -543,7 +550,9 @@ class LLMOrchestrator:
         model_info = execution_result.model_info
         embedding = response.embedding
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await asyncio.to_thread(
+                llm_usage_recorder.record_usage_to_database,
+                request_started_at=execution_result.request_started_at,
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -585,7 +594,9 @@ class LLMOrchestrator:
         if not response.embedding:
             raise RuntimeError("图片嵌入模型没有返回向量")
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await asyncio.to_thread(
+                llm_usage_recorder.record_usage_to_database,
+                request_started_at=execution_result.request_started_at,
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -594,12 +605,11 @@ class LLMOrchestrator:
                 session_id=self._resolve_effective_session_id(session_id),
                 time_cost=time.time() - start_time,
             )
-        return LLMEmbeddingResult(
-            embedding=response.embedding,
-            model_name=model_info.name,
-            model_identifier=model_info.model_identifier,
-            api_provider=model_info.api_provider,
-            request_protocol_hash=hashlib.sha256(
+        # 原生图片嵌入协议分支由客户端提供精确指纹；其余场景沿用默认算法，
+        # 避免旧模板/插件路径的既有图片索引失效
+        protocol_hash = response.request_protocol_hash
+        if not protocol_hash:
+            protocol_hash = hashlib.sha256(
                 json.dumps(
                     {
                         "input": model_info.extra_params.get("image_embedding_input", "{data_uri}"),
@@ -611,7 +621,13 @@ class LLMOrchestrator:
                     ensure_ascii=False,
                     separators=(",", ":"),
                 ).encode("utf-8")
-            ).hexdigest(),
+            ).hexdigest()
+        return LLMEmbeddingResult(
+            embedding=response.embedding,
+            model_name=model_info.name,
+            model_identifier=model_info.model_identifier,
+            api_provider=model_info.api_provider,
+            request_protocol_hash=protocol_hash,
         )
 
     def _resolve_effective_temperature(
@@ -1331,7 +1347,11 @@ class LLMOrchestrator:
                 if response_usage := response.usage:
                     total_tokens += response_usage.total_tokens
                 self.model_usage[model_info.name] = (total_tokens, penalty, usage_penalty - 1)
-                return LLMExecutionResult(api_response=response, model_info=model_info)
+                return LLMExecutionResult(
+                    api_response=response,
+                    model_info=model_info,
+                    request_started_at=datetime.fromtimestamp(trace_context.current_attempt_started_at),
+                )
 
             except ReqAbortException as e:
                 total_tokens, penalty, usage_penalty = self.model_usage[model_info.name]

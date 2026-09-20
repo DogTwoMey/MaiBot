@@ -504,6 +504,8 @@ class ImageMemoryRuntime:
                 {
                     **hit,
                     "content_hash": str(asset.get("content_hash") or ""),
+                    "width": int(asset.get("width") or 0),
+                    "height": int(asset.get("height") or 0),
                     "occurrences": occurrences,
                     "observations": self.metadata_store.list_image_observations(occurrence_ids),
                     "related_memories": related,
@@ -692,12 +694,16 @@ class ImageMemoryRuntime:
         if assets and self.vector_store is not None:
             self.persist_vector_store(self.vector_store, self.fingerprint)
 
-    def list_assets(self, *, limit: int, offset: int) -> Dict[str, Any]:
+    def list_assets(self, *, limit: int, offset: int, chat_id: str = "") -> Dict[str, Any]:
         return {
             "success": True,
-            "items": self.metadata_store.list_image_assets(limit=limit, offset=offset),
+            "items": self.metadata_store.list_image_assets(limit=limit, offset=offset, chat_id=chat_id),
             **self.status(),
         }
+
+    def list_chat_stats(self) -> List[Dict[str, Any]]:
+        """按聊天聚合图片资产数，供 WebUI 按聊天浏览。"""
+        return self.metadata_store.list_image_chat_stats()
 
     def export_records(self, occurrence_ids: Iterable[str]) -> Dict[str, Any]:
         records = self.metadata_store.export_image_records(occurrence_ids)

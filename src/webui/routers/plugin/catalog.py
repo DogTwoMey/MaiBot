@@ -40,19 +40,19 @@ def _mirror_to_response(mirror: Dict[str, Any]) -> MirrorConfigResponse:
 
 
 @router.get("/version", response_model=VersionResponse)
-async def get_maimai_version() -> VersionResponse:
+def get_maimai_version() -> VersionResponse:
     major, minor, patch = parse_version(MMC_VERSION)
     return VersionResponse(version=MMC_VERSION, version_major=major, version_minor=minor, version_patch=patch)
 
 
 @router.get("/git-status", response_model=GitStatusResponse)
-async def check_git_status() -> GitStatusResponse:
+def check_git_status() -> GitStatusResponse:
     service = get_git_mirror_service()
     return GitStatusResponse(**service.check_git_installed())
 
 
 @router.get("/mirrors", response_model=AvailableMirrorsResponse)
-async def get_available_mirrors(maibot_session: Optional[str] = auth_cookie()) -> AvailableMirrorsResponse:
+def get_available_mirrors(maibot_session: Optional[str] = auth_cookie()) -> AvailableMirrorsResponse:
     require_plugin_token(maibot_session)
 
     service = get_git_mirror_service()
@@ -62,7 +62,7 @@ async def get_available_mirrors(maibot_session: Optional[str] = auth_cookie()) -
 
 
 @router.post("/mirrors", response_model=MirrorConfigResponse)
-async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = auth_cookie()) -> MirrorConfigResponse:
+def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = auth_cookie()) -> MirrorConfigResponse:
     require_plugin_token(maibot_session)
 
     try:
@@ -85,7 +85,7 @@ async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = 
 
 
 @router.put("/mirrors/{mirror_id}", response_model=MirrorConfigResponse)
-async def update_mirror(
+def update_mirror(
     mirror_id: str,
     request: UpdateMirrorRequest,
     maibot_session: Optional[str] = auth_cookie(),
@@ -116,7 +116,7 @@ async def update_mirror(
 
 
 @router.delete("/mirrors/{mirror_id}")
-async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
+def delete_mirror(mirror_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
 
     service = get_git_mirror_service()

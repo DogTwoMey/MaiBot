@@ -465,7 +465,7 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
 
 
 @router.get("/config/{plugin_id}/raw")
-async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
+def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """获取插件原始 TOML 配置内容。
 
     Args:
@@ -498,7 +498,7 @@ async def get_plugin_config_raw(plugin_id: str, maibot_session: Optional[str] = 
 
 
 @router.put("/config/{plugin_id}/raw")
-async def update_plugin_config_raw(
+def update_plugin_config_raw(
     plugin_id: str,
     request: UpdatePluginRawConfigRequest,
     maibot_session: Optional[str] = auth_cookie(),
@@ -662,7 +662,7 @@ async def update_plugin_config(
 
 
 @router.post("/config/{plugin_id}/reset")
-async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
+def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
     """重置插件配置文件。
 
     Args:

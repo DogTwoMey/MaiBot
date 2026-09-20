@@ -2613,6 +2613,13 @@
   padding-bottom: 0.625rem;
 }
 
+/* 记忆查询结果头部：单行「标题 + 计数徽标 + 刷新」，收紧纵向留白，
+   让头部高度由这一行控件决定而不是被内边距撑高 */
+.memory-console-density
+  [data-dashboard-card-header='true'][data-memory-records-result-header='true'] {
+  padding: 0.5rem 0.75rem;
+}
+
 .memory-console-density .space-y-4 > :not([hidden]) ~ :not([hidden]),
 .memory-console-density .space-y-5 > :not([hidden]) ~ :not([hidden]),
 .memory-console-density .space-y-6 > :not([hidden]) ~ :not([hidden]),
@@ -2676,6 +2683,13 @@
 
 .memory-console-density [data-dashboard-tabs-trigger='true'] {
   padding: 0.25rem 0.625rem;
+}
+
+/* 记忆控制台标签行：去掉列表纵向内边距，让标签铺满该行高度，
+   与同行右侧 2rem 高的「更多操作」按钮对齐 */
+.memory-console-density [data-memory-console-tab-row='true'] [data-dashboard-tabs-list='true'] {
+  gap: 0.25rem;
+  padding-block: 0;
 }
 
 .memory-console-density th {
