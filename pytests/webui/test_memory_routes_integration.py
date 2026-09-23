@@ -64,6 +64,10 @@ def _build_test_config(data_dir: Path) -> Dict[str, Any]:
         "advanced": {
             "enable_auto_save": False,
         },
+        "episode": {
+            # 段落检索集成测试不启动后台 LLM 摘要。
+            "generation_enabled": False,
+        },
         "embedding": {
             "dimension": 64,
             "batch_size": 4,
