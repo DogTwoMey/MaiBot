@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from time import monotonic, sleep
+from types import SimpleNamespace
 from typing import Any, Dict, Generator
-from uuid import uuid4
+from uuid import UUID
 
 import asyncio
 import json
@@ -446,6 +447,12 @@ def integration_state(tmp_path_factory: pytest.TempPathFactory) -> Generator[Dic
     )
     patches.setattr(memory_router_module, "STAGING_ROOT", None)
     patches.setattr(tuning_manager_module, "artifacts_root", lambda: artifacts_dir)
+    # 调优候选以 task_id 为随机种子，固定任务和语料才能重复验证排序。
+    patches.setattr(
+        tuning_manager_module,
+        "uuid",
+        SimpleNamespace(uuid4=lambda: UUID("20260403-0000-0000-0000-000000000001")),
+    )
 
     asyncio.run(host_service_module.a_memorix_host_service.stop())
     host_service_module.a_memorix_host_service._config_cache = None  # type: ignore[attr-defined]
@@ -455,8 +462,8 @@ def integration_state(tmp_path_factory: pytest.TempPathFactory) -> Generator[Dic
     app.include_router(memory_router_module.router, prefix="/api/webui")
     app.include_router(memory_router_module.compat_router)
 
-    unique_token = f"INTEG_TOKEN_{uuid4().hex[:12]}"
-    source_name = f"integration-source-{uuid4().hex[:8]}"
+    unique_token = "INTEG_TOKEN_MEMORY_ROUTES"
+    source_name = "integration-source-memory-routes"
 
     with TestClient(app) as client:
         _wait_for_runtime_ready(client)
@@ -685,7 +692,7 @@ def test_delete_module_end_to_end_preview_execute_restore(integration_state: Dic
 
 def test_real_api_business_flow_import_query_graph_delete_restore(integration_state: Dict[str, Any]) -> None:
     client = integration_state["client"]
-    flow_id = uuid4().hex[:12]
+    flow_id = "memory-routes"
     source_name = f"business-flow-{flow_id}"
     access_code = f"ORBIT-{flow_id.upper()}"
     person_name = f"林澈-{flow_id[:6]}"
