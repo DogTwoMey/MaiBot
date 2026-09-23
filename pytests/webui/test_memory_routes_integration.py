@@ -151,7 +151,8 @@ def _wait_for_runtime_ready(client: TestClient, *, timeout_seconds: float = 30.0
         assert response.status_code == 200, response.text
         payload = response.json()
         last_payload = payload
-        if payload.get("success", False) is True:
+        assert not payload.get("initialization_failed", False), payload
+        if payload.get("success", False) is True and not payload.get("initializing", False):
             return payload
         sleep(0.2)
     raise AssertionError(f"A_Memorix 运行时初始化超时: last_payload={last_payload}")
