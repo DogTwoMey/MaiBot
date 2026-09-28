@@ -139,5 +139,12 @@ if not "!BUILD_EXIT_CODE!"=="0" (
     exit /b !BUILD_EXIT_CODE!
 )
 
-echo [dashboard] 前端构建完成: dashboard\dist
+if not exist "%DASHBOARD_DIR%\dist\index.html" (
+    echo [ERROR] Dashboard 构建未生成 dist\index.html，取消启动。
+    exit /b 1
+)
+
+:: 启动的后端使用本次构建的本地前端。
+set "MAIBOT_WEBUI_USE_LOCAL_DASHBOARD=1"
+echo [dashboard] 前端构建完成，启动时使用: dashboard\dist
 exit /b 0

@@ -294,6 +294,11 @@ def _log_webui_version_compatibility(static_path: Path) -> None:
 
 
 def _resolve_static_path() -> Path | None:
+    if _is_local_dashboard_enabled():
+        static_path = _get_project_root() / "dashboard" / "dist"
+        if static_path.is_dir() and (static_path / "index.html").exists():
+            return static_path
+
     try:
         dashboard_module = import_module(_DASHBOARD_MODULE_NAME)
         package_dist = Path(dashboard_module.get_dist_path())
@@ -301,11 +306,6 @@ def _resolve_static_path() -> Path | None:
             return package_dist
     except (AttributeError, ImportError, OSError, TypeError):
         pass
-
-    if _is_local_dashboard_enabled():
-        static_path = _get_project_root() / "dashboard" / "dist"
-        if static_path.is_dir() and (static_path / "index.html").exists():
-            return static_path
 
     try:
         module = import_module("maibot_dashboard")

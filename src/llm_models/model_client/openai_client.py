@@ -2051,11 +2051,13 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         model_info = request.model_info
         audio_base64 = request.audio_base64
         extra_params = request.extra_params
+        is_qwen_omni = self.api_provider.name == "BaiLian" and model_info.model_identifier == "qwen3.8-omni-flash"
+        operation = "chat.completions.create" if is_qwen_omni else "audio.transcriptions.create"
         snapshot_provider_request = {
             "base_url": self.api_provider.base_url,
-            "endpoint": "/audio/transcriptions",
+            "endpoint": "/chat/completions" if is_qwen_omni else "/audio/transcriptions",
             "method": "POST",
-            "operation": "audio.transcriptions.create",
+            "operation": operation,
             "organization": self.api_provider.organization,
             "project": self.api_provider.project,
             "request_kwargs": {},
@@ -2063,22 +2065,57 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
 
         try:
             request_overrides = split_openai_request_overrides(extra_params)
-            audio_file: FileTypes = ("audio.wav", io.BytesIO(base64.b64decode(audio_base64)))
-            snapshot_provider_request["request_kwargs"] = {
-                "audio_base64": audio_base64,
-                "extra_body": request_overrides.extra_body or None,
-                "extra_headers": request_overrides.extra_headers or None,
-                "extra_query": request_overrides.extra_query or None,
-                "file_name": "audio.wav",
-                "model": model_info.model_identifier,
-            }
-            raw_response = await self.client.audio.transcriptions.create(
-                model=model_info.model_identifier,
-                file=audio_file,
-                extra_headers=request_overrides.extra_headers or None,
-                extra_query=request_overrides.extra_query or None,
-                extra_body=request_overrides.extra_body or None,
-            )
+            audio_bytes = base64.b64decode(audio_base64)
+            if is_qwen_omni:
+                if audio_bytes.startswith(b"RIFF") and audio_bytes[8:12] == b"WAVE":
+                    audio_format = "wav"
+                elif audio_bytes.startswith(b"ID3") or (
+                    len(audio_bytes) > 1 and audio_bytes[0] == 0xFF and audio_bytes[1] & 0xE0 == 0xE0
+                ):
+                    audio_format = "mp3"
+                else:
+                    raise ValueError("百炼 qwen3.8-omni-flash 语音识别需要 WAV 或 MP3 音频")
+                messages = [{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_audio", "input_audio": {"data": f"data:;base64,{audio_base64}", "format": audio_format}},
+                        {"type": "text", "text": "请只转写这段音频中的人声，不要添加说明。"},
+                    ],
+                }]
+                snapshot_provider_request["request_kwargs"] = {
+                    "messages": messages,
+                    "model": model_info.model_identifier,
+                    "modalities": ["text"],
+                    "max_tokens": request.max_tokens,
+                    "extra_body": request_overrides.extra_body or None,
+                }
+                raw_response = await self.client.chat.completions.create(
+                    model=model_info.model_identifier,
+                    messages=cast(Any, messages),
+                    modalities=["text"],
+                    max_tokens=request.max_tokens or 1024,
+                    stream=False,
+                    extra_headers=request_overrides.extra_headers or None,
+                    extra_query=request_overrides.extra_query or None,
+                    extra_body=request_overrides.extra_body or None,
+                )
+            else:
+                audio_file: FileTypes = ("audio.wav", io.BytesIO(audio_bytes))
+                snapshot_provider_request["request_kwargs"] = {
+                    "audio_base64": audio_base64,
+                    "extra_body": request_overrides.extra_body or None,
+                    "extra_headers": request_overrides.extra_headers or None,
+                    "extra_query": request_overrides.extra_query or None,
+                    "file_name": "audio.wav",
+                    "model": model_info.model_identifier,
+                }
+                raw_response = await self.client.audio.transcriptions.create(
+                    model=model_info.model_identifier,
+                    file=audio_file,
+                    extra_headers=request_overrides.extra_headers or None,
+                    extra_query=request_overrides.extra_query or None,
+                    extra_body=request_overrides.extra_body or None,
+                )
         except APIConnectionError as exc:
             snapshot_path = save_failed_request_snapshot(
                 api_provider=self.api_provider,
@@ -2086,7 +2123,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 error=exc,
                 internal_request=serialize_audio_request_snapshot(request),
                 model_info=model_info,
-                operation="audio.transcriptions.create",
+                operation=operation,
                 provider_request=snapshot_provider_request,
                 trace_context=request.trace_context,
             )
@@ -2100,7 +2137,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 error=exc,
                 internal_request=serialize_audio_request_snapshot(request),
                 model_info=model_info,
-                operation="audio.transcriptions.create",
+                operation=operation,
                 provider_request=snapshot_provider_request,
                 trace_context=request.trace_context,
             )
@@ -2116,14 +2153,20 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 error=exc,
                 internal_request=serialize_audio_request_snapshot(request),
                 model_info=model_info,
-                operation="audio.transcriptions.create",
+                operation=operation,
                 provider_request=snapshot_provider_request,
                 trace_context=request.trace_context,
             )
             attach_request_snapshot(exc, snapshot_path)
             raise
 
-        transcription_text = raw_response if isinstance(raw_response, str) else getattr(raw_response, "text", None)
+        if is_qwen_omni:
+            choices = getattr(raw_response, "choices", None)
+            transcription_text = choices[0].message.content if choices else None
+            usage_record = _extract_usage_record(getattr(raw_response, "usage", None))
+        else:
+            transcription_text = raw_response if isinstance(raw_response, str) else getattr(raw_response, "text", None)
+            usage_record = None
         if not isinstance(transcription_text, str):
             exc = RespParseException(raw_response, "音频转写响应解析失败，缺少文本内容。")
             snapshot_path = save_failed_request_snapshot(
@@ -2132,7 +2175,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 error=exc,
                 internal_request=serialize_audio_request_snapshot(request),
                 model_info=model_info,
-                operation="audio.transcriptions.create",
+                operation=operation,
                 provider_request=snapshot_provider_request,
                 trace_context=request.trace_context,
             )
@@ -2145,7 +2188,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 tool_calls=None,
                 logical_turn_id=uuid4().hex,
                 raw_data=raw_response,
-            ), None
+            ), usage_record
         raise RespParseException(raw_response, "响应解析失败，缺失转录文本。")
 
     def get_support_image_formats(self) -> List[str]:

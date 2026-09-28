@@ -130,8 +130,8 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
     """
 
     by_category: Dict[str, Dict[str, List[str]]] = {
-        "chat": {"low": [], "mid": [], "high": [], "all": []},
-        "vlm": {"low": [], "mid": [], "high": [], "all": []},
+        "chat": {"low": [], "mid": [], "high": [], "ultra": [], "all": []},
+        "vlm": {"low": [], "mid": [], "high": [], "ultra": [], "all": []},
         "voice": {"low": [], "mid": [], "high": [], "all": []},
         "embedding": {"low": [], "mid": [], "high": [], "all": []},
     }
@@ -144,8 +144,10 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
         tier_name = str(m.get("tier", "mid"))
         if cat in by_category:
             by_category[cat].setdefault(tier_name, []).append(name)
+            if cat == "chat" and m.get("visual", False):
+                by_category["vlm"].setdefault(tier_name, []).append(name)
             if tier_name == "all":
-                for lvl in ("low", "mid", "high"):
+                for lvl in ("low", "mid", "high", "ultra"):
                     by_category[cat].setdefault(lvl, []).append(name)
 
     def chain(cat: str, *levels: str) -> List[str]:
@@ -169,19 +171,19 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
         voice = chain("voice", "low")
         embedding = chain("embedding", "low")
     elif tier == "mid":
-        chat = chain("chat", "low", "high")
+        chat = chain("chat", "low")
         vlm = chain("vlm", "low", "mid")
         voice = chain("voice", "low", "mid")
         embedding = chain("embedding", "low", "mid")
     elif tier == "high":
-        chat = chain("chat", "high", "low")
-        vlm = chain("vlm", "high", "mid", "low")
-        voice = chain("voice", "mid", "low")
-        embedding = chain("embedding", "high", "mid")
-    elif tier == "ultra":
         chat = chain("chat", "high")
         vlm = chain("vlm", "high")
-        voice = chain("voice", "mid")
+        voice = chain("voice", "high")
+        embedding = chain("embedding", "high", "mid")
+    elif tier == "ultra":
+        chat = chain("chat", "ultra")
+        vlm = chain("vlm", "ultra")
+        voice = chain("voice", "high")
         embedding = chain("embedding", "high")
     elif tier == "free":
         chat = chain("chat", "low", "high")
@@ -194,10 +196,12 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
         voice = chain("voice", "low", "mid")
         embedding = chain("embedding", "mid", "low")
 
+    utils = chain("chat", "low") if tier in ("high", "ultra") else chat
+
     return {
         "replyer": chat,
         "planner": chat,
-        "utils": chat,
+        "utils": utils,
         "vlm": vlm,
         "voice": voice,
         "embedding": embedding,

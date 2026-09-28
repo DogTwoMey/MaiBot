@@ -10,9 +10,9 @@
 # 维护原则：
 #   1. 仅使用无日期戳的滚动模型名（如 qwen3-vl-plus 而非 qwen3-vl-plus-2025-12-19）
 #   2. 价格以华北2（北京）中国内地首档为准，单位：元/百万 Token
-#   3. 定期对照 https://help.aliyun.com/zh/model-studio/billing 更新价格
+#   3. 定期对照 https://help.aliyun.com/zh/model-studio/model-pricing 更新价格
 #
-# 上次校准：2026-06-11，基于阿里云百炼官方定价文档
+# 上次校准：2026-09-25，基于阿里云百炼官方定价文档
 
 [provider]
 name = "BaiLian"
@@ -41,8 +41,9 @@ tier = "low"
 category = "chat"
 # 华北2（北京）原价首档（0 < Token <= 32K），单位：元/百万 Token。
 price_in = 0.2
+cache_price_in = 0.04
 price_out = 0.8
-visual = false
+visual = true
 temperature = 0.3
 
 [models.extra_params]
@@ -55,12 +56,45 @@ tier = "high"
 category = "chat"
 # 华北2（北京）原价首档（0 < Token <= 256K），单位：元/百万 Token。
 price_in = 2.0
+cache_price_in = 0.4
 price_out = 8.0
-visual = false
+visual = true
 temperature = 0.3
 
 [models.extra_params]
 enable_thinking = false
+
+
+[[models]]
+model_identifier = "qwen3.8-flash"
+name = "qwen3.8-flash"
+tier = "high"
+category = "chat"
+price_in = 0.8
+cache_price_in = 0.1
+price_out = 2.7
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+enable_thinking = false
+preserve_thinking = false
+
+
+[[models]]
+model_identifier = "qwen3.8-max"
+name = "qwen3.8-max"
+tier = "ultra"
+category = "chat"
+price_in = 12.0
+cache_price_in = 1.5
+price_out = 36.0
+visual = true
+temperature = 0.3
+
+[models.extra_params]
+enable_thinking = false
+preserve_thinking = false
 
 
 # =============================================================================
@@ -71,7 +105,7 @@ enable_thinking = false
 [[models]]
 model_identifier = "qwen3-vl-plus"
 name = "qwen3-vl-plus"
-tier = "high"
+tier = "mid"
 category = "vlm"
 price_in = 1.0
 price_out = 10.0
@@ -123,6 +157,19 @@ temperature = 0.3
 # =============================================================================
 # Voice 模型（全模态 / 语音识别）
 # =============================================================================
+
+[[models]]
+model_identifier = "qwen3.8-omni-flash"
+name = "qwen3.8-omni-flash"
+tier = "high"
+category = "voice"
+price_in = 0.8
+cache_price_in = 0.1
+price_out = 2.7
+visual = true
+
+[models.extra_params]
+reasoning_effort = "none"
 
 # 千问 Omni Turbo：低成本全模态，支持语音输入
 [[models]]

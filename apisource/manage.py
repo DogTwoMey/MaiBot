@@ -20,12 +20,12 @@
     python apisource/manage.py --provider deepseek --tier high --apply
 
 档位说明（--provider all）：
-    low   → DeepSeek flash + Aliyun low + DZMM replyer
-    mid   → DeepSeek flash-think + Aliyun low + DZMM replyer
-    high  → DeepSeek pro-nonthink + Aliyun high + DZMM replyer
-    ultra → DeepSeek pro-think + Aliyun high + DZMM replyer
+    low   → DeepSeek Flash 非思考 + Aliyun low + DZMM replyer
+    mid   → DeepSeek Flash 低强度思考 + Aliyun low + DZMM replyer
+    high  → DeepSeek Flash 高强度思考 + Aliyun high + DZMM replyer
+    ultra → DeepSeek Pro 思考 + Aliyun ultra + DZMM replyer
 
-    多模态档位映射：low/mid 用 Aliyun low，high/ultra 用 Aliyun high。
+    多模态档位映射：mid 用 Aliyun low；其余档位保持一致。
 
 合并语义（重要）：
     - ``[[api_providers]]`` / ``[[models]]``：按 provider 归属合并，**不覆盖**其它
@@ -60,7 +60,7 @@ _ALIYUN_TIER_MAP = {
     "low": "low",
     "mid": "low",
     "high": "high",
-    "ultra": "high",
+    "ultra": "ultra",
 }
 
 

@@ -141,8 +141,7 @@ def _merge_api_providers(doc, new_providers_aot, is_managed: Callable[[str], boo
 
     规则：
         - 现有 entry.name 不归本 provider 管 → 原样保留（保留 api_key）。
-        - 现有 entry.name 归本 provider 管，且 new 里有同名 → 用 new 替换，
-          并把现有 entry 的 api_key（非 placeholder）回填。
+        - 现有 entry.name 归本 provider 管，且 new 里有同名 → 保留实例现有连接设置。
         - 现有 entry.name 归本 provider 管，但 new 里没有 → 视为已过时的归属条目，
           删除（例如 aliyun 以前有 us 区域，现在 response_us.json 已被删除）。
         - new 里出现但现有 doc 没有的 entry → 追加到末尾（api_key 仍会尝试回填）。
@@ -173,10 +172,7 @@ def _merge_api_providers(doc, new_providers_aot, is_managed: Callable[[str], boo
         name = str(entry.get("name", ""))
         if is_managed(name):
             if name in new_by_name:
-                new_entry = new_by_name[name]
-                if name in existing_api_keys:
-                    new_entry["api_key"] = existing_api_keys[name]
-                merged.append(new_entry)
+                merged.append(entry)
                 placed.add(name)
             # else: 属于本 provider 但已从 bundle 中移除 → 丢弃
         else:
@@ -323,10 +319,10 @@ def apply_bundle_to_config(bundle: ProviderBundle, *, dry_run: bool = False) -> 
         kept, dropped = _sanitize_task_names(combined, valid_names)
         if dropped:
             print(f"[apply] ⚠ {slot} 剔除失效引用: {dropped}")
-        table_ = build_task_table(slot, kept)
         if slot in mtc:
-            del mtc[slot]
-        mtc[slot] = table_
+            mtc[slot]["model_list"] = kept
+        else:
+            mtc[slot] = build_task_table(slot, kept)
 
     # 4) 合并 [[api_providers]]
     _merge_api_providers(doc, bundle.providers_aot, bundle.is_managed_provider_name)

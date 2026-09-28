@@ -2,6 +2,10 @@
 
 ## Fork 修复
 
+- WebUI：重启构建后优先加载本实例的 Dashboard 产物，并检查入口文件已生成。
+- NapCat：同步 QQ 资料接口的未知性别值设置修复。
+- 模型：更新中国大陆高档模型分工及 DeepSeek、百炼价格，支持 DeepSeek V4.1 Flash、Qwen3.8 Flash / Max 与 Qwen3.8 Omni Flash。
+- 模型：套用服务商模型包时保留实例现有连接和任务参数；Qwen3.8 Omni Flash 音频转写改用 Chat Completions。
 - WebUI：插件版本列表使用当前实例的登录 Cookie，保留双实例认证隔离。
 - WebUI：修复嵌入模型变更确认按钮的事件参数，补齐长期记忆增量摘要的多语言说明。
 - 插件：内置 NapCat 和插件管理模块声明支持宿主 1.3.0，并保留第三方插件版本校验。

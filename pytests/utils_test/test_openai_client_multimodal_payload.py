@@ -1,4 +1,11 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import base64
+import pytest
+
 from src.llm_models.model_client.openai_client import (
+    OpenaiClient,
     QWEN_VL_IMAGE_MAX_PIXELS,
     QWEN_VL_IMAGE_MIN_PIXELS,
     _convert_messages,
@@ -17,6 +24,30 @@ TINY_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB"
     "/6X7Wm0AAAAASUVORK5CYII="
 )
+
+
+@pytest.mark.asyncio
+async def test_qwen_omni_transcription_uses_chat_completions() -> None:
+    create = AsyncMock(return_value=SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="transcribed"))], usage=None,
+    ))
+    client = object.__new__(OpenaiClient)
+    client.api_provider = SimpleNamespace(name="BaiLian", base_url="https://example.test", organization=None, project=None)
+    client.client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    request = SimpleNamespace(
+        model_info=SimpleNamespace(model_identifier="qwen3.8-omni-flash"),
+        audio_base64=base64.b64encode(b"RIFF\x00\x00\x00\x00WAVE").decode(),
+        extra_params={}, max_tokens=1024,
+    )
+
+    response, usage = await client._execute_audio_transcription_request(request)
+
+    create.assert_awaited_once()
+    kwargs = create.call_args.kwargs
+    assert kwargs["modalities"] == ["text"]
+    assert kwargs["messages"][0]["content"][0]["input_audio"]["format"] == "wav"
+    assert response.content == "transcribed"
+    assert usage is None
 
 
 def test_qwen_vl_dashscope_payload_adds_pixel_options() -> None:

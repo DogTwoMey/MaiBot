@@ -2,8 +2,7 @@
 
 不同于 aliyun 的 JSON 自动发现，DeepSeek 从 ``models.toml`` 读取显式模板。
 覆盖 MaiBot 的 chat 相关任务槽（replyer / planner / utils）；VLM / Voice /
-Embedding 留空——DeepSeek 官方暂不提供这三类服务，请配合其他 provider（阿里云
-等）使用。
+Embedding 留给百炼的独立任务配置。
 
 入口函数 ``build(args, *, apisource_dir)`` 返回 ProviderBundle。
 """
@@ -73,6 +72,7 @@ def _build_models_aot(template: Dict[str, Any], provider_name: str):
         t["cache_price_in"] = float(m.get("cache_price_in", 0.0))
         t["price_out"] = float(m.get("price_out", 0.0))
         t["temperature"] = float(m.get("temperature", 1.0))
+        t["send_temperature"] = bool(m.get("send_temperature", True))
         t["force_stream_mode"] = bool(m.get("force_stream_mode", False))
         t["visual"] = bool(m.get("visual", False))
         t["extra_params"] = _build_extra_params_table(m.get("extra_params") or {})
@@ -110,10 +110,10 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
     """DeepSeek 的 tier 任务槽分配规则。
 
     档位语义：
-        low   → 仅 flash（非思考），成本最低
-        mid   → flash-think + flash，有一定推理能力但价格可控
-        high  → pro-nonthink + flash-think，强通用 + 中推理
-        ultra → pro-think + pro-nonthink，全链路高质量
+        low   → flash 非思考
+        mid   → flash 低强度思考与非思考
+        high  → flash 高强度思考与非思考
+        ultra → pro 思考与 flash 高强度思考
 
     任务槽分配：
         replyer / planner → 按 tier 分配（planner 更偏重稳定性，略保守）
@@ -151,12 +151,12 @@ def _build_tier_mapping(template: Dict[str, Any], tier: str) -> Dict[str, List[s
         planner = chain("low", "mid")
         utils = chain("low")
     elif tier == "high":
-        replyer = chain("high", "mid")
-        planner = chain("mid", "low")
+        replyer = chain("high", "low")
+        planner = chain("low")
         utils = chain("low")
     elif tier == "ultra":
         replyer = chain("ultra", "high")
-        planner = chain("high", "mid")
+        planner = chain("high", "low")
         utils = chain("low")
     elif tier == "free":
         # DeepSeek 没有免费档，把全部塞进去分摊调用

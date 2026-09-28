@@ -136,6 +136,34 @@ def test_resolve_static_path_uses_package_even_when_dashboard_dist_exists(monkey
     assert resolved_path == package_dist
 
 
+@pytest.mark.parametrize("use_local", [False, True])
+def test_static_files_respect_local_dashboard_setting(monkeypatch, tmp_path, use_local) -> None:
+    local_dist = tmp_path / "dashboard" / "dist"
+    package_dist = tmp_path / "package" / "dist"
+    for directory, content in [(local_dist, "local build"), (package_dist, "installed build")]:
+        directory.mkdir(parents=True)
+        (directory / "index.html").write_text(content, encoding="utf-8")
+
+    class _DashboardModule:
+        @staticmethod
+        def get_dist_path() -> Path:
+            return package_dist
+
+    monkeypatch.setenv(webui_app._LOCAL_DASHBOARD_ENV, "1" if use_local else "0")
+    monkeypatch.setattr(webui_app, "_get_project_root", lambda: tmp_path)
+    app = webui_app.FastAPI()
+    with (
+        patch.object(webui_app, "import_module", return_value=_DashboardModule()),
+        patch.object(webui_app, "_log_webui_version_compatibility"),
+    ):
+        webui_app._setup_static_files(app)
+
+    response = TestClient(app).get("/config/model")
+
+    assert response.status_code == 200
+    assert response.text == ("local build" if use_local else "installed build")
+
+
 def test_resolve_safe_static_file_path_allows_regular_static_file(tmp_path) -> None:
     static_path = tmp_path / "dist"
     asset_path = static_path / "assets" / "app.js"
