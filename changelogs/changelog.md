@@ -2,6 +2,7 @@
 
 ## Fork 修复
 
+- Maisaka：零回复频率下保留已启用的 @/提及强制触发，防抖等待结束后重新判断静默状态。
 - WebUI：重启构建后优先加载本实例的 Dashboard 产物，并检查入口文件已生成。
 - NapCat：同步 QQ 资料接口的未知性别值设置修复。
 - 模型：更新中国大陆高档模型分工及 DeepSeek、百炼价格，支持 DeepSeek V4.1 Flash、Qwen3.8 Flash / Max 与 Qwen3.8 Omni Flash。

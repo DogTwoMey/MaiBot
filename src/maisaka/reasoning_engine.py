@@ -993,6 +993,7 @@ class MaisakaReasoningEngine:
         if message_triggered:
             await self._runtime._wait_for_message_quiet_period()
             self._runtime._mark_message_turn_unscheduled()
+            silent_reply_frequency = self._runtime._is_reply_frequency_silent()
 
         cached_messages = self._runtime._collect_pending_messages() if self._runtime._has_pending_messages() else []
         continuation_logical_turn_id: str | None = None

@@ -1043,7 +1043,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
 
     def _is_reply_frequency_silent(self) -> bool:
         """判断当前会话是否处于回复频率为 0 的静默接收模式。"""
-        return self._get_effective_reply_frequency() <= 0.0
+        return self._get_effective_reply_frequency() <= 0.0 and not self._has_forced_turn_trigger()
 
     async def track_reply_effect(
         self,
