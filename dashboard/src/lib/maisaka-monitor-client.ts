@@ -197,6 +197,14 @@ export interface MaisakaRequestBlock {
   messages: MaisakaMessage[]
   selected_history_count: number
   tool_count: number
+  context_sections?: MaisakaContextSection[]
+}
+
+/** 提示词分段用量：字符数与条目数，token 由前端按占比换算 */
+export interface MaisakaContextSection {
+  key: string
+  chars: number
+  count: number
 }
 
 export interface MaisakaNativeToolCall {
@@ -215,6 +223,8 @@ export interface MaisakaPlannerBlock {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  prompt_cache_hit_tokens?: number
+  prompt_cache_miss_tokens?: number
   duration_ms: number
   prompt_html_uri?: string
 }
@@ -245,16 +255,20 @@ export interface MaisakaFinalizedToolResult {
   summary: string
   prompt_html_uri?: string
   detail?: unknown
+  matched_tool_names?: string[]
+  newly_discovered_tool_names?: string[]
 }
 
 export interface PlannerFinalizedEvent {
   session_id: string
   cycle_id: number
+  run_id?: string
   timestamp: number
   timing_gate: MaisakaTimingGateBlock | null
   request: MaisakaRequestBlock | null
   planner: MaisakaPlannerBlock | null
   tools: MaisakaFinalizedToolResult[]
+  active_tool_call_id?: string
   interrupted?: boolean
   final_state: {
     time_records: Record<string, number>
@@ -300,6 +314,7 @@ export type MaisakaMonitorEvent =
   | { type: 'planner.request'; data: PlannerRequestEvent }
   | { type: 'planner.response'; data: PlannerResponseEvent }
   | { type: 'planner.finalized'; data: PlannerFinalizedEvent }
+  | { type: 'planner.progress'; data: PlannerFinalizedEvent }
   | { type: 'tool.execution'; data: ToolExecutionEvent }
   | { type: 'replier.request'; data: ReplierRequestEvent }
   | { type: 'replier.response'; data: ReplierResponseEvent }

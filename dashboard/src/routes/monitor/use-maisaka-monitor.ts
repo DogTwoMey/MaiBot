@@ -251,7 +251,10 @@ async function loadMonitorSnapshot() {
       db.get('meta', 'lastEventId'),
     ])
 
-    cachedTimeline = timelineRecords.slice(-MAX_TIMELINE_ENTRIES).map(toTimelineEntry)
+    cachedTimeline = timelineRecords
+      .map(toTimelineEntry)
+      .sort(compareTimelineEntries)
+      .slice(-MAX_TIMELINE_ENTRIES)
     cachedSeenEventIds = new Set(
       cachedTimeline
         .map((entry) => entry.eventId)
@@ -420,6 +423,17 @@ function getTimelineEntrySequence(entry: TimelineEntry) {
 }
 
 function compareTimelineEntries(a: TimelineEntry, b: TimelineEntry) {
+  // 事件号代表实际广播/写入顺序，优先于消息自身时间戳。
+  // message.sent 的 timestamp 是原始消息时间，可能早于 Planner 和工具事件。
+  if (a.eventId !== undefined && b.eventId !== undefined && a.eventId !== b.eventId) {
+    return a.eventId - b.eventId
+  }
+  if (a.eventId !== undefined && b.eventId === undefined) {
+    return -1
+  }
+  if (a.eventId === undefined && b.eventId !== undefined) {
+    return 1
+  }
   if (a.timestamp !== b.timestamp) {
     return a.timestamp - b.timestamp
   }
@@ -635,6 +649,29 @@ function handleMonitorEvent(event: MaisakaMonitorEvent) {
       notifyStoreListeners()
     }
     return
+  }
+
+  if (event.type === 'planner.progress' || event.type === 'planner.finalized') {
+    const cycleId = dataRecord.cycle_id
+    const runId = dataRecord.run_id
+    const existing = cachedTimeline.find(
+      (entry) =>
+        typeof runId === 'string' &&
+        runId.length > 0 &&
+        (entry.type === 'planner.progress' || entry.type === 'planner.finalized') &&
+        entry.sessionId === sessionId &&
+        (entry.data as unknown as Record<string, unknown>).cycle_id === cycleId &&
+        (entry.data as unknown as Record<string, unknown>).run_id === runId
+    )
+    if (existing) {
+      // 保留首次出现的位置，让正在执行的工具在原卡片内更新。
+      const updated: TimelineEntry = { ...existing, type: event.type, data: event.data }
+      cachedTimeline = cachedTimeline.map((entry) => (entry.id === existing.id ? updated : entry))
+      updateSessionInfo(event, sessionId, timestamp)
+      schedulePersistUpdatedTimelineEntry(existing.id, sessionId)
+      notifyStoreListeners()
+      return
+    }
   }
 
   const entry: TimelineEntry = {

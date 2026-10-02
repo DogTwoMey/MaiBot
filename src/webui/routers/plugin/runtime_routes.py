@@ -160,7 +160,7 @@ def _serialize_home_card_entry(component: HomeCardEntry) -> Dict[str, Any]:
 
 
 @router.get("/runtime/plugins/{plugin_id}/components")
-async def list_plugin_components(plugin_id: str, http_request: Request) -> Dict[str, Any]:
+def list_plugin_components(plugin_id: str, http_request: Request) -> Dict[str, Any]:
     """返回指定插件当前注册的全部组件。"""
 
     require_plugin_token(http_request)
@@ -177,7 +177,7 @@ async def list_plugin_components(plugin_id: str, http_request: Request) -> Dict[
 
 
 @router.get("/runtime/commands")
-async def list_runtime_commands(http_request: Request) -> Dict[str, Any]:
+def list_runtime_commands(http_request: Request) -> Dict[str, Any]:
     """返回当前注册的命令及其插件归属，供统一权限管理页面使用。"""
 
     require_plugin_token(http_request)
@@ -209,7 +209,7 @@ async def list_runtime_commands(http_request: Request) -> Dict[str, Any]:
 
 
 @router.get("/runtime/home-cards")
-async def list_runtime_home_cards(http_request: Request) -> Dict[str, Any]:
+def list_runtime_home_cards(http_request: Request) -> Dict[str, Any]:
     """返回当前已启用插件注册的 WebUI 首页卡片。"""
 
     require_plugin_token(http_request)
@@ -228,7 +228,7 @@ async def list_runtime_home_cards(http_request: Request) -> Dict[str, Any]:
 
 
 @router.get("/runtime/hooks", response_model=HookSpecListResponse)
-async def list_runtime_hook_specs(http_request: Request) -> HookSpecListResponse:
+def list_runtime_hook_specs(http_request: Request) -> HookSpecListResponse:
     """返回当前插件运行时公开的 Hook 规格清单。
 
     Args:

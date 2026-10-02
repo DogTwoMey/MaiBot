@@ -38,6 +38,7 @@ import { useLocalCacheMetrics } from './home/hooks/useLocalCacheMetrics'
 import { useMaibotVersion } from './home/hooks/useMaibotVersion'
 import { HitokotoEditorDialog } from './home/HitokotoEditorDialog'
 import { HomeCardManager, type HomeCardDefinition } from './home/HomeCardManager'
+import { NewsCard } from './home/NewsCard'
 import { usePluginHomeCards } from './home/hooks/usePluginHomeCards'
 import { useQuickShortcuts } from './home/hooks/useQuickShortcuts'
 import { useReviewStats } from './home/hooks/useReviewStats'
@@ -624,12 +625,23 @@ function IndexPageContent() {
       id: 'builtin:stats-overview',
       title: t('home.stats.overviewTitle'),
       description: t('home.stats.overviewDesc'),
-      width: 'wide',
+      width: 'large',
       allowedWidths: ['large', 'wide', 'full'],
       preferredHeight: 'low',
       category: 'statistics',
       source: 'builtin',
       render: () => <StatisticsOverviewCard />,
+    },
+    {
+      id: 'builtin:news',
+      title: t('home.news.title'),
+      description: t('home.news.description'),
+      width: 'small',
+      allowedWidths: ['small', 'medium', 'large'],
+      preferredHeight: 'low',
+      category: 'status',
+      source: 'builtin',
+      render: () => <NewsCard />,
     },
     {
       id: 'builtin:prompt-cache',
@@ -916,7 +928,7 @@ function IndexPageContent() {
   const versionsMismatch =
     versionCompatibility?.status !== undefined && versionCompatibility.status !== 'compatible'
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="h-full" scrollbars="vertical">
       <div data-home-page="true" className="space-y-2 p-4 sm:space-y-4 sm:p-6">
         {dashboardError && (
           <Card className="border-destructive/50 bg-destructive/5">

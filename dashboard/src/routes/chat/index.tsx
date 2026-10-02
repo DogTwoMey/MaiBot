@@ -1,21 +1,28 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  ChatStreamSettingsDialog,
+  type ChatStreamSettingsTarget,
+} from '@/components/chat-stream-settings-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { uploadWebuiUserAvatar } from '@/lib/avatar-url'
 import { chatWsClient } from '@/lib/chat-ws-client'
+import { getAllChatStreams } from '@/lib/chat-management-api'
 import {
   maisakaMonitorClient,
   type LlmErrorEvent,
   type LlmRetryEvent,
+  type MessageIngestedEvent,
+  type MessageSentEvent,
   type StageRemovedEvent,
   type StageStatusEvent,
 } from '@/lib/maisaka-monitor-client'
 import { loadUserEmojiPayload, type UserEmojiItem } from '@/lib/user-emoji-api'
 import { MaisakaMonitor } from '@/routes/monitor/maisaka-monitor'
-import { useMaisakaMonitor } from '@/routes/monitor/use-maisaka-monitor'
+import { useMaisakaMonitor, type SessionInfo } from '@/routes/monitor/use-maisaka-monitor'
 
 import { ChatComposer } from './ChatComposer'
 import { ChatTabBar } from './ChatTabBar'
@@ -28,6 +35,7 @@ import type {
   ChatMessage,
   ChatRuntimeStatus,
   MessageSegment,
+  ObservedMessagePreview,
   SavedVirtualTab,
   VirtualIdentityConfig,
   WsMessage,
@@ -178,6 +186,19 @@ function resolveRetryStatusKind(data: LlmRetryEvent): ChatRuntimeStatus['kind'] 
   return 'acting'
 }
 
+// 侧边栏观察聊天流的最新消息预览：优先正文，纯媒体消息退回媒体占位文案
+function buildObservedMessagePreview(
+  data: MessageIngestedEvent | MessageSentEvent
+): ObservedMessagePreview {
+  const content = data.content.trim()
+  const mediaText = (data.media ?? []).find((media) => media.text.trim())?.text.trim() ?? ''
+  return {
+    speakerName: data.speaker_name,
+    content,
+    mediaText,
+  }
+}
+
 function matchesMonitorTarget(
   tab: ChatTab,
   data: StageStatusEvent | StageRemovedEvent | LlmRetryEvent | LlmErrorEvent
@@ -220,13 +241,69 @@ function buildRuntimeStatusFromStage(data: StageStatusEvent): ChatRuntimeStatus 
 }
 
 export function ChatPage() {
-  const navigate = useNavigate()
   const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
   const {
     sessions: observedSessions,
     stageStatuses: observedStageStatuses,
+    allTimeline,
     setSelectedSession: setSelectedObservedSession,
   } = useMaisakaMonitor()
+
+  const { data: knownChatStreams = [], isError: knownChatStreamsError } = useQuery({
+    queryKey: ['chat-streams', 'all'],
+    queryFn: getAllChatStreams,
+    staleTime: 30_000,
+  })
+  // 监控中新出现的会话可能刚写入数据库，及时刷新已知聊天流列表。
+  const previousObservedSessionIds = useRef(new Set(observedSessions.keys()))
+  useEffect(() => {
+    const currentIds = new Set(observedSessions.keys())
+    const hasNewSession = Array.from(currentIds).some(
+      (sessionId) => !previousObservedSessionIds.current.has(sessionId)
+    )
+    previousObservedSessionIds.current = currentIds
+    if (hasNewSession) {
+      void queryClient.invalidateQueries({ queryKey: ['chat-streams', 'all'] })
+    }
+  }, [observedSessions, queryClient])
+
+  // 数据库中的真实聊天流为列表来源，实时监控事件只更新对应项的活动时间。
+  const knownSessions = useMemo(() => {
+    const sessions = new Map<string, SessionInfo>()
+    for (const chat of knownChatStreams) {
+      const live = observedSessions.get(chat.session_id)
+      sessions.set(chat.session_id, {
+        sessionId: chat.session_id,
+        sessionName: chat.display_name,
+        isGroupChat: chat.chat_type === 'group',
+        groupId: chat.group_id,
+        userId: chat.user_id,
+        platform: chat.platform,
+        lastActivity: Math.max(
+          chat.last_active_at ?? chat.created_at ?? 0,
+          live?.lastActivity ?? 0
+        ),
+        eventCount: live?.eventCount ?? 0,
+      })
+    }
+    return sessions
+  }, [knownChatStreams, observedSessions])
+
+  // 每个观察聊天流的最新一条消息，用于侧边栏预览（时间线按时间升序，后写覆盖先写）
+  const observedLatestMessages = useMemo(() => {
+    const latestMessages = new Map<string, ObservedMessagePreview>()
+    for (const entry of allTimeline) {
+      if (entry.type !== 'message.ingested' && entry.type !== 'message.sent') {
+        continue
+      }
+      latestMessages.set(
+        entry.sessionId,
+        buildObservedMessagePreview(entry.data as MessageIngestedEvent | MessageSentEvent)
+      )
+    }
+    return latestMessages
+  }, [allTimeline])
 
   // 默认本地聊天标签页
   const defaultTab: ChatTab = {
@@ -281,6 +358,8 @@ export function ChatPage() {
   const [userName, setUserName] = useState(getStoredUserName())
   const [userAvatarVersion, setUserAvatarVersion] = useState(getStoredUserAvatarVersion)
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false)
+  // 页内聊天流设置弹窗：非空时打开
+  const [settingsChat, setSettingsChat] = useState<ChatStreamSettingsTarget | null>(null)
 
   // 持久化用户 ID
   const [userId] = useState(getOrCreateUserId)
@@ -876,8 +955,7 @@ export function ChatPage() {
     [activeTab, activeTabId, addMessageToTab, t, userName]
   )
 
-  // 处理键盘事件
-  // 处理昵称变更（来自侧边栏）
+  // 处理输入区的图片附件
   const handleAddImages = useCallback(
     async (files: FileList) => {
       const imageFiles = Array.from(files).filter((file) => file.type.startsWith('image/'))
@@ -929,6 +1007,7 @@ export function ChatPage() {
     setSelectedImages((prev) => prev.filter((image) => image.id !== id))
   }, [])
 
+  // 处理输入框左侧设置中的昵称变更
   const handleUpdateUserName = useCallback(
     (newName: string) => {
       const trimmed = newName.trim() || t('chat.userNameFallback')
@@ -1029,8 +1108,13 @@ export function ChatPage() {
     setActiveObservedSessionId(sessionId)
   }
 
+  // 在页内直接打开观察聊天流的设置弹窗，不再跳转到聊天管理页
   const openObservedSettings = (sessionId: string) => {
-    void navigate({ to: '/chat-management', search: { session_id: sessionId } })
+    const info = knownSessions.get(sessionId)
+    setSettingsChat({
+      session_id: sessionId,
+      display_name: info?.sessionName || sessionId,
+    })
   }
 
   return (
@@ -1053,18 +1137,14 @@ export function ChatPage() {
           tabs={tabs}
           activeTabId={activeTabId}
           activeObservedSessionId={activeObservedSessionId}
-          observedSessions={observedSessions}
+          observedSessions={knownSessions}
+          observedSessionsError={knownChatStreamsError}
           observedStageStatuses={observedStageStatuses}
-          userId={userId}
-          userName={userName}
-          userAvatarVersion={userAvatarVersion}
-          isUploadingUserAvatar={isUploadingUserAvatar}
+          observedLatestMessages={observedLatestMessages}
           onSwitch={switchTab}
           onSelectObserved={selectObservedSession}
           onOpenObservedSettings={openObservedSettings}
           onClose={closeTab}
-          onUpdateUserAvatar={handleUpdateUserAvatar}
-          onUpdateUserName={handleUpdateUserName}
         />
       </motion.div>
 
@@ -1088,7 +1168,7 @@ export function ChatPage() {
             tabs={tabs}
             activeTabId={activeTabId}
             activeObservedSessionId={activeObservedSessionId}
-            observedSessions={observedSessions}
+            observedSessions={knownSessions}
             userId={userId}
             userName={userName}
             userAvatarVersion={userAvatarVersion}
@@ -1143,10 +1223,26 @@ export function ChatPage() {
               images={selectedImages}
               isConnected={!!activeTab?.isConnected}
               userId={userId}
+              userName={userName}
+              userAvatarVersion={userAvatarVersion}
+              isUploadingUserAvatar={isUploadingUserAvatar}
+              onUpdateUserAvatar={handleUpdateUserAvatar}
+              onUpdateUserName={handleUpdateUserName}
             />
           </>
         )}
       </motion.div>
+
+      <ChatStreamSettingsDialog
+        chat={settingsChat}
+        onOpenChange={(open) => !open && setSettingsChat(null)}
+        onDeleted={(sessionId) => {
+          setSettingsChat(null)
+          if (activeObservedSessionId === sessionId) {
+            setActiveObservedSessionId(null)
+          }
+        }}
+      />
     </div>
   )
 }

@@ -77,6 +77,7 @@ import type {
 import { PluginIcon } from './plugins/PluginIcon'
 import { getPluginType, getPluginTypeLabel } from './plugins/types'
 import { AdapterHostPolicyPanel } from './plugin-config/AdapterHostPolicyPanel'
+import { AdapterPolicyDefaultsCard } from './plugin-config/AdapterPolicyDefaultsCard'
 import { getNestedRecord, getPluginMarketplaceRoutePath, isAdapterManagementPath } from './plugin-config/utils'
 import { usePluginList } from './plugin-config/hooks/usePluginList'
 import { usePluginLifecycle } from './plugin-config/hooks/usePluginLifecycle'
@@ -400,7 +401,7 @@ function SectionRenderer({ sectionName, section, config, onChange }: SectionRend
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <Card>
         <CollapsibleTrigger asChild>
-          <CardHeader className="hover:bg-muted/50 cursor-pointer gap-0.5 px-4! py-2! transition-colors sm:px-4! sm:py-2!">
+          <CardHeader className="hover:bg-muted/50 cursor-pointer space-y-0 gap-0.5 px-4! py-1.5! transition-colors sm:px-4! sm:py-1.5!">
             <div className="flex items-center">
               <div className="flex min-w-0 items-center gap-2">
                 {isOpen ? (
@@ -1724,6 +1725,9 @@ function PluginConfigPageContent() {
             </div>
           </div>
         )}
+
+        {/* 适配器全局默认策略（位于插件加载情况下方） */}
+        {adapterManagement && <AdapterPolicyDefaultsCard />}
 
         {/* 插件列表 */}
         {loading ? (

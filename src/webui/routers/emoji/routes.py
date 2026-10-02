@@ -218,7 +218,7 @@ async def _review_emoji_record_for_registration(
 
 
 @router.get("/list", response_model=EmojiListResponse)
-async def get_emoji_list(
+def get_emoji_list(
     http_request: Request,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
@@ -311,7 +311,7 @@ async def get_emoji_list(
 
 
 @router.get("/{emoji_id}", response_model=EmojiDetailResponse)
-async def get_emoji_detail(emoji_id: int, http_request: Request) -> EmojiDetailResponse:
+def get_emoji_detail(emoji_id: int, http_request: Request) -> EmojiDetailResponse:
     """获取表情包详细信息。
 
     Args:
@@ -421,7 +421,7 @@ async def update_emoji(
 
 
 @router.delete("/{emoji_id}", response_model=EmojiDeleteResponse)
-async def delete_emoji(emoji_id: int, http_request: Request) -> EmojiDeleteResponse:
+def delete_emoji(emoji_id: int, http_request: Request) -> EmojiDeleteResponse:
     """删除表情包。
 
     Args:
@@ -463,7 +463,7 @@ async def delete_emoji(emoji_id: int, http_request: Request) -> EmojiDeleteRespo
 
 
 @router.get("/stats/summary")
-async def get_emoji_stats(http_request: Request) -> Dict[str, Any]:
+def get_emoji_stats(http_request: Request) -> Dict[str, Any]:
     """获取表情包统计数据。
 
     Args:
@@ -609,7 +609,7 @@ async def register_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateRes
 
 
 @router.post("/{emoji_id}/ban", response_model=EmojiUpdateResponse)
-async def ban_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateResponse:
+def ban_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateResponse:
     """禁用表情包。
 
     Args:
@@ -654,7 +654,7 @@ async def ban_emoji(emoji_id: int, http_request: Request) -> EmojiUpdateResponse
 
 
 @router.get("/{emoji_id}/thumbnail", response_model=None)
-async def get_emoji_thumbnail(
+def get_emoji_thumbnail(
     emoji_id: int,
     http_request: Request,
     token: Optional[str] = Query(None, description="访问令牌"),
@@ -746,7 +746,7 @@ async def get_emoji_thumbnail(
 
 
 @router.post("/batch/delete", response_model=BatchDeleteResponse)
-async def batch_delete_emojis(
+def batch_delete_emojis(
     request: BatchDeleteRequest,
     http_request: Request,
 ) -> BatchDeleteResponse:
@@ -1043,7 +1043,7 @@ async def batch_upload_emoji(
 
 
 @router.get("/thumbnail-cache/stats", response_model=ThumbnailCacheStatsResponse)
-async def get_thumbnail_cache_stats(http_request: Request) -> ThumbnailCacheStatsResponse:
+def get_thumbnail_cache_stats(http_request: Request) -> ThumbnailCacheStatsResponse:
     """获取缩略图缓存统计信息。
 
     Args:
@@ -1081,7 +1081,7 @@ async def get_thumbnail_cache_stats(http_request: Request) -> ThumbnailCacheStat
 
 
 @router.post("/thumbnail-cache/cleanup", response_model=ThumbnailCleanupResponse)
-async def cleanup_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
+def cleanup_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
     """清理孤立的缩略图缓存。
 
     Args:
@@ -1189,7 +1189,7 @@ async def preheat_thumbnail_cache(
 
 
 @router.delete("/thumbnail-cache/clear", response_model=ThumbnailCleanupResponse)
-async def clear_all_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
+def clear_all_thumbnail_cache(http_request: Request) -> ThumbnailCleanupResponse:
     """清空所有缩略图缓存。
 
     Args:
