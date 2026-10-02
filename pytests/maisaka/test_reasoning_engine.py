@@ -30,7 +30,7 @@ from src.maisaka.monitor.events import (
     _serialize_request_block,
     _serialize_tool_results,
 )
-from src.maisaka.reasoning_engine import STOP_AFTER_EXECUTION_PAUSE_REASON, MaisakaReasoningEngine
+from src.maisaka.reasoning_engine import CycleRuntimeState, STOP_AFTER_EXECUTION_PAUSE_REASON, MaisakaReasoningEngine
 
 
 class _ToolRegistryStub:
@@ -63,6 +63,7 @@ def _build_tool_engine(results: list[ToolExecutionResult]) -> tuple[MaisakaReaso
             platform="test",
         ),
         is_action_tool_currently_available=lambda tool_name: True,
+        expand_message_id_aliases=lambda arguments: arguments,
         _update_stage_status=lambda *args, **kwargs: None,
         _reset_consecutive_wait_count=Mock(),
         _end_planner_continuation=Mock(),
@@ -71,6 +72,7 @@ def _build_tool_engine(results: list[ToolExecutionResult]) -> tuple[MaisakaReaso
     )
     engine = MaisakaReasoningEngine(runtime)
     engine._record_tool_execution_effects = AsyncMock()  # type: ignore[method-assign]
+    engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None  # type: ignore[method-assign]
     engine._append_tool_post_history_messages = lambda messages: None  # type: ignore[method-assign]
     return engine, runtime
@@ -103,6 +105,8 @@ async def test_successful_stop_request_finishes_after_full_tool_batch() -> None:
             ToolCall(call_id="call-3", func_name="following_tool"),
         ],
         "测试思考",
+        SimpleNamespace(),
+        CycleRuntimeState(),
     )
 
     assert should_pause is True
@@ -142,6 +146,8 @@ async def test_failed_stop_request_keeps_planner_running() -> None:
             ToolCall(call_id="call-2", func_name="following_tool"),
         ],
         "测试思考",
+        SimpleNamespace(),
+        CycleRuntimeState(),
     )
 
     assert should_pause is False
@@ -312,6 +318,7 @@ async def test_handle_tool_calls_pauses_after_successful_reply() -> None:
         session_id="test-session",
         log_prefix="[测试]",
         is_action_tool_currently_available=lambda name: True,
+        expand_message_id_aliases=lambda arguments: arguments,
         _update_stage_status=lambda *args, **kwargs: None,
         _reset_consecutive_wait_count=lambda reason: None,
         _end_planner_continuation=lambda: None,
@@ -321,12 +328,15 @@ async def test_handle_tool_calls_pauses_after_successful_reply() -> None:
     engine._build_tool_execution_context = lambda latest_thought: SimpleNamespace()
     engine._build_tool_availability_context = lambda: SimpleNamespace()
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
+    engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
     engine._append_tool_display_results = lambda **kwargs: None
 
     paused, tool_name, _, _ = await engine._handle_tool_calls(
         [ToolCall(call_id="call-reply-1", func_name="reply", args={})],
         "回复用户",
+        SimpleNamespace(),
+        CycleRuntimeState(),
     )
 
     assert paused is True
@@ -357,6 +367,7 @@ async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
         session_id="test-session",
         log_prefix="[测试]",
         is_action_tool_currently_available=lambda name: True,
+        expand_message_id_aliases=lambda arguments: arguments,
         _update_stage_status=lambda *args, **kwargs: None,
         _reset_consecutive_wait_count=lambda reason: None,
         _end_planner_continuation=lambda: None,
@@ -366,6 +377,7 @@ async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
     engine._build_tool_execution_context = lambda latest_thought: SimpleNamespace()
     engine._build_tool_availability_context = lambda: SimpleNamespace()
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
+    engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
     engine._append_tool_display_results = lambda **kwargs: None
 
@@ -375,6 +387,8 @@ async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
             ToolCall(call_id="call-reply-2", func_name="reply", args={}),
         ],
         "回复用户",
+        SimpleNamespace(),
+        CycleRuntimeState(),
     )
 
     assert paused is True

@@ -3,10 +3,11 @@
 from collections import deque
 from datetime import datetime
 from math import ceil
-from typing import Any, Literal, Optional, Sequence
+from typing import Any, Dict, Literal, Optional, Sequence
 import asyncio
 import json
 import time
+import uuid
 
 from src.chat.heart_flow.heartFC_utils import CycleDetail
 from src.chat.message_receive.chat_manager import BotChatSession, chat_manager
@@ -35,6 +36,7 @@ from src.maisaka.builtin_tool.provider import MaisakaBuiltinToolProvider
 from src.maisaka.context.clear_context import select_messages_after_latest_clear_marker
 from src.maisaka.context.history import drop_leading_orphan_tool_results
 from src.maisaka.context.message_adapter import parse_speaker_content
+from src.maisaka.context.message_id_alias import build_alias_map, expand_message_id_aliases
 from src.maisaka.context.messages import (
     LLMContextMessage,
     ModelOutputContextMessage,
@@ -172,6 +174,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         self._current_cycle_detail: Optional[CycleDetail] = None
         self._running = False
         self._cycle_counter = 0
+        self._monitor_run_id = uuid.uuid4().hex
         self._internal_loop_task: Optional[asyncio.Task] = None
         self._message_turn_scheduled = False
         self._deferred_message_turn_task: Optional[asyncio.Task[None]] = None
@@ -1235,6 +1238,13 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         """清理当前逻辑轮的触发消息。"""
 
         self._active_turn_trigger_message = None
+
+    def expand_message_id_aliases(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """把工具参数中模型可见的消息 ID 别名换回原始消息 ID；别名冲突时取最新的消息。"""
+        alias_map = build_alias_map(
+            getattr(history_message, "message_id", "") for history_message in reversed(self._chat_history)
+        )
+        return expand_message_id_aliases(arguments, alias_map)
 
     def _prune_processed_message_cache(self) -> None:
         """裁剪 runtime 已经消费过的旧消息。"""

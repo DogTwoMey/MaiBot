@@ -7,7 +7,7 @@ from pytest import raises
 
 from src.config.config import Config
 from src.config.config_base import AttributeData, ConfigBase, Field
-from src.config.official_configs import AMemorixConfig, ChatConfig, DebugConfig, MessageReceiveConfig, PersonalityConfig
+from src.config.official_configs import AMemorixConfig, ChatConfig, DebugConfig, MessageReceiveConfig, PersonalityConfig, PluginConfig
 from src.webui.dependencies import require_auth
 from src.webui.config_schema import (
     AMEMORIX_ADVANCED_FIELD_PATHS,
@@ -90,14 +90,10 @@ def test_personality_schema_exposes_behavior_style():
     assert behavior_style.get("x-widget") == "textarea"
 
 
-def test_debug_schema_exposes_clear_context_command_switch():
-    """调试设置需要展示可选的 /clear 上下文清理指令开关。"""
-    schema = ConfigSchemaGenerator.generate_schema(DebugConfig)
-    clear_command = next(field for field in schema["fields"] if field["name"] == "enable_clear_context_command")
+def test_clear_context_command_uses_command_management():
+    assert "enable_clear_context_command" not in DebugConfig.model_fields
+    assert PluginConfig(disabled_commands=["core.clear"]).disabled_commands == ["core.clear"]
 
-    assert clear_command["default"] is False
-    assert clear_command["label"]["zh_CN"] == "启用 /clear 指令"
-    assert clear_command.get("x-widget") == "switch"
 
 
 def test_config_subtab_metadata_is_exposed():

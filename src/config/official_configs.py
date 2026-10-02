@@ -3329,20 +3329,6 @@ class AMemorixPersonProfileConfig(ConfigBase):
     )
     """人物画像证据分类最大输出 token 数"""
 
-    evidence_classification_temperature: float = Field(
-        default=0.1,
-        ge=0.0,
-        le=2.0,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "证据分类温度",
-                "en_US": "Evidence classification temperature",
-                "ja_JP": "証拠分類の温度",
-            },
-        },
-    )
-    """人物画像证据分类模型温度"""
-
 
 class AMemorixMemoryEvolutionConfig(ConfigBase):
     """A_Memorix 记忆演化配置"""
@@ -4764,6 +4750,20 @@ class ResponseSplitterConfig(ConfigBase):
 
     __ui_parent__ = "response_post_process"
 
+    mode: Literal["rule", "llm"] = Field(
+        default="rule",
+        json_schema_extra={
+            "label": {
+                "zh_CN": "断句模式",
+                "en_US": "Splitting mode",
+                "ja_JP": "分割モード",
+            },
+            "x-widget": "select",
+            "options": ["rule", "llm"],
+        },
+    )
+    """规则断句或使用 LLM 按语义断句。"""
+
     enable: bool = Field(
         default=True,
         json_schema_extra={
@@ -5010,7 +5010,7 @@ class LogConfig(ConfigBase):
     """每个聊天最多保留多少条回复效果记录。"""
 
     event_loop_watchdog_enabled: bool = Field(
-        default=True,
+        default=False,
         json_schema_extra={
             "label": {
                 "zh_CN": "事件循环卡顿看门狗",
@@ -5102,7 +5102,7 @@ class DebugConfig(ConfigBase):
     __ui_label__ = "其他"
 
     enable_console_input: bool = Field(
-        default=False,
+        default=True,
         json_schema_extra={
             "label": {
                 "zh_CN": "启用终端输入",
@@ -5126,19 +5126,6 @@ class DebugConfig(ConfigBase):
         },
     )
     """在日志或界面中显示麦麦的思考过程。"""
-
-    enable_clear_context_command: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "启用 /clear 指令",
-                "en_US": "Enable /clear command",
-                "ja_JP": "/clear コマンドを有効化",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """允许使用 /clear 清空当前聊天流的 Maisaka 短期历史上下文。"""
 
     enable_reply_effect_tracking: bool = Field(
         default=False,
@@ -6014,11 +6001,30 @@ class PluginConfig(ConfigBase):
     )
     """允许用聊天命令管理插件的用户，格式如 qq:123456789。"""
 
+    silent_permission_denied: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "不显示无权限提示",
+                "en_US": "Hide permission denied notice",
+                "ja_JP": "権限なし通知を非表示",
+            },
+            "x-widget": "switch",
+        },
+    )
+    """开启后，用户执行无权限命令时不再发送提示消息，仅静默拦截并记录日志。"""
+
     command_permissions: Dict[str, CommandPermissionConfig] = Field(
         default_factory=dict,
         json_schema_extra={"hidden": True},
     )
     """受保护命令按用户和真实聊天流配置的额外放行规则。"""
+
+    disabled_commands: List[str] = Field(
+        default_factory=list,
+        json_schema_extra={"hidden": True},
+    )
+    """在命令管理中停用的命令 ID 列表（格式为 plugin_id.command_name，内置命令为 core.clear）。"""
 
 
 class PluginRuntimeRenderConfig(ConfigBase):

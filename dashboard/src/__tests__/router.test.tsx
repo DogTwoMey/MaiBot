@@ -1,4 +1,4 @@
-import { isRedirect } from '@tanstack/react-router'
+import { Outlet, isRedirect } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,9 +14,6 @@ const { StubPage } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@tanstack/router-devtools', () => ({
-  TanStackRouterDevtools: () => null,
-}))
 vi.mock('@/routes/404', () => ({
   NotFoundPage: () => <div>页面不存在</div>,
 }))
@@ -43,7 +40,6 @@ vi.mock('@/routes/logs', () => ({
   StatisticsLogViewerPage: StubPage,
 }))
 vi.mock('@/routes/reply-effects', () => ({ ReplyEffectsPage: StubPage }))
-vi.mock('@/routes/focus', () => ({ FocusCompanionPage: StubPage }))
 vi.mock('@/routes/config/bot', () => ({ BotConfigPage: StubPage }))
 vi.mock('@/routes/config/model', () => ({ ModelConfigPage: StubPage }))
 vi.mock('@/routes/config/prompts', () => ({ PromptManagementPage: StubPage }))
@@ -79,14 +75,12 @@ const expectedPaths = [
   '/auth',
   '/setup',
   '/chat/embed',
-  '/focus/embed',
   '/plugins/embed',
   '/plugin-config/embed',
   '/plugin-mirrors/embed',
   '/',
   '/statistics',
   '/reply-effects',
-  '/focus',
   '/config/bot',
   '/config/model',
   '/config/prompts',
@@ -143,7 +137,6 @@ type LazyRouteComponent = {
 
 const embedPaths = [
   '/chat/embed',
-  '/focus/embed',
   '/plugins/embed',
   '/plugin-config/embed',
   '/plugin-mirrors/embed',
@@ -293,11 +286,8 @@ describe('router 路由表', () => {
     }
   })
 
-  it('根组件在 DEV 下返回带 Outlet 的有效元素', () => {
-    const RootComponent = router.routeTree.options.component as (() => ReactNode) | undefined
-    expect(typeof RootComponent).toBe('function')
-    const element = RootComponent!()
-    expect(isValidElement(element)).toBe(true)
+  it('根组件使用路由 Outlet', () => {
+    expect(router.routeTree.options.component).toBe(Outlet)
   })
 
   it('protected 布局组件返回包了 Layout 的有效元素', () => {

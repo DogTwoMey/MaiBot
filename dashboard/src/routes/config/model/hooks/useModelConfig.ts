@@ -249,6 +249,17 @@ export function useModelConfig() {
     return operationPromise
   }, [])
 
+  const handleAutoSaveError = useCallback(
+    (domain: 'models' | 'taskConfig', error: unknown) => {
+      toast({
+        title: domain === 'taskConfig' ? '功能分配保存失败' : '模型列表保存失败',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      })
+    },
+    [toast]
+  )
+
   // 自动保存 models / taskConfig（沿用既有 hook）
   const {
     cancelPendingTimers: cancelModelAutoSaveTimers,
@@ -262,6 +273,7 @@ export function useModelConfig() {
     enqueueWrite: enqueueConfigWrite,
     onSavingChange: setModelAutoSaving,
     onUnsavedChange: setModelHasUnsavedChanges,
+    onSaveError: handleAutoSaveError,
   })
 
   const cancelProviderAutoSaveTimer = useCallback(() => {
@@ -465,7 +477,7 @@ export function useModelConfig() {
   )
 
   // 清理模型中的 null 值（TOML 不支持 null）
-  // cache 为遗留兼容字段，不再保存：是否启用缓存计价由 cache_price_in 是否填写决定
+  // 缓存价格留空按输入价格解析：0 表示缓存命中免费，与留空是两种含义
   const cleanModelForSave = useCallback((model: ModelInfo): ModelInfo => {
     const cleaned: ModelInfo = {
       model_identifier: model.model_identifier,
@@ -473,7 +485,7 @@ export function useModelConfig() {
       api_provider: model.api_provider,
       price_in: model.price_in ?? 0,
       price_out: model.price_out ?? 0,
-      cache_price_in: model.cache_price_in ?? 0,
+      cache_price_in: model.cache_price_in ?? model.price_in ?? 0,
       price_periods: model.price_periods?.map((period) => ({ ...period })),
       send_temperature: model.send_temperature ?? true,
       visual: model.visual ?? false,
@@ -502,9 +514,9 @@ export function useModelConfig() {
         api_key: provider.api_key,
         client_type: provider.client_type,
         default_headers: provider.default_headers,
-        max_retry: provider.max_retry ?? 2,
-        timeout: provider.timeout ?? 30,
-        retry_interval: provider.retry_interval ?? 10,
+        max_retry: provider.max_retry,
+        timeout: provider.timeout,
+        retry_interval: provider.retry_interval,
       }))
     )
   }, [])
@@ -952,9 +964,6 @@ export function useModelConfig() {
         base_url: '',
         api_key: '',
         client_type: 'openai',
-        max_retry: 2,
-        timeout: 30,
-        retry_interval: 10,
       }
     )
     setEditingProviderIndex(index)
@@ -1041,14 +1050,14 @@ export function useModelConfig() {
     setFormErrors({})
 
     // 填充空值的默认值，并移除 null 值的可选字段（TOML 不支持 null）
-    // cache 为遗留兼容字段，不再保存：是否启用缓存计价由 cache_price_in 是否填写决定
+    // 缓存价格留空按输入价格解析：0 表示缓存命中免费，与留空是两种含义
     const modelToSave: ModelInfo = {
       model_identifier: editingModel.model_identifier,
       name: editingModel.name,
       api_provider: editingModel.api_provider,
       price_in: editingModel.price_in ?? 0,
       price_out: editingModel.price_out ?? 0,
-      cache_price_in: editingModel.cache_price_in ?? 0,
+      cache_price_in: editingModel.cache_price_in ?? editingModel.price_in ?? 0,
       price_periods: editingModel.price_periods?.map((period) => ({ ...period })),
       send_temperature: editingModel.send_temperature ?? true,
       visual: editingModel.visual ?? false,

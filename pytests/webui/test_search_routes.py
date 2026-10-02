@@ -155,7 +155,7 @@ async def test_final_ai_search_request_preserves_tool_evidence(
     assert result.response
     assert "bot_config.toml" in model_output.answer
     assert validation_calls == [model_output.answer]
-    assert final_options.temperature == 0
+    assert final_options.temperature is None
     assert final_options.tool_options is None
     assert all(not isinstance(message, FunctionCallOutputItem) for message in final_messages)
     assert all(not isinstance(message, FunctionCallItem) for message in final_messages)

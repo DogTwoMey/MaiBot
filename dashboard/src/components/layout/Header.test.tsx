@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   pathname: '/',
   electron: false,
   inheritedFrom: 'header',
-  focusCompanion: true,
   language: 'zh-CN',
   t: vi.fn((key: string) => key),
   changeLanguage: vi.fn(),
@@ -194,11 +193,6 @@ vi.mock('@/lib/runtime', () => ({
   isElectron: () => mocks.electron,
 }))
 
-vi.mock('@/lib/settings-manager', () => ({
-  DEFAULT_SETTINGS: { enableFocusCompanion: false },
-  getSetting: () => mocks.focusCompanion,
-}))
-
 function makeProps(
   overrides: Partial<Parameters<typeof Header>[0]> = {}
 ): Parameters<typeof Header>[0] {
@@ -224,7 +218,6 @@ describe('Header', () => {
     mocks.pathname = '/'
     mocks.electron = false
     mocks.inheritedFrom = 'header'
-    mocks.focusCompanion = true
     mocks.language = 'zh-CN'
     mocks.getActiveBackend.mockResolvedValue({ name: '本地后端' })
     mocks.logout.mockResolvedValue(undefined)
@@ -250,10 +243,6 @@ describe('Header', () => {
     expect(screen.getByTestId('background-header')).toBeInTheDocument()
     expect(document.querySelector('[data-dashboard-header="true"]')).toHaveClass('bg-background')
     expect(document.querySelector('[data-dashboard-header="true"]')).not.toHaveClass('bg-card/80')
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' })[0]).toHaveAttribute(
-      'href',
-      '/focus'
-    )
 
     fireEvent.click(screen.getByRole('button', { name: 'a11y.closeMenu' }))
     const sidebarModeButton = screen.getByRole('button', {
@@ -267,7 +256,7 @@ describe('Header', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'header.switchToLight' })[0])
     fireEvent.click(screen.getAllByRole('button', { name: 'English' })[0])
     fireEvent.click(screen.getByRole('button', { name: 'header.logout' }))
-    fireEvent.click(screen.getByRole('link', { name: 'workspace.chat' }))
+    fireEvent.click(screen.getByRole('link', { name: 'workspace.logs' }))
 
     expect(props.onMobileMenuToggle).toHaveBeenCalledOnce()
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
@@ -277,28 +266,7 @@ describe('Header', () => {
     expect(mocks.toggleTheme).toHaveBeenCalledWith('light', props.onThemeChange, expect.anything())
     expect(mocks.changeLanguage).toHaveBeenCalledWith('en')
     expect(mocks.logout).toHaveBeenCalledOnce()
-    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/chat')
-  })
-
-  it('响应专注陪伴设置事件，并在重置事件后恢复默认隐藏', () => {
-    mocks.focusCompanion = false
-    render(<Header {...makeProps()} />)
-
-    expect(screen.queryAllByRole('link', { name: 'sidebar.menu.focusCompanion' })).toHaveLength(0)
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('maibot-settings-change', {
-          detail: { key: 'enableFocusCompanion', value: true },
-        })
-      )
-    })
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' })).not.toHaveLength(0)
-
-    act(() => {
-      window.dispatchEvent(new Event('maibot-settings-reset'))
-    })
-    expect(screen.queryAllByRole('link', { name: 'sidebar.menu.focusCompanion' })).toHaveLength(0)
+    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/logs')
   })
 
   it('悬浮模式不显示顶栏侧栏按钮，并尊重页面背景继承', () => {
@@ -330,34 +298,6 @@ describe('Header', () => {
   it('搜索状态打开时加载懒加载对话框', async () => {
     render(<Header {...makeProps({ searchOpen: true })} />)
     await waitFor(() => expect(screen.getByText('搜索对话框已打开')).toBeInTheDocument())
-  })
-
-  it('忽略无关设置事件，并在关闭专注陪伴后隐藏入口', () => {
-    render(<Header {...makeProps()} />)
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' }).length).toBeGreaterThan(0)
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('maibot-settings-change', {
-          detail: { key: 'theme', value: 'dark' },
-        })
-      )
-    })
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' }).length).toBeGreaterThan(0)
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent('maibot-settings-change'))
-    })
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' }).length).toBeGreaterThan(0)
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('maibot-settings-change', {
-          detail: { key: 'enableFocusCompanion', value: false },
-        })
-      )
-    })
-    expect(screen.queryAllByRole('link', { name: 'sidebar.menu.focusCompanion' })).toHaveLength(0)
   })
 
   it('当前页为设置且搜索打开时高亮对应顶栏按钮', () => {
@@ -445,7 +385,7 @@ describe('Header', () => {
     render(<Header {...props} />)
 
     fireEvent.click(screen.getByRole('link', { name: 'workspace.settings' }))
-    fireEvent.click(screen.getByRole('link', { name: 'workspace.chat' }), { metaKey: true })
+    fireEvent.click(screen.getByRole('link', { name: 'workspace.logs' }), { metaKey: true })
     fireEvent.click(screen.getByRole('link', { name: 'workspace.logs' }), { button: 1 })
     expect(props.onWorkspaceNavigate).not.toHaveBeenCalled()
   })
@@ -456,43 +396,43 @@ describe('Header', () => {
     const props = makeProps({ workspaceMode: 'settings' })
     const { rerender, unmount } = render(<Header {...props} />)
 
-    const chatLink = screen.getByRole('link', { name: 'workspace.chat' })
-    const logsLink = screen.getByRole('link', { name: 'workspace.logs' })
+    const targetLink = screen.getByRole('link', { name: 'workspace.logs' })
+    const settingsTabLink = screen.getByRole('link', { name: 'workspace.settings' })
     const settingsLink = screen.getByRole('link', { name: 'sidebar.menu.settings' })
     const tabs = document.querySelector('[data-dashboard-workspace-tabs="true"]') as HTMLElement
 
     expect(settingsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
 
-    fireEvent.pointerEnter(chatLink)
-    expect(chatLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    fireEvent.pointerEnter(targetLink)
+    expect(targetLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
     expect(settingsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
 
     fireEvent.pointerLeave(tabs)
     act(() => {
       vi.advanceTimersByTime(599)
     })
-    expect(chatLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    expect(targetLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
     act(() => {
       vi.advanceTimersByTime(1)
     })
     expect(settingsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
 
-    fireEvent.pointerEnter(chatLink)
-    fireEvent.click(chatLink)
-    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/chat')
-    fireEvent.pointerEnter(logsLink)
-    expect(chatLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
-    expect(logsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
+    fireEvent.pointerEnter(targetLink)
+    fireEvent.click(targetLink)
+    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/logs')
+    fireEvent.pointerEnter(settingsTabLink)
+    expect(targetLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    expect(settingsTabLink.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
 
     fireEvent.pointerLeave(tabs)
     act(() => {
       vi.advanceTimersByTime(600)
     })
-    expect(chatLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    expect(targetLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
 
-    rerender(<Header {...makeProps({ workspaceMode: 'chat' })} />)
-    fireEvent.pointerEnter(logsLink)
-    expect(logsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    rerender(<Header {...makeProps({ workspaceMode: 'logs' })} />)
+    fireEvent.pointerEnter(settingsTabLink)
+    expect(settingsTabLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
 
     fireEvent.pointerEnter(settingsLink)
     fireEvent.pointerLeave(settingsLink)
@@ -507,13 +447,13 @@ describe('Header', () => {
     const props = makeProps()
     render(<Header {...props} />)
 
-    const chatLink = screen.getByRole('link', { name: 'workspace.chat' })
+    const targetLink = screen.getByRole('link', { name: 'workspace.logs' })
     const searchButton = screen.getByRole('button', { name: 'header.searchPlaceholder' })
 
-    fireEvent.pointerEnter(chatLink)
+    fireEvent.pointerEnter(targetLink)
     fireEvent.pointerEnter(searchButton)
     expect(searchButton).toHaveAttribute('data-header-action-highlighted', 'true')
-    expect(chatLink.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
+    expect(targetLink.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
 
     fireEvent.pointerLeave(searchButton)
     act(() => {
@@ -541,7 +481,7 @@ describe('Header', () => {
     const measure = document.querySelector(
       '[data-dashboard-workspace-tabs-measure="true"]'
     ) as HTMLElement
-    const chatTab = document.querySelector('[data-workspace-tab="chat"]') as HTMLElement
+    const logsTab = document.querySelector('[data-workspace-tab="logs"]') as HTMLElement
 
     const applyRects = (tabsRight: number, measureWidth: number, switcherRight: number) => {
       vi.spyOn(tabs, 'getBoundingClientRect').mockReturnValue(
@@ -560,8 +500,8 @@ describe('Header', () => {
       window.dispatchEvent(new Event('resize'))
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2')
-    expect(screen.getByRole('link', { name: 'workspace.chat' }).querySelector('span.hidden')).not.toHaveClass(
+    expect(logsTab).toHaveClass('px-1.5')
+    expect(screen.getByRole('link', { name: 'workspace.logs' }).querySelector('span.hidden')).not.toHaveClass(
       'sm:inline'
     )
 
@@ -571,15 +511,15 @@ describe('Header', () => {
       window.dispatchEvent(new Event('resize'))
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2')
+    expect(logsTab).toHaveClass('px-1.5')
 
     applyRects(400, 80, 200)
     act(() => {
       window.dispatchEvent(new Event('resize'))
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2.5')
-    expect(screen.getByRole('link', { name: 'workspace.chat' }).querySelector('span.hidden')).toHaveClass(
+    expect(logsTab).toHaveClass('px-2')
+    expect(screen.getByRole('link', { name: 'workspace.logs' }).querySelector('span.hidden')).toHaveClass(
       'sm:inline'
     )
 
@@ -589,7 +529,7 @@ describe('Header', () => {
       window.dispatchEvent(new Event('resize'))
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2.5')
+    expect(logsTab).toHaveClass('px-2')
 
     switcher.style.display = ''
     switcher.dataset.logViewerSwitcherCompact = 'false'
@@ -597,13 +537,13 @@ describe('Header', () => {
       window.dispatchEvent(new Event('resize'))
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2.5')
+    expect(logsTab).toHaveClass('px-2')
 
     rerender(<Header {...makeProps({ workspaceMode: 'settings' })} />)
     act(() => {
       vi.advanceTimersByTime(0)
     })
-    expect(chatTab).toHaveClass('px-2.5')
+    expect(logsTab).toHaveClass('px-2')
 
     unmount()
     switcher.remove()
@@ -627,7 +567,7 @@ describe('Header', () => {
     act(() => {
       vi.advanceTimersByTime(0)
     })
-    expect(document.querySelector('[data-workspace-tab="chat"]')).toHaveClass('px-2.5')
+    expect(document.querySelector('[data-workspace-tab="logs"]')).toHaveClass('px-2')
     expect(observers[0]?.observe).toHaveBeenCalled()
 
     unmount()
@@ -640,22 +580,22 @@ describe('Header', () => {
     const props = makeProps({ workspaceMode: 'settings' })
     const { rerender, unmount } = render(<Header {...props} />)
 
-    const chatLink = screen.getByRole('link', { name: 'workspace.chat' })
-    const logsLink = screen.getByRole('link', { name: 'workspace.logs' })
+    const targetLink = screen.getByRole('link', { name: 'workspace.logs' })
+    const settingsTabLink = screen.getByRole('link', { name: 'workspace.settings' })
     const tabs = document.querySelector('[data-dashboard-workspace-tabs="true"]') as HTMLElement
 
-    fireEvent.pointerEnter(chatLink)
+    fireEvent.pointerEnter(targetLink)
     fireEvent.pointerLeave(tabs)
     fireEvent.pointerLeave(tabs)
-    fireEvent.pointerEnter(logsLink)
-    expect(logsLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    fireEvent.pointerEnter(settingsTabLink)
+    expect(settingsTabLink.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
 
     fireEvent.pointerLeave(tabs)
-    fireEvent.click(chatLink)
-    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/chat')
+    fireEvent.click(targetLink)
+    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/logs')
 
-    rerender(<Header {...makeProps({ workspaceMode: 'chat' })} />)
-    fireEvent.pointerEnter(logsLink)
+    rerender(<Header {...makeProps({ workspaceMode: 'logs' })} />)
+    fireEvent.pointerEnter(settingsTabLink)
     fireEvent.pointerLeave(tabs)
     unmount()
     act(() => {
@@ -712,11 +652,10 @@ describe('Header', () => {
     act(() => {
       vi.advanceTimersByTime(0)
     })
-    expect(document.querySelector('[data-workspace-tab="chat"]')).toHaveClass('px-2.5')
+    expect(document.querySelector('[data-workspace-tab="logs"]')).toHaveClass('px-2')
   })
 
-  it('折叠顶栏在非设置工作区隐藏侧栏按钮，专注页与深色更多菜单走对应样式', () => {
-    mocks.pathname = '/focus'
+  it('折叠顶栏在非设置工作区隐藏侧栏按钮，深色更多菜单走对应样式', () => {
     const collapsedProps = makeProps({
       topbarCollapsed: true,
       sidebarOpen: true,
@@ -737,9 +676,6 @@ describe('Header', () => {
       actualTheme: 'dark',
     })
     rerender(<Header {...expandedProps} />)
-    expect(screen.getAllByRole('link', { name: 'sidebar.menu.focusCompanion' })[0]).toHaveClass(
-      'bg-accent'
-    )
 
     fireEvent.click(screen.getAllByRole('button', { name: 'header.switchToLight' })[1])
     expect(mocks.toggleTheme).toHaveBeenCalledWith(

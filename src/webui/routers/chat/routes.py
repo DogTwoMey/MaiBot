@@ -36,7 +36,14 @@ from src.common.utils.utils_config import (
     JargonConfigUtils,
 )
 from src.config.config import BOT_CONFIG_PATH, config_manager, global_config
-from src.platform_io import AdapterIdentity, DriverKind, RouteKey, get_adapter_policy_manager, get_platform_io_manager
+from src.platform_io import (
+    AdapterIdentity,
+    AdapterPolicyManager,
+    DriverKind,
+    RouteKey,
+    get_adapter_policy_manager,
+    get_platform_io_manager,
+)
 from src.webui.dependencies import require_auth
 from src.webui.utils.toml_utils import save_toml_with_format
 
@@ -446,7 +453,7 @@ def _is_same_learning_target(rule: Dict[str, Any], chat_session: ChatSession) ->
 
 def _format_frequency(value: float) -> str:
     normalized_value = max(0.0, float(value))
-    return f"{normalized_value:.3f}（{normalized_value * 100:.1f}%）"
+    return f"{normalized_value:.2f}（{normalized_value * 100:.1f}%）"
 
 
 def _talk_rule_to_dict(rule: Any, session_id: str, is_group_chat: bool, now_min: int) -> Optional[Dict[str, Any]]:
@@ -712,7 +719,7 @@ async def _save_chat_talk_frequency_rule(
     reply_timing_config["talk_value_rules"] = rules
     save_toml_with_format(config_data, str(config_path))
 
-    if not await config_manager.reload_config(changed_scopes=["bot"]):
+    if not await config_manager.reload_config(changed_scopes=["bot"], changed_sections=["chat.reply_timing"]):
         raise HTTPException(status_code=500, detail="配置已写入，但热重载失败")
 
 
@@ -755,7 +762,7 @@ async def _delete_chat_talk_frequency_rule(chat_session: ChatSession, rule_time:
     reply_timing_config["talk_value_rules"] = next_rules
     save_toml_with_format(config_data, str(config_path))
 
-    if not await config_manager.reload_config(changed_scopes=["bot"]):
+    if not await config_manager.reload_config(changed_scopes=["bot"], changed_sections=["chat.reply_timing"]):
         raise HTTPException(status_code=500, detail="配置已写入，但热重载失败")
 
 
@@ -821,7 +828,7 @@ async def _save_chat_learning_rule(chat_session: ChatSession, kind: str, request
         config_section["enable_behavior_learning"] = True
     save_toml_with_format(config_data, str(config_path))
 
-    if not await config_manager.reload_config(changed_scopes=["bot"]):
+    if not await config_manager.reload_config(changed_scopes=["bot"], changed_sections=[section_name]):
         raise HTTPException(status_code=500, detail="配置已写入，但热重载失败")
 
 
@@ -878,7 +885,7 @@ async def _save_chat_prompt_rule(
     reply_style_config["chat_prompts"] = prompts
     save_toml_with_format(config_data, str(config_path))
 
-    if not await config_manager.reload_config(changed_scopes=["bot"]):
+    if not await config_manager.reload_config(changed_scopes=["bot"], changed_sections=["chat.reply_style"]):
         raise HTTPException(status_code=500, detail="配置已写入，但热重载失败")
 
 
@@ -914,7 +921,7 @@ async def _delete_chat_prompt_rule(chat_session: ChatSession, prompt_index: int)
     reply_style_config["chat_prompts"] = prompts
     save_toml_with_format(config_data, str(config_path))
 
-    if not await config_manager.reload_config(changed_scopes=["bot"]):
+    if not await config_manager.reload_config(changed_scopes=["bot"], changed_sections=["chat.reply_style"]):
         raise HTTPException(status_code=500, detail="配置已写入，但热重载失败")
 
 
@@ -1297,6 +1304,7 @@ def get_persons_by_platform(
 @router.get("/sessions")
 def get_chat_sessions(
     limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> Dict[str, object]:
     """获取已存在的聊天流列表。"""
 
@@ -1307,7 +1315,9 @@ def get_chat_sessions(
                 case((col(ChatSession.last_active_timestamp).is_(None), 1), else_=0),
                 col(ChatSession.last_active_timestamp).desc(),
                 col(ChatSession.created_timestamp).desc(),
+                col(ChatSession.id).desc(),
             )
+            .offset(offset)
             .limit(limit)
         )
         chat_sessions = session.exec(statement).all()
@@ -1337,7 +1347,7 @@ def get_chat_sessions(
 
 @router.post("/sessions/adapter-status")
 def get_chat_sessions_adapter_status(request: SessionAdapterStatusRequest) -> Dict[str, object]:
-    """批量获取聊天流的适配器放行状态，供聊天页按放行状态分组。"""
+    """批量获取聊天流的适配器放行状态。"""
 
     normalized_session_ids = [
         session_id
@@ -1550,6 +1560,50 @@ def update_adapter_policy_defaults(request: AdapterPolicyDefaultsUpdateRequest) 
     return {"success": True, "defaults": manager.get_default_actions()}
 
 
+def _get_plugin_adapter_identity(plugin_id: str) -> Optional[AdapterIdentity]:
+    """按 plugin_id 查找运行中的适配器驱动并返回完整身份。
+
+    面板读写必须使用与运行时求值一致的完整身份（adapter_id、platform、
+    account_id 等），否则会读到/写出与实际生效规则脱靶的条目。
+    """
+
+    for driver in get_platform_io_manager().driver_registry.list():
+        descriptor = driver.descriptor
+        if (descriptor.plugin_id or "") != plugin_id:
+            continue
+        metadata = descriptor.metadata if isinstance(descriptor.metadata, dict) else {}
+        if str(metadata.get("plugin_type") or "").strip().lower() != "adapter":
+            continue
+        return _get_driver_adapter_identity(driver)
+    return None
+
+
+def _build_adapter_account_status(
+    manager: AdapterPolicyManager,
+    plugin_id: str,
+    identity: AdapterIdentity,
+    active_identity: Optional[AdapterIdentity],
+) -> Dict[str, object]:
+    """返回当前激活身份与规则归属信息，供面板区分专属规则、默认继承与历史账号条目。"""
+
+    return {
+        "active_identity": (
+            {
+                "adapter_id": active_identity.adapter_id,
+                "plugin_id": active_identity.plugin_id,
+                "gateway_name": active_identity.gateway_name,
+                "platform": active_identity.platform,
+                "account_id": active_identity.account_id,
+                "scope": active_identity.scope,
+            }
+            if active_identity is not None
+            else None
+        ),
+        "has_entry": manager.has_adapter_policy_entry(identity),
+        "account_entries": manager.list_plugin_entries(plugin_id),
+    }
+
+
 @router.get("/adapters/plugins/{plugin_id}/policy")
 def get_adapter_plugin_policy(plugin_id: str) -> Dict[str, object]:
     """返回指定适配器插件在主程序侧的群聊与私聊规则。"""
@@ -1558,9 +1612,12 @@ def get_adapter_plugin_policy(plugin_id: str) -> Dict[str, object]:
     if not normalized_plugin_id:
         raise HTTPException(status_code=400, detail="缺少适配器插件 ID")
 
+    # 优先用运行中驱动的完整身份；未运行时退回 plugin_id 单键做只读展示
+    running_identity = _get_plugin_adapter_identity(normalized_plugin_id)
+    identity = running_identity or AdapterIdentity(plugin_id=normalized_plugin_id)
     manager = get_adapter_policy_manager()
     try:
-        policy = manager.get_adapter_policy(AdapterIdentity(plugin_id=normalized_plugin_id))
+        policy = manager.get_adapter_policy(identity)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -1568,6 +1625,8 @@ def get_adapter_plugin_policy(plugin_id: str) -> Dict[str, object]:
         "plugin_id": normalized_plugin_id,
         "global_defaults": manager.get_default_actions(),
         "policy": policy,
+        # 当前激活身份换账号登录后实时变化
+        **_build_adapter_account_status(manager, normalized_plugin_id, identity, running_identity),
     }
 
 
@@ -1576,16 +1635,25 @@ def update_adapter_plugin_policy(
     plugin_id: str,
     request: AdapterHostPolicyUpdateRequest,
 ) -> Dict[str, object]:
-    """更新指定适配器插件在主程序侧的群聊与私聊规则。"""
+    """更新指定适配器插件在主程序侧的群聊与私聊规则。
+
+    纯同步文件读写，写成 `def` 由 FastAPI 交给线程池执行，避免自动保存
+    的写入占用 WebUI 事件循环。
+    """
 
     normalized_plugin_id = str(plugin_id or "").strip()
     if not normalized_plugin_id:
         raise HTTPException(status_code=400, detail="缺少适配器插件 ID")
 
+    # 写入必须能确定规则归属；适配器未运行时拒绝而不是猜一个身份静默写出死规则
+    identity = _get_plugin_adapter_identity(normalized_plugin_id)
+    if identity is None:
+        raise HTTPException(status_code=404, detail="适配器当前未运行，无法确定规则归属，请先启动适配器")
+
     manager = get_adapter_policy_manager()
     try:
         manager.set_adapter_policy(
-            AdapterIdentity(plugin_id=normalized_plugin_id),
+            identity,
             request.model_dump(),
         )
     except ValueError as exc:
@@ -1594,7 +1662,8 @@ def update_adapter_plugin_policy(
         "success": True,
         "plugin_id": normalized_plugin_id,
         "global_defaults": manager.get_default_actions(),
-        "policy": manager.get_adapter_policy(AdapterIdentity(plugin_id=normalized_plugin_id)),
+        "policy": manager.get_adapter_policy(identity),
+        **_build_adapter_account_status(manager, normalized_plugin_id, identity, identity),
     }
 
 

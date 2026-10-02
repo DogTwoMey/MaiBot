@@ -167,7 +167,7 @@ class APIProvider(ConfigBase):
     """最大重试次数 (单个模型API调用失败, 最多重试的次数)"""
 
     timeout: int = Field(
-        default=60,
+        default=120,
         ge=1,
         json_schema_extra={
             "x-widget": "input",
@@ -177,7 +177,7 @@ class APIProvider(ConfigBase):
     """API调用的超时时长 (超过这个时长, 本次请求将被视为"请求超时", 单位: 秒)"""
 
     retry_interval: int = Field(
-        default=5,
+        default=4,
         ge=1,
         json_schema_extra={
             "x-widget": "input",
@@ -224,7 +224,7 @@ class ModelPricePeriod(ConfigBase):
     """该时段的输出价格，单位：元 / M token。"""
 
     cache_price_in: float = Field(ge=0, allow_inf_nan=False)
-    """该时段的缓存命中输入价格，单位：元 / M token；仅当模型 cache=true 时使用。"""
+    """该时段的缓存命中输入价格，单位：元 / M token；0 表示缓存命中免费，未命中部分按 price_in 计费。"""
 
     def model_post_init(self, context: Any = None) -> None:
         if self.start_time == self.end_time:
@@ -275,7 +275,7 @@ class ModelInfo(ConfigBase):
     cache: bool = Field(
         default=False,
     )
-    """遗留兼容字段，不再参与计价。是否启用缓存计价由 cache_price_in 是否填写（大于 0）决定。"""
+    """遗留兼容字段，不参与任何逻辑：是否按缓存价计费由 cache_price_in 决定，统计页是否展示缓存用量由服务商是否在响应中返回缓存字段自动探测。"""
 
     cache_price_in: float = Field(
         default=0.0,
@@ -285,7 +285,7 @@ class ModelInfo(ConfigBase):
             "step": 0.001,
         },
     )
-    """缓存命中输入价格 (用于API调用统计, 单位：元/ M token)。留空（为 0）时缓存命中与非缓存输入一致，全部按 price_in 计费。"""
+    """缓存命中输入价格 (用于API调用统计, 单位：元/ M token)。0 表示缓存命中免费，未命中部分按 price_in 计费；WebUI 中留空按输入价格解析。"""
 
     price_out: float = Field(
         default=0.0,
@@ -301,7 +301,7 @@ class ModelInfo(ConfigBase):
     """分时价格组合，每天按服务器本地时间重复，以成功请求尝试的开始时间计价。
     每项包含 start_time、end_time（HH:MM）、price_in、price_out、cache_price_in，价格单位：元 / M token。
     时段包含开始、不包含结束，支持跨午夜，开始和结束不能相同，时段之间不能重叠。
-    未匹配时段时使用模型默认价格；空列表表示全天使用默认价格。时段的缓存单价未填写（为 0）时与非缓存输入一致。"""
+    未匹配时段时使用模型默认价格；空列表表示全天使用默认价格。时段的缓存单价为 0 表示缓存命中免费。"""
 
     temperature: float | None = Field(
         default=None,
@@ -405,7 +405,7 @@ class TaskConfig(ConfigBase):
     """任务最大输出token数"""
 
     temperature: float = Field(
-        default=0.3,
+        default=0.7,
         ge=0,
         le=2,
         json_schema_extra={
@@ -414,17 +414,6 @@ class TaskConfig(ConfigBase):
         },
     )
     """模型温度"""
-
-    slow_threshold: float = Field(
-        default=15.0,
-        ge=0,
-        json_schema_extra={
-            "x-widget": "input",
-            "step": 0.1,
-            "advanced": True,
-        },
-    )
-    """超时警告时间（秒），超过此时间会输出警告日志"""
 
     selection_strategy: str = Field(
         default="balance",
@@ -555,4 +544,4 @@ class ModelTaskConfig(ConfigBase):
             "advanced": True,
         },
     )
-    """图片嵌入模型，必须实现图片输入到向量的协议"""
+    """图片嵌入模型；留空时不启用图片嵌入，所选模型必须实现图片输入到向量的协议"""

@@ -136,11 +136,34 @@ interface SessionAdapterStatusResponse {
   statuses?: Record<string, SessionAdapterStatus>
 }
 
+/** 适配器当前激活身份（换账号登录后 account_id 实时变化） */
+export interface AdapterActiveIdentity {
+  adapter_id: string
+  plugin_id: string
+  gateway_name: string
+  platform: string
+  account_id: string | null
+  scope: string | null
+}
+
+/** 同一插件名下某账号的规则条目摘要（旧账号条目换号后不再生效但保留在配置中） */
+export interface AdapterAccountEntry {
+  adapter_id: string
+  account_id: string
+  platform: string
+  gateway_name: string
+  scope: string
+  rules: Partial<Record<ChatStreamType, AdapterHostPolicySection>>
+}
+
 interface AdapterHostPolicyResponse {
   success: boolean
   plugin_id: string
   global_defaults: AdapterPolicyDefaults
   policy: AdapterHostPolicy
+  active_identity?: AdapterActiveIdentity | null
+  has_entry?: boolean
+  account_entries?: AdapterAccountEntry[]
 }
 
 export interface ChatStreamDetail {
@@ -234,6 +257,21 @@ export async function getChatStreams(limit = 1000): Promise<ChatStream[]> {
     query: { limit },
   })
   return result.sessions ?? []
+}
+
+/** 分页读取所有已存在的聊天流，供聊天工作区展示完整列表。 */
+export async function getAllChatStreams(): Promise<ChatStream[]> {
+  const pageSize = 1000
+  const streams: ChatStream[] = []
+
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await backendApi.get<ChatStreamsResponse>('/api/chat/sessions', {
+      query: { limit: pageSize, offset },
+    })
+    const page = result.sessions ?? []
+    streams.push(...page)
+    if (page.length < pageSize) return streams
+  }
 }
 
 /** 聊天流适配器放行状态的查询键：适配器规则变化后按此前缀失效缓存 */

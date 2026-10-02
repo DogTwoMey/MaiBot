@@ -119,7 +119,7 @@ def test_retro_request_messages_fill_single_template(monkeypatch: pytest.MonkeyP
     assert "【表达习惯参考】当被问吃什么时可以用随便来表达。" in prompt
     assert "以下是你在回复时需要参考的信息" in prompt
     assert "这次请直接回答吃什么。" in prompt
-    assert "你的想法是：小明在问晚饭" in prompt
+    assert "小明在问晚饭" in prompt
     assert "[12:30:00] 小明说：晚上吃什么" in prompt
 
 
@@ -173,7 +173,7 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
     # think_level=0 应命中群聊轻量模板，并带上当前思考
     retro_prompt_text = read_item_text(retro_items[0])
     assert "现在请你读读之前的聊天记录，然后给出日常且口语化的回复" in retro_prompt_text
-    assert "你的想法是：小明在问晚饭" in retro_prompt_text
+    assert "小明在问晚饭" in retro_prompt_text
 
     monkeypatch.setattr(global_config.experimental, "replyer_retro_prompt", False)
     normal_items: List[Any] = generator._build_request_messages(
@@ -222,6 +222,7 @@ def test_retro_template_context_covers_every_placeholder(monkeypatch: pytest.Mon
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
         reply_reason="",
+        reply_reference="",
         expression_habits="",
         reply_requirements="",
         stream_id="session-1",

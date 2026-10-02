@@ -1770,6 +1770,7 @@ def test_import_chat_targets_route(client: TestClient, monkeypatch):
         last_active_timestamp=None,
     )
     monkeypatch.setattr(memory_router_module._chat_manager, "get_session_name", lambda chat_id: "")
+    monkeypatch.setattr(memory_router_module, "_prefetch_latest_messages_by_session", lambda db_session, session_ids: {})
     monkeypatch.setattr(
         memory_router_module,
         "get_db_session",
@@ -1782,7 +1783,7 @@ def test_import_chat_targets_route(client: TestClient, monkeypatch):
 
     response = client.get("/api/webui/memory/import/chat-targets")
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert response.json()["success"] is True
     assert response.json()["data"][0]["chat_id"] == "session-1"
     assert response.json()["data"][0]["chat_name"] == "测试群"
@@ -1950,6 +1951,29 @@ def test_episode_process_pending_route(client: TestClient, monkeypatch, path: st
 
     assert response.status_code == 200
     assert response.json() == {"success": True, "processed": 3}
+
+
+@pytest.mark.parametrize(
+    ("path", "method", "dry_run"),
+    [
+        ("/api/webui/memory/episodes/migration-backfill", "get", True),
+        ("/api/webui/memory/episodes/migration-backfill/discard", "post", False),
+        ("/api/episodes/migration_backfill", "get", True),
+        ("/api/episodes/migration_backfill/discard", "post", False),
+    ],
+)
+def test_episode_migration_backfill_route(client: TestClient, monkeypatch, path: str, method: str, dry_run: bool):
+    async def fake_episode_admin(*, action: str, **kwargs):
+        assert action == "discard_migration_backfill"
+        assert kwargs == {"dry_run": dry_run}
+        return {"success": True, "candidates": 2, "discarded": 0 if dry_run else 2}
+
+    monkeypatch.setattr(memory_router_module.memory_service, "episode_admin", fake_episode_admin)
+
+    response = getattr(client, method)(path)
+
+    assert response.status_code == 200
+    assert response.json()["discarded"] == (0 if dry_run else 2)
 
 
 @pytest.mark.parametrize(
@@ -2153,10 +2177,16 @@ def test_sources_route(client: TestClient, monkeypatch):
     response = client.get("/api/webui/memory/sources")
 
     assert response.status_code == 200
-    item = response.json()["items"][0]
-    assert item["source"] == "demo"
-    assert item["paragraph_count"] == 2
-    assert item["chat_name"] == ""
+    assert response.json()["items"] == [{
+        "source": "demo",
+        "count": 2,
+        "paragraph_count": 2,
+        "source_kind": "",
+        "chat_id": "",
+        "chat_name": "",
+        "person_id": "",
+        "person_name": "",
+    }]
 
 
 def test_delete_operation_routes(client: TestClient, monkeypatch):
@@ -2256,6 +2286,27 @@ def test_memory_correction_routes(client: TestClient, monkeypatch):
     assert [action for action, _ in calls] == ["preview", "execute", "list", "get", "rollback"]
 
 
+def test_memory_correction_preview_forwards_selected_targets(client: TestClient, monkeypatch):
+    captured = {}
+
+    async def preview(**kwargs):
+        captured.update(kwargs)
+        return {"success": True, "plan_id": "selected-plan"}
+
+    monkeypatch.setattr(memory_router_module.memory_service, "memory_correction_admin", preview)
+    targets = [{"type": "paragraph", "id": "paragraph-1"}, {"type": "relation", "id": "relation-1"}]
+    response = client.post("/api/webui/memory/corrections/preview", json={
+        "request_text": "修正所选记忆", "scope": "memory", "targets": targets,
+    })
+    assert response.status_code == 200
+    assert captured["targets"] == targets
+    for invalid in ([], [{"type": "entity", "id": "entity-1"}], [{"type": "paragraph", "id": ""}]):
+        response = client.post("/api/webui/memory/corrections/preview", json={
+            "request_text": "修正所选记忆", "scope": "memory", "targets": invalid,
+        })
+        assert response.status_code == 422
+
+
 def test_memory_correction_preview_resolves_fuzzy_chat_id(client: TestClient, monkeypatch):
     chat_session = SimpleNamespace(
         session_id="session-1",
@@ -2307,6 +2358,7 @@ def test_memory_correction_preview_resolves_fuzzy_chat_id(client: TestClient, mo
         return {"success": True, "plan": {"plan_id": "corr-1"}}
 
     monkeypatch.setattr(memory_router_module, "_find_real_chat_session", lambda chat_id: None)
+    monkeypatch.setattr(memory_router_module, "_prefetch_latest_messages_by_session", lambda db_session, session_ids: {})
     monkeypatch.setattr(memory_router_module._chat_manager, "get_session_name", lambda chat_id: "测试群")
     monkeypatch.setattr(memory_router_module, "get_db_session", lambda: _FakeDbContext(_FakeSession()))
     monkeypatch.setattr(memory_router_module.memory_service, "memory_correction_admin", fake_memory_correction_admin)

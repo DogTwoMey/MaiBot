@@ -13,6 +13,7 @@ from src.common.logger import get_logger
 from src.config import config as config_module
 from src.core.tooling import ToolExecutionContext, ToolExecutionResult, ToolInvocation, ToolSpec
 from src.maisaka.context.message_adapter import build_visible_text_from_sequence, parse_speaker_content
+from src.maisaka.context.message_id_alias import to_display_message_id
 from src.maisaka.context.messages import LLMContextMessage, SessionBackedMessage
 from src.maisaka.context.planner_messages import extract_quote_ids_from_message_sequence
 from src.services import send_service
@@ -204,9 +205,9 @@ def get_tool_spec() -> ToolSpec:
             "default": [],
         }
         properties["attach_emoji"] = {
-            "type": "string",
-            "description": "可选。随本次回复附加一个表情包，填写情绪或表情描述。",
-            "default": "",
+            "type": "integer",
+            "minimum": 1,
+            "description": "可选。从 show_emoji_list 的拼图选择一个表情包，填写图片序号，在文字后单独发送。",
         }
         properties["attach_at"] = {
             "type": "array",
@@ -374,7 +375,7 @@ def _resolve_reply_target_message(
     else:
         target_message = tool_ctx.runtime.find_source_message_by_id(target_message_id)
     if target_message is None:
-        raise ValueError(f"未找到要回复的目标消息，msg_id={target_message_id}")
+        raise ValueError(f"未找到要回复的目标消息，msg_id={to_display_message_id(target_message_id)}")
 
     is_synthetic_context = _is_synthetic_context_message(target_message)
     if is_synthetic_context and target_message is not active_trigger_message:

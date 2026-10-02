@@ -82,15 +82,18 @@ from .base_client import (
     AudioTranscriptionRequest,
     EmbeddingRequest,
     ImageEmbeddingRequest,
+    RequestTraceContext,
     ResponseRequest,
     UsageTuple,
     client_registry,
 )
 from .image_embedding_protocols import (
+    build_compatible_image_embedding_fingerprint,
     build_native_image_embedding_diagnostic_payload,
     build_native_image_embedding_fingerprint,
     build_native_image_embedding_request,
     parse_native_image_embedding_response,
+    resolve_compatible_image_embedding_input,
     resolve_native_image_embedding_protocol,
 )
 from ..request_snapshot import (
@@ -669,22 +672,30 @@ def _convert_tool_options(tool_options: List[ToolOption]) -> List[ChatCompletion
 
 
 def _extract_usage_record(usage: Any) -> UsageTuple | None:
-    """从响应对象中提取 usage 三元组。
+    """从响应对象中提取 usage 元组，并判断供应商是否上报了 Prompt 缓存用量。
 
     Args:
         usage: OpenAI SDK 返回的 usage 对象。
 
     Returns:
-        UsageTuple | None: `(prompt_tokens, completion_tokens, total_tokens)`。
+        UsageTuple | None: `(prompt_tokens, completion_tokens, total_tokens,
+        prompt_cache_hit_tokens, prompt_cache_miss_tokens, prompt_cache_reported)`。
     """
     if usage is None:
         return None
     prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-    prompt_cache_hit_tokens = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
-    prompt_cache_miss_tokens = getattr(usage, "prompt_cache_miss_tokens", 0) or 0
+    # 用 None 哨兵区分「字段缺失」与「字段为 0」：StepFun 等供应商只在命中时返回缓存字段
+    reported_hit_tokens = getattr(usage, "prompt_cache_hit_tokens", None)
+    reported_miss_tokens = getattr(usage, "prompt_cache_miss_tokens", None)
     prompt_tokens_details = getattr(usage, "prompt_tokens_details", None)
-    if prompt_cache_hit_tokens == 0 and prompt_tokens_details is not None:
-        prompt_cache_hit_tokens = getattr(prompt_tokens_details, "cached_tokens", 0) or 0
+    reported_cached_tokens = (
+        getattr(prompt_tokens_details, "cached_tokens", None) if prompt_tokens_details is not None else None
+    )
+    prompt_cache_reported = (
+        reported_hit_tokens is not None or reported_miss_tokens is not None or reported_cached_tokens is not None
+    )
+    prompt_cache_hit_tokens = reported_hit_tokens or reported_cached_tokens or 0
+    prompt_cache_miss_tokens = reported_miss_tokens or 0
     if prompt_cache_miss_tokens == 0 and prompt_cache_hit_tokens > 0:
         prompt_cache_miss_tokens = max(prompt_tokens - prompt_cache_hit_tokens, 0)
     return (
@@ -693,6 +704,7 @@ def _extract_usage_record(usage: Any) -> UsageTuple | None:
         getattr(usage, "total_tokens", 0) or 0,
         prompt_cache_hit_tokens,
         prompt_cache_miss_tokens,
+        prompt_cache_reported,
     )
 
 
@@ -955,15 +967,21 @@ def _extract_content_blocks(
     return reasoning_content, content, tool_calls or None
 
 
-def _log_length_truncation(finish_reason: str | None, model_name: str | None) -> None:
-    """记录因长度截断导致的告警日志。
-
-    Args:
-        finish_reason: OpenAI 兼容接口返回的完成原因。
-        model_name: 上游返回的模型标识。
-    """
+def _log_length_truncation(
+    finish_reason: str | None,
+    model_name: str | None,
+    max_tokens: int | None,
+    trace_context: RequestTraceContext | None,
+) -> None:
+    """记录因长度截断导致的告警日志。"""
     if finish_reason == "length":
-        logger.info(f"模型{model_name or ''}因为超过最大 max_token 限制，可能仅输出部分内容，可视情况调整")
+        task_name = trace_context.task_name if trace_context else "未知"
+        request_type = trace_context.request_type if trace_context else "未知"
+        limit = str(max_tokens) if max_tokens is not None else "未指定（由服务商决定）"
+        logger.info(
+            f"模型{model_name or ''}因为达到最大输出 token 限制（max_tokens={limit}，"
+            f"任务={task_name}，请求类型={request_type}），可能仅输出部分内容，可视情况调整"
+        )
 
 
 def _apply_xml_tool_call_fallback(
@@ -1290,6 +1308,8 @@ async def _default_stream_response_handler(
     tool_argument_parse_mode: ToolArgumentParseMode,
     reasoning_key: str,
     logical_turn_id: str,
+    max_tokens: int | None,
+    trace_context: RequestTraceContext | None,
 ) -> Tuple[APIResponse, UsageTuple | None]:
     """处理 OpenAI 兼容流式响应。
 
@@ -1330,7 +1350,7 @@ async def _default_stream_response_handler(
         model_name = None
         if isinstance(response.raw_data, dict):
             model_name = response.raw_data.get("model")
-        _log_length_truncation(accumulator.finish_reason, model_name)
+        _log_length_truncation(accumulator.finish_reason, model_name, max_tokens, trace_context)
         return response, usage_record
     finally:
         accumulator.close()
@@ -1343,6 +1363,8 @@ def _default_normal_response_parser(
     tool_argument_parse_mode: ToolArgumentParseMode,
     reasoning_key: str,
     logical_turn_id: str,
+    max_tokens: int | None,
+    trace_context: RequestTraceContext | None,
 ) -> Tuple[APIResponse, UsageTuple | None]:
     """解析 OpenAI 兼容的非流式响应。
 
@@ -1408,7 +1430,7 @@ def _default_normal_response_parser(
     usage_record = _extract_usage_record(getattr(resp, "usage", None))
 
     finish_reason = getattr(resp.choices[0], "finish_reason", None)
-    _log_length_truncation(finish_reason, getattr(resp, "model", None))
+    _log_length_truncation(finish_reason, getattr(resp, "model", None), max_tokens, trace_context)
     content, reasoning_content, resolved_tool_calls = _apply_xml_tool_call_fallback(
         content,
         reasoning_content,
@@ -1485,6 +1507,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 tool_argument_parse_mode=self.tool_argument_parse_mode,
                 reasoning_key=self.reasoning_key,
                 logical_turn_id=request.logical_turn_id,
+                max_tokens=request.max_tokens,
+                trace_context=request.trace_context,
             )
 
         return default_stream_handler
@@ -1511,6 +1535,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 tool_argument_parse_mode=self.tool_argument_parse_mode,
                 reasoning_key=self.reasoning_key,
                 logical_turn_id=request.logical_turn_id,
+                max_tokens=request.max_tokens,
+                trace_context=request.trace_context,
             )
 
         return default_response_parser
@@ -1605,6 +1631,10 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                         if "max_tokens" in extra_body or "max_completion_tokens" in extra_body
                         else _coerce_openai_argument(request.max_tokens)
                     )
+                effective_max_tokens = extra_body.get(
+                    "max_completion_tokens",
+                    extra_body.get("max_tokens", None if max_tokens_argument is omit else max_tokens_argument),
+                )
                 snapshot_provider_request["request_kwargs"] = {
                     "extra_body": extra_body or None,
                     "extra_headers": request_overrides.extra_headers or None,
@@ -1619,6 +1649,11 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 }
 
                 if model_info.force_stream_mode:
+                    active_stream_handler = (
+                        stream_response_handler
+                        if request.stream_response_handler is not None
+                        else self._build_default_stream_response_handler(request.copy_with(max_tokens=effective_max_tokens))
+                    )
                     stream_task: asyncio.Task[AsyncStream[ChatCompletionChunk]] = asyncio.create_task(
                         self.client.chat.completions.create(
                             model=model_info.model_identifier,
@@ -1637,8 +1672,13 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                         AsyncStream[ChatCompletionChunk],
                         await await_task_with_interrupt(stream_task, request.interrupt_flag),
                     )
-                    return await stream_response_handler(raw_response, request.interrupt_flag)
+                    return await active_stream_handler(raw_response, request.interrupt_flag)
 
+                active_response_parser = (
+                    response_parser
+                    if request.async_response_parser is not None
+                    else self._build_default_response_parser(request.copy_with(max_tokens=effective_max_tokens))
+                )
                 completion_task: asyncio.Task[ChatCompletion] = asyncio.create_task(
                     self.client.chat.completions.create(
                         model=model_info.model_identifier,
@@ -1657,7 +1697,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                     ChatCompletion,
                     await await_task_with_interrupt(completion_task, request.interrupt_flag),
                 )
-                return response_parser(raw_response)
+                return active_response_parser(raw_response)
 
             # 已知仅支持 max_completion_tokens 的模型直接走对应分支；否则先按常规发送，
             # 命中「max_tokens 不被支持」的 400 错误时自动改用 max_completion_tokens 重试并记忆。
@@ -1754,7 +1794,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         """调用图片嵌入协议。
 
         显式配置 `image_embedding_input` / `image_embedding_body` 时走 OpenAI 兼容模板协议；
-        否则官方百炼/豆包地址自动切换对应原生多模态嵌入协议，其他地址要求模板配置。
+        否则官方百炼/豆包地址切换原生协议，硅基流动地址自动使用其兼容图片输入模板。
         """
 
         extra_params = dict(request.extra_params)
@@ -1763,6 +1803,14 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         native_protocol = resolve_native_image_embedding_protocol(self.api_provider.base_url)
         if native_protocol is not None:
             return await self._get_native_image_embedding(request, native_protocol)
+        compatible_input = resolve_compatible_image_embedding_input(self.api_provider.base_url)
+        if compatible_input is not None:
+            extra_params["image_embedding_input"] = compatible_input
+            response = await self._get_openai_compatible_image_embedding(request, extra_params)
+            response.request_protocol_hash = build_compatible_image_embedding_fingerprint(
+                compatible_input, request.extra_params
+            )
+            return response
         raise ValueError("图片嵌入必须配置 Provider 对应的 image_embedding_input 或 image_embedding_body")
 
     async def _get_openai_compatible_image_embedding(

@@ -12,6 +12,7 @@ import re
 import time
 import traceback
 
+from openai import APITimeoutError
 from rich.traceback import install
 
 from src.common.logger import get_logger
@@ -66,7 +67,7 @@ from src.llm_models.utils import compress_messages, llm_usage_recorder
 
 install(extra_lines=3)
 
-logger = get_logger("model_utils")
+logger = get_logger("llm_models")
 
 DATA_URI_LIMIT_PATTERN = re.compile(
     r"Exceeded limit on max bytes per data-uri item\s*:\s*(?P<limit>\d+)",
@@ -79,6 +80,8 @@ EMPTY_TASK_FALLBACKS = {
     "learner": "utils",
     "mid_memory": "planner",
 }
+EMBEDDING_TASK_NAMES = {"embedding", "image_embedding"}
+"""嵌入类任务：向量空间必须保持一致，因此忽略配置里的选择策略，始终按配置顺序取第一个可用模型"""
 
 
 class RequestType(Enum):
@@ -146,6 +149,8 @@ class LLMOrchestrator:
                 fallback_task_config = getattr(model_task_config, fallback_task_name, None)
                 if isinstance(fallback_task_config, TaskConfig):
                     return fallback_task_config
+            if self.task_name == "image_embedding":
+                raise ValueError("图片嵌入任务未配置模型，请在 image_embedding 中指定支持图片嵌入的模型")
         return task_config
 
     def _refresh_task_config(self) -> TaskConfig:
@@ -160,21 +165,6 @@ class LLMOrchestrator:
         if list(self.model_usage.keys()) != latest.model_list:
             self.model_usage = {model: self.model_usage.get(model, (0, 0, 0)) for model in latest.model_list}
         return self.model_for_task
-
-    def _check_slow_request(self, time_cost: float, model_name: str) -> None:
-        """检查请求是否过慢并输出警告日志。
-
-        Args:
-            time_cost: 请求耗时（秒）。
-            model_name: 使用的模型名称。
-        """
-        threshold = self.model_for_task.slow_threshold
-        if time_cost > threshold:
-            request_type_display = self.request_type or "未知任务"
-            logger.warning(
-                f"LLM请求耗时过长: {request_type_display} 使用模型 {model_name} 耗时 {time_cost:.1f}s（阈值: {threshold}s），请考虑使用更快的模型\n"
-                f"  如果你认为该警告出现得过于频繁，请调整model_config.toml中对应任务的slow_threshold至符合你实际情况的合理值"
-            )
 
     @staticmethod
     def _can_retry_with_compressed_images(
@@ -353,7 +343,6 @@ class LLMOrchestrator:
         response = execution_result.api_response
         model_info = execution_result.model_info
         time_cost = time.time() - start_time
-        self._check_slow_request(time_cost, model_info.name)
         if usage := response.usage:
             await asyncio.to_thread(
                 llm_usage_recorder.record_usage_to_database,
@@ -512,7 +501,6 @@ class LLMOrchestrator:
         time_cost = time.time() - start_time
         logger.debug(f"LLM请求总耗时: {time_cost}")
 
-        self._check_slow_request(time_cost, model_info.name)
         if usage := response.usage:
             await asyncio.to_thread(
                 llm_usage_recorder.record_usage_to_database,
@@ -901,7 +889,12 @@ class LLMOrchestrator:
 
         ensure_configured_clients_loaded()
 
-        strategy = self.model_for_task.selection_strategy.strip().lower()
+        if self.task_name in EMBEDDING_TASK_NAMES:
+            # 嵌入模型的向量空间必须保持一致，多模型间随机或均衡切换会污染向量库，
+            # 因此这里忽略配置的选择策略，强行按配置顺序优先选择。
+            strategy = "sequential"
+        else:
+            strategy = self.model_for_task.selection_strategy.strip().lower()
 
         if requested_model_name:
             selected_model_name = requested_model_name
@@ -1073,18 +1066,37 @@ class LLMOrchestrator:
 
                 retry_remain -= 1
                 task_display = self.request_type or "未知任务"
-                if retry_remain <= 0:
-                    logger.error(
-                        f"任务 '{task_display}' 的模型 '{model_info.name}' 在网络错误重试用尽后仍然失败。{original_error_info}"
+                if isinstance(e.__cause__, APITimeoutError):
+                    replay_command = getattr(e, "request_snapshot_replay_command", "")
+                    timeout_log = (
+                        f"任务 '{task_display}' 的模型 '{model_info.name}' 遇到错误: 网络连接超时\n"
+                        f"  底层异常: {type(e.__cause__).__name__} | {e.__cause__} | "
+                        f"最大超时时间：{api_provider.timeout}s | 重试次数: {max_attempts - retry_remain - 1} | "
+                        f"剩余重试次数: {retry_remain}"
                     )
-                    raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
+                    if replay_command:
+                        timeout_log += f"\n  调用完整信息: {replay_command}"
+                    timeout_log += (
+                        "\n  如此类型错误过多，请尝试调整模型配置中对应 API Provider 的 timeout 值"
+                        "\n  其他可能原因: 网络波动、DNS 故障、连接超时、防火墙限制或代理问题"
+                    )
+                    if retry_remain <= 0:
+                        logger.error(timeout_log)
+                        raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
+                    logger.warning(timeout_log)
+                else:
+                    if retry_remain <= 0:
+                        logger.error(
+                            f"任务 '{task_display}' 的模型 '{model_info.name}' 在网络错误重试用尽后仍然失败。{original_error_info}"
+                        )
+                        raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
-                logger.warning(
-                    f"任务 '{task_display}' 的模型 '{model_info.name}' 遇到网络错误(可重试): {str(e)}{original_error_info}\n"
-                    f"  常见原因: 如请求的API正常但APITimeoutError类型错误过多，请尝试调整模型配置中对应API Provider的timeout值\n"
-                    f"  其它可能原因: 网络波动、DNS 故障、连接超时、防火墙限制或代理问题\n"
-                    f"  剩余重试次数: {retry_remain}"
-                )
+                    logger.warning(
+                        f"任务 '{task_display}' 的模型 '{model_info.name}' 遇到网络错误(可重试): {str(e)}{original_error_info}\n"
+                        f"  常见原因: 如请求的API正常但APITimeoutError类型错误过多，请尝试调整模型配置中对应API Provider的timeout值\n"
+                        f"  其它可能原因: 网络波动、DNS 故障、连接超时、防火墙限制或代理问题\n"
+                        f"  剩余重试次数: {retry_remain}"
+                    )
                 self._schedule_llm_retry_event(
                     model_name=model_info.name,
                     attempt=max_attempts - retry_remain + 1,
@@ -1472,7 +1484,7 @@ class LLMOrchestrator:
         if e.__cause__:
             detail_lines.append(f"底层异常: {type(e.__cause__).__name__} | {e.__cause__}")
 
-        snapshot_info = format_request_snapshot_log_info(e)
+        snapshot_info = format_request_snapshot_log_info(e, include_snapshot_path=False)
         if detail_lines or snapshot_info:
             detail_text = "\n  " + "\n  ".join(detail_lines) if detail_lines else ""
             return f"{detail_text}{snapshot_info}"
@@ -1550,7 +1562,6 @@ class LLMRequest(LLMOrchestrator):
             tuple(task_config.model_list),
             task_config.max_tokens,
             task_config.temperature,
-            task_config.slow_threshold,
             task_config.selection_strategy,
             task_config.hard_timeout,
         )

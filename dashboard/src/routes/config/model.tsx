@@ -81,6 +81,8 @@ import { RestartOverlay } from '@/components/restart-overlay'
 import { RestartProvider, useRestart } from '@/lib/restart-context'
 import { ExtraParamsDialog } from '@/components/ui/extra-params-dialog'
 import { TaskConfigCard, ModelTable, ModelCardList } from './model/components'
+import { EmbeddingBuildProgress } from './model/components/EmbeddingBuildProgress'
+import { TaskRuntimeSummary } from './model/components/TaskRuntimeSummary'
 import { TASK_CONFIGS } from './model/constants'
 import { useModelTour, useModelFetcher, useModelConfig } from './model/hooks'
 import {
@@ -93,6 +95,7 @@ import {
   validateThinkingParams,
   type ThinkingFormatConfig,
 } from './model/thinkingFormats'
+import { resolveThinkingFormatForModel } from './providerTemplates'
 import {
   getDeepSeekReasoningEffort,
   isDeepSeekThinkingEnabled,
@@ -350,6 +353,14 @@ function ModelConfigPageContent() {
   const selectedTaskHideMaxTokens = Boolean(
     selectedTaskMetadata && 'hideMaxTokens' in selectedTaskMetadata && selectedTaskMetadata.hideMaxTokens
   )
+  const selectedTaskHideSelectionStrategy = Boolean(
+    selectedTaskMetadata &&
+      'hideSelectionStrategy' in selectedTaskMetadata &&
+      selectedTaskMetadata.hideSelectionStrategy
+  )
+  const selectedTaskSingleModel = Boolean(
+    selectedTaskMetadata && 'singleModel' in selectedTaskMetadata && selectedTaskMetadata.singleModel
+  )
 
   if (selectedTaskField && selectedTaskField.name !== selectedTaskName) {
     setSelectedTaskName(selectedTaskField.name)
@@ -489,12 +500,14 @@ function ModelConfigPageContent() {
   // 思考开关格式由命中的服务商模板元数据决定，未命中则不显示思考开关
   // DeepSeek 有专用段（含 Responses 客户端的 reasoning.effort 与联网搜索），不走通用开关
   const thinkingFormatActive: ThinkingFormatConfig | null =
-    matchedTemplate?.id !== 'deepseek' ? (matchedTemplate?.thinking ?? null) : null
+    matchedTemplate?.id !== 'deepseek'
+      ? resolveThinkingFormatForModel(matchedTemplate, editingModel?.model_identifier ?? '')
+      : null
   const modelExtraParams = editingModel?.extra_params || {}
   const thinkingEnabled = thinkingFormatActive
     ? isThinkingEnabled(modelExtraParams, thinkingFormatActive)
     : false
-  // 思考力度仅在配置了力度参数时显示；思考关闭且格式不支持关闭时置灰
+  // 思考力度仅在配置了力度参数时显示；思考关闭时置灰
   const thinkingEffortOptions: string[] =
     thinkingFormatActive?.kind === 'reasoning_effort'
       ? (thinkingFormatActive.efforts ?? [])
@@ -503,8 +516,9 @@ function ModelConfigPageContent() {
         : []
   const thinkingEffort = thinkingFormatActive ? getThinkingEffort(modelExtraParams, thinkingFormatActive) : ''
   const thinkingCanDisable =
-    thinkingFormatActive !== null &&
-    (thinkingFormatActive.kind !== 'thinking_type' || thinkingFormatActive.canDisable === true)
+    thinkingFormatActive?.kind === 'enable_thinking' ||
+    (thinkingFormatActive?.kind === 'thinking_type' && thinkingFormatActive.canDisable === true)
+  const thinkingSwitchInteractive = thinkingFormatActive !== null && (thinkingCanDisable || !thinkingEnabled)
   const thinkingBudget = thinkingFormatActive ? getThinkingBudget(modelExtraParams, thinkingFormatActive) : null
   const thinkingExtraParamsError = thinkingFormatActive
     ? validateThinkingParams(modelExtraParams, thinkingFormatActive)
@@ -964,12 +978,6 @@ function ModelConfigPageContent() {
           value="tasks"
           className="mt-0 flex min-h-0 flex-1 flex-col gap-3 overflow-visible lg:overflow-hidden"
         >
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              为不同的任务配置使用的模型和参数
-            </p>
-          </div>
-
           {taskConfig && taskConfigSchema && selectedTaskField && (
             <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-4 lg:overflow-hidden">
               <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border lg:h-full">
@@ -1073,12 +1081,26 @@ function ModelConfigPageContent() {
                       onChange={(field, value) => updateTaskConfig(selectedTaskField.name, field, value)}
                       hideTemperature={selectedTaskHideTemperature}
                       hideMaxTokens={selectedTaskHideMaxTokens}
+                      hideSelectionStrategy={selectedTaskHideSelectionStrategy}
                       advanced={selectedTaskField.advanced}
                       showAdvancedSettings={advancedTaskSettingsVisible}
-                      singleModel={selectedTaskField.name === 'embedding'}
+                      singleModel={selectedTaskSingleModel}
                       showRoutingPrompt={selectedTaskField.name === 'replyer'}
                       dataTour="task-model-select"
                     />
+                    {selectedTaskField.name === 'embedding' && (
+                      <EmbeddingBuildProgress
+                        selectedEmbeddingModel={taskConfig.embedding?.model_list[0] ?? ''}
+                      />
+                    )}
+                    {(selectedTaskField.name === 'planner' ||
+                      selectedTaskField.name === 'replyer') && (
+                      <TaskRuntimeSummary
+                        taskName={selectedTaskField.name}
+                        modelList={taskConfig[selectedTaskField.name]?.model_list ?? []}
+                        models={models}
+                      />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               </section>
@@ -1204,7 +1226,7 @@ function ModelConfigPageContent() {
           if (!open) setSelectedModelTestResult(null)
         }}
       >
-        <DialogContent className="max-w-[95vw] gap-3 p-4 sm:max-w-3xl sm:gap-4 sm:p-6">
+        <DialogContent className="max-w-[95vw] gap-3 p-4 sm:gap-4 sm:p-6 sm:[--dialog-width:38rem]">
           <DialogHeader>
             <DialogTitle>模型测试详情</DialogTitle>
             <DialogDescription>
@@ -1269,6 +1291,15 @@ function ModelConfigPageContent() {
                         </div>
                       )}
 
+                      {selectedModelTestResult.reasoning && (
+                        <div>
+                          <h4 className="mb-2 text-sm font-semibold">推理内容</h4>
+                          <pre className="bg-muted max-h-56 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+                            {selectedModelTestResult.reasoning}
+                          </pre>
+                        </div>
+                      )}
+
                       {isEmbeddingTest && (selectedModelTestResult.embedding_pairs?.length ?? 0) > 0 && (
                         <div>
                           <h4 className="mb-2 text-sm font-semibold">
@@ -1303,15 +1334,6 @@ function ModelConfigPageContent() {
                           {selectedModelTestResult.response || '（无文本返回）'}
                         </pre>
                       </div>
-
-                      {selectedModelTestResult.reasoning && (
-                        <div>
-                          <h4 className="mb-2 text-sm font-semibold">推理内容</h4>
-                          <pre className="bg-muted max-h-56 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
-                            {selectedModelTestResult.reasoning}
-                          </pre>
-                        </div>
-                      )}
                     </>
                   )
                 })()}
@@ -1697,11 +1719,16 @@ function ModelConfigPageContent() {
                   value={editingModel?.price_in ?? ''}
                   onChange={(e) => {
                     const val = e.target.value === '' ? null : parseFloat(e.target.value)
-                    setEditingModel((prev) =>
-                      prev
-                        ? { ...prev, price_in: val }
-                        : null
-                    )
+                    setEditingModel((prev) => {
+                      if (!prev) return null
+                      // 缓存价格未被手动改过时（当前值仍等于修改前的输入价）跟随输入价格
+                      const cacheFollowsInput = (prev.cache_price_in ?? 0) === (prev.price_in ?? 0)
+                      return {
+                        ...prev,
+                        price_in: val,
+                        cache_price_in: cacheFollowsInput ? val : prev.cache_price_in,
+                      }
+                    })
                   }}
                   placeholder="默认: 0"
                 />
@@ -1743,7 +1770,7 @@ function ModelConfigPageContent() {
                         : null
                     )
                   }}
-                  placeholder="留空与非缓存一致"
+                  placeholder="留空=与输入价一致"
                 />
               </div>
             </fieldset>
@@ -1935,12 +1962,12 @@ function ModelConfigPageContent() {
 
             {!deepSeekClientType && thinkingFormatActive && (
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                {/* 思考开关：不支持关闭思考的格式（如 reasoning_effort 家族）恒为开启并置灰 */}
+                {/* 不支持关闭时将已开启的开关置灰；旧配置若为关闭状态，仍允许切回开启。 */}
                 <div className="flex items-center justify-between gap-4 rounded-md border bg-background/50 p-3">
                   <div className="space-y-1">
                     <Label
                       htmlFor="model_thinking"
-                      className={thinkingCanDisable ? 'cursor-pointer' : 'cursor-not-allowed'}
+                      className={thinkingSwitchInteractive ? 'cursor-pointer' : 'cursor-not-allowed'}
                     >
                       启用思考
                     </Label>
@@ -1958,7 +1985,7 @@ function ModelConfigPageContent() {
                   <Switch
                     id="model_thinking"
                     checked={thinkingEnabled}
-                    disabled={!thinkingCanDisable}
+                    disabled={!thinkingSwitchInteractive}
                     onCheckedChange={(checked) => updateModelExtraParams((params) =>
                       setThinkingEnabled(params, thinkingFormatActive, checked)
                     )}
@@ -1971,7 +1998,7 @@ function ModelConfigPageContent() {
                     <Label htmlFor="model_thinking_effort">思考力度</Label>
                     <Select
                       value={thinkingEffort}
-                      disabled={thinkingCanDisable && !thinkingEnabled}
+                      disabled={!thinkingEnabled}
                       onValueChange={(value) => updateModelExtraParams((params) =>
                         setThinkingEffort(params, thinkingFormatActive, value)
                       )}
@@ -2341,20 +2368,12 @@ function ModelConfigPageContent() {
       <AlertDialog open={embeddingWarning.isOpen} onOpenChange={embeddingWarning.setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              更换嵌入模型警告
-            </AlertDialogTitle>
+            <AlertDialogTitle className="sr-only">更换嵌入模型警告</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-sm">
                 <p>
-                  <strong className="text-foreground">注意：</strong>更换嵌入模型可能会影响知识库的匹配精度！
+                  <strong className="text-foreground">注意：</strong>更换嵌入模型后，表达库会在后台自动补建；记忆向量若提示需要重建，请在长期记忆页处理。
                 </p>
-                <ul className="space-y-2 ml-4 list-disc text-muted-foreground">
-                  <li>不同的嵌入模型会产生不同的向量表示</li>
-                  <li>这可能导致现有知识库的检索结果不准确</li>
-                  <li>建议更换嵌入模型后重新生成所有知识库的向量</li>
-                </ul>
                 <p className="text-foreground font-medium">
                   确定要更换嵌入模型吗？
                 </p>
