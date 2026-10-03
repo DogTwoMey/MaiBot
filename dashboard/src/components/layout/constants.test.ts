@@ -33,7 +33,7 @@ describe('menuSections 菜单结构', () => {
     }
   })
 
-  it('菜单标签使用侧栏命名空间，聊天入口沿用工作区标签', () => {
+  it('菜单项使用侧栏文案，聊天入口复用工作区文案', () => {
     for (const item of allItems) {
       if (item.path === '/chat') {
         expect(item.label).toBe('workspace.chat')

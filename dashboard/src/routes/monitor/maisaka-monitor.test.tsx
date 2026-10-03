@@ -1167,6 +1167,7 @@ describe('时间线事件卡片', () => {
 
     // 工具执行结果卡片
     expect(screen.getByText('send_message、web_search')).toBeInTheDocument()
+    expect(screen.getByText('2 个')).toBeInTheDocument()
     expect(screen.getByText('send_message')).toBeInTheDocument()
     expect(screen.getByText('web_search')).toBeInTheDocument()
     expect(screen.queryByText('执行成功')).not.toBeInTheDocument()
@@ -1301,8 +1302,9 @@ describe('时间线事件卡片', () => {
     // 两张卡都提示回合结束（finish 工具名大小写不敏感）
     expect(screen.getAllByText('本轮思考暂时结束')).toHaveLength(2)
     expect(screen.getAllByText('等待新的消息。')).toHaveLength(2)
-    // 混合工具的标题只统计非 finish 工具
+    // 混合工具卡片以非 finish 工具名为标题；单工具不重复显示数量。
     expect(screen.getByText('web_search')).toBeInTheDocument()
+    expect(screen.queryByText('1 个')).not.toBeInTheDocument()
     expect(screen.getByText('找到了结果')).toBeInTheDocument()
   })
 

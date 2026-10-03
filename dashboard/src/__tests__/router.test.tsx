@@ -1,4 +1,4 @@
-import { Outlet, isRedirect } from '@tanstack/react-router'
+import { isRedirect, Outlet } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -286,7 +286,7 @@ describe('router 路由表', () => {
     }
   })
 
-  it('根组件使用路由 Outlet', () => {
+  it('根组件直接使用 Outlet，兼容 React memo 组件', () => {
     expect(router.routeTree.options.component).toBe(Outlet)
   })
 

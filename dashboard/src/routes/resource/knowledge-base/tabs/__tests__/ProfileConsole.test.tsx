@@ -774,7 +774,7 @@ describe('ProfileConsole 别名维护', () => {
     const aliasInput = await screen.findByLabelText('当前有效别名')
     expect((aliasInput as HTMLTextAreaElement).value).not.toContain('产品经理')
 
-    fireEvent.click(screen.getByRole('button', { name: '加入 产品经理' }))
+    fireEvent.click(await screen.findByRole('button', { name: '加入 产品经理' }))
 
     expect(aliasInput).toHaveValue('张三\n阿三\n产品经理')
     expect(screen.getByRole('button', { name: '已加入 产品经理' })).toBeDisabled()
@@ -784,6 +784,7 @@ describe('ProfileConsole 别名维护', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderManager()
 
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {
@@ -984,6 +985,7 @@ describe('ProfileConsole 查询补充', () => {
 
   it('检修侧的证据数量决定证据列表条数，非法值回落默认 12', async () => {
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: '刷新证据' })).toBeEnabled())
     const evidenceLimit = screen.getByLabelText('证据数量')
     fireEvent.change(evidenceLimit, { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: '刷新证据' }))
@@ -1324,6 +1326,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
   it('恢复可信自动别名：取消 confirm 不调用接口', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
     expect(confirmSpy).toHaveBeenCalledWith('确认恢复 p1 的可信自动别名？')
     expect(memoryApi.deleteMemoryProfileAliases).not.toHaveBeenCalled()
@@ -1336,6 +1339,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
       error: '不能恢复',
     })
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {
@@ -1353,6 +1357,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(memoryApi.deleteMemoryProfileAliases).mockRejectedValue(new Error('别名删除被拒绝'))
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {
