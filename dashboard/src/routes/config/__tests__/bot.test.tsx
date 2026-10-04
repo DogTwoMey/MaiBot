@@ -25,6 +25,7 @@ afterEach(() => {
 
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }))
 vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => async () => undefined,
   Link: ({ children }: { children?: ReactNode }) => (
     <span data-testid="router-link">{children}</span>
   ),
@@ -227,7 +228,7 @@ function createDeferred<T>() {
 
 /** 页面挂载时应注册的字段 hook 路径与类型（replace 为缺省） */
 const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = [
-  ['bot.platform', 'replace'],
+  ['bot.platform', 'hidden'],
   ['bot.alias_names', 'replace'],
   ['bot.qq_account', 'hidden'],
   ['bot.platforms', 'hidden'],
@@ -587,7 +588,7 @@ describe('BotConfigPage 特征化', () => {
       expect(await screen.findByTestId('form-bot-sections')).toHaveTextContent('bot,sub_feature')
 
       // 点击「更多」后 advanced tab 出现
-      await user.click(screen.getByRole('button', { name: '更多' }))
+      await user.click(screen.getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       expect(within(tabList).getByRole('tab', { name: '实验性' })).toBeInTheDocument()
     })
 
@@ -633,7 +634,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       await enterDetailMode(user)
 
-      await user.click(screen.getByRole('button', { name: '更多' }))
+      await user.click(screen.getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       await user.click(screen.getByRole('tab', { name: '实验性' }))
 
       // 实验性功能提示对话框
@@ -1053,11 +1054,11 @@ describe('BotConfigPage 特征化', () => {
       await enterDetailMode(user)
 
       const tabList = document.querySelector('[data-config-bot-tab-list="true"]') as HTMLElement
-      await user.click(within(tabList).getByRole('button', { name: '更多' }))
+      await user.click(within(tabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       await user.click(within(tabList).getByRole('tab', { name: '实验性' }))
       expect(await screen.findByTestId('form-experimental')).toBeInTheDocument()
 
-      await user.click(within(tabList).getByRole('button', { name: '收起' }))
+      await user.click(within(tabList).getByRole('button', { name: '收起设置栏目' }))
       expect(within(tabList).queryByRole('tab', { name: '实验性' })).not.toBeInTheDocument()
       expect(await screen.findByTestId('form-personality')).toBeInTheDocument()
     })
@@ -1072,9 +1073,9 @@ describe('BotConfigPage 特征化', () => {
       await user.click(within(tabList).getByRole('tab', { name: '机器人' }))
       expect(await screen.findByTestId('form-bot')).toBeInTheDocument()
 
-      await user.click(within(tabList).getByRole('button', { name: '更多' }))
+      await user.click(within(tabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       expect(within(tabList).getByRole('tab', { name: '实验性' })).toBeInTheDocument()
-      await user.click(within(tabList).getByRole('button', { name: '收起' }))
+      await user.click(within(tabList).getByRole('button', { name: '收起设置栏目' }))
 
       expect(within(tabList).queryByRole('tab', { name: '实验性' })).not.toBeInTheDocument()
       expect(screen.getByTestId('form-bot')).toBeInTheDocument()
@@ -1099,7 +1100,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       await enterDetailMode(user)
 
-      expect(screen.queryByRole('button', { name: '更多' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ })).not.toBeInTheDocument()
     })
 
     it('第一个 tab 就是实验性时进入详细设置即弹出提示', async () => {
@@ -1133,7 +1134,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       await enterDetailMode(user)
 
-      await user.click(screen.getByRole('button', { name: '更多' }))
+      await user.click(screen.getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       await user.click(screen.getByRole('tab', { name: '实验性' }))
 
       expect(screen.queryByText('实验性功能')).not.toBeInTheDocument()
@@ -1146,7 +1147,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       await enterDetailMode(user)
 
-      await user.click(screen.getByRole('button', { name: '更多' }))
+      await user.click(screen.getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       await user.click(screen.getByRole('tab', { name: '实验性' }))
       expect(await screen.findByText('实验性功能')).toBeInTheDocument()
 
@@ -1184,7 +1185,7 @@ describe('BotConfigPage 特征化', () => {
         return node
       })
       expect(within(tabList).queryByRole('tab', { name: '实验性' })).not.toBeInTheDocument()
-      await user.click(within(tabList).getByRole('button', { name: '更多' }))
+      await user.click(within(tabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       expect(within(tabList).getByRole('tab', { name: '实验性' })).toBeInTheDocument()
     })
 
@@ -1213,7 +1214,7 @@ describe('BotConfigPage 特征化', () => {
       const defaultSubtabNames = within(subtabList)
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-      expect(defaultSubtabNames).toEqual(['总览', '时机子页', '回复风格'])
+      expect(defaultSubtabNames).toEqual(['总览', '时机子页'])
 
       await user.click(within(subtabList).getByRole('tab', { name: '时机子页' }))
       expect(
@@ -1221,7 +1222,7 @@ describe('BotConfigPage 特征化', () => {
       ).toBeInTheDocument()
       expect(screen.getByText('麦麦聊天')).toBeInTheDocument()
 
-      await user.click(within(subtabList).getByRole('button', { name: '更多' }))
+      await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
       expect(within(subtabList).getByRole('tab', { name: '高级文档' })).toBeInTheDocument()
       expect(within(subtabList).getByRole('tab', { name: '内部组' })).toBeInTheDocument()
 
@@ -1230,7 +1231,7 @@ describe('BotConfigPage 特征化', () => {
         'chat_inner,chat_leaf'
       )
 
-      await user.click(within(subtabList).getByRole('button', { name: '收起' }))
+      await user.click(within(subtabList).getByRole('button', { name: '收起设置栏目' }))
       expect(within(subtabList).queryByRole('tab', { name: '内部组' })).not.toBeInTheDocument()
       expect(await screen.findByTestId('form-ChatSectionRoot')).toBeInTheDocument()
     })
@@ -1616,7 +1617,7 @@ describe('BotConfigPage 补充覆盖', () => {
     await user.click(screen.getByText('change-deep-root-ReplyTiming'))
     expect(screen.getByTestId('form-ReplyTiming-values')).toHaveTextContent('deep-新值')
 
-    await user.click(within(subtabList).getByRole('button', { name: '更多' }))
+    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
     await user.click(within(subtabList).getByRole('tab', { name: '内部组' }))
     const groupForm = await screen.findByTestId('form-chat_inner.chat_leaf-values')
     const beforeEmpty = groupForm.textContent
@@ -1688,7 +1689,7 @@ describe('BotConfigPage 补充覆盖', () => {
     expect(within(subtabList).getByRole('tab', { name: 'mystery' })).toBeInTheDocument()
     expect(within(subtabList).queryByRole('tab', { name: '备注' })).not.toBeInTheDocument()
 
-    await user.click(within(subtabList).getByRole('button', { name: '更多' }))
+    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
     await user.click(within(subtabList).getByRole('tab', { name: 'chat_inner' }))
     expect(await screen.findByTestId('form-chat_inner.chat_leaf-sections')).toHaveTextContent(
       'chat_inner,chat_leaf'
@@ -1738,11 +1739,11 @@ describe('BotConfigPage 补充覆盖', () => {
       return node
     })
     expect(within(subtabList).queryByRole('tab', { name: '机密页' })).not.toBeInTheDocument()
-    await user.click(within(subtabList).getByRole('button', { name: '更多' }))
+    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
     expect(within(subtabList).getByRole('tab', { name: '机密页' })).toBeInTheDocument()
     expect(await screen.findByTestId('form-Secret')).toBeInTheDocument()
 
-    await user.click(within(subtabList).getByRole('button', { name: '收起' }))
+    await user.click(within(subtabList).getByRole('button', { name: '收起设置栏目' }))
     expect(within(subtabList).queryByRole('tab', { name: '机密页' })).not.toBeInTheDocument()
   })
 
@@ -1772,11 +1773,11 @@ describe('BotConfigPage 补充覆盖', () => {
       if (!node) throw new Error('missing tab list')
       return node
     })
-    await user.click(within(tabList).getByRole('button', { name: '更多' }))
+    await user.click(within(tabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
     await user.click(within(tabList).getByRole('tab', { name: '实验性' }))
     expect(await screen.findByTestId('form-experimental')).toBeInTheDocument()
 
-    await user.click(within(tabList).getByRole('button', { name: '收起' }))
+    await user.click(within(tabList).getByRole('button', { name: '收起设置栏目' }))
     expect(within(tabList).queryByRole('tab', { name: '实验性' })).not.toBeInTheDocument()
   })
 })

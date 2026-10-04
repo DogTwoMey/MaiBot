@@ -108,7 +108,11 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: ReactNode }) => children,
 }))
 vi.mock('@/components/use-theme', () => ({
-  useTheme: () => ({ setTheme: vi.fn(), theme: layoutMocks.theme }),
+  useTheme: () => ({ setTheme: vi.fn(), theme: layoutMocks.theme, themeConfig: { dashboardStyle: 'default' } }),
+}))
+vi.mock('@/lib/plugin-webui', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/plugin-webui')>(),
+  usePluginWebUI: () => ({ extensions: [], loading: false, error: null, preferences: { hidden: [], order: [] } }),
 }))
 vi.mock('@/hooks/use-auth', () => ({
   useAuthGuard: () => ({ checking: layoutMocks.checking }),
@@ -281,7 +285,7 @@ describe('Layout 工作区切换', () => {
     routerMocks.status = 'idle'
     view.rerender(
       <Layout>
-        <div>聊天内容</div>
+        <div>日志内容</div>
       </Layout>
     )
     act(() => {
@@ -290,7 +294,7 @@ describe('Layout 工作区切换', () => {
 
     expect(workspaceContent).not.toHaveClass('invisible')
     expect(screen.queryByText('首页内容')).not.toBeInTheDocument()
-    expect(screen.getByText('聊天内容')).toBeInTheDocument()
+    expect(screen.getByText('日志内容')).toBeInTheDocument()
   })
 
   it('侧栏宽度使用 CSS 过渡且不启用会拉伸内容的 FLIP 尺寸缩放', () => {
@@ -613,7 +617,7 @@ describe('Layout 壳层、快捷键与公告入口', () => {
   })
 
   it.each([
-    ['/chat', 'settings', true],
+    ['/chat', 'settings', false],
     ['/logs', 'logs', false],
     ['/statistics', 'logs', false],
     ['/reasoning-process/detail', 'logs', false],
@@ -654,7 +658,7 @@ describe('Layout 壳层、快捷键与公告入口', () => {
     expect(getMain()).toHaveClass('bg-transparent')
   })
 
-  it('聊天页沿用设置工作区底色与滚动，system 主题跟随 matchMedia', () => {
+  it('聊天页面保留设置工作区布局，system 主题跟随 matchMedia', () => {
     routerMocks.pathname = '/chat'
     layoutMocks.theme = 'system'
     vi.spyOn(window, 'matchMedia').mockImplementation(
