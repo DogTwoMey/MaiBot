@@ -331,7 +331,7 @@ describe('PluginConfigPage 特征化', () => {
   })
 
   it('插件卡片不显示重复的配置按钮，更新按钮保留原色并标记统一边框', async () => {
-    const { container } = render(<PluginConfigPage />)
+    const { container } = renderPage()
 
     await screen.findByText('Emoji Plugin')
     expect(screen.queryByRole('button', { name: '配置' })).not.toBeInTheDocument()
@@ -609,7 +609,7 @@ describe('PluginConfigPage 空列表', () => {
     const user = userEvent.setup()
     renderPage()
     await screen.findByText('Emoji Plugin')
-    await user.type(screen.getByPlaceholderText('搜索插件...'), 'zzz-not-found')
+    await user.type(screen.getByPlaceholderText('搜索插件或 MCP 服务...'), 'zzz-not-found')
     expect(await screen.findByText('没有找到匹配的插件')).toBeInTheDocument()
     expect(screen.getByText('尝试其他搜索关键词')).toBeInTheDocument()
   })

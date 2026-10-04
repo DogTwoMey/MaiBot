@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List
 
 from .official_configs import ChatConfig
 
@@ -427,6 +427,23 @@ def _migrate_removed_expression_selection_mode(data: dict[str, Any]) -> list[str
     return ["expression.expression_selection_mode"]
 
 
+def _reset_expression_defaults(data: Dict[str, Any]) -> List[str]:
+    """8.14.58: 迁移表达开关，保留已有精选限制和表达选择策略。"""
+
+    reasons: List[str] = []
+    expression = _as_dict(data.get("expression"))
+    vector_enabled = expression.get("expression_selection_mode", "vector_intent") != "legacy" if expression else True
+    if set_nested_config_value(data, ("expression", "expression_checked_only"), False, force=False):
+        reasons.append("expression.expression_checked_only")
+    if set_nested_config_value(data, ("expression", "use_vector_expression"), vector_enabled, force=False):
+        reasons.append("expression.use_vector_expression")
+    expression = data["expression"]
+    if "expression_selection_mode" in expression:
+        del expression["expression_selection_mode"]
+        reasons.append("expression.expression_selection_mode")
+    return reasons
+
+
 def _migrate_removed_reply_necessity_trigger_mode(data: dict[str, Any]) -> list[str]:
     """8.14.54: 将已移除的 reply_necessity 回复触发模式迁移为 dynamic。"""
 
@@ -489,6 +506,11 @@ BOT_CONFIG_UPGRADE_HOOKS: tuple[ConfigUpgradeHook, ...] = (
         target_version="8.14.54",
         config_names=("bot_config.toml",),
         migrate=_migrate_removed_reply_necessity_trigger_mode,
+    ),
+    ConfigUpgradeHook(
+        target_version="8.14.58",
+        config_names=("bot_config.toml",),
+        migrate=_reset_expression_defaults,
     ),
 )
 MODEL_CONFIG_UPGRADE_HOOKS: tuple[ConfigUpgradeHook, ...] = ()
