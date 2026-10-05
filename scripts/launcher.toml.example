@@ -4,6 +4,7 @@
 [paths]
 # All paths are relative to the repo root (parent of this scripts/ dir).
 napcat   = "runtime/napcat"
+snowluma = "runtime/snowluma"
 bot_root = "."
 
 [napcat]
@@ -26,6 +27,12 @@ ready_port    = 0
 ready_timeout = 0
 # Extra window title shown in the spawned cmd window.
 title         = "NapCatQQ"
+
+[snowluma]
+elevate       = false
+ready_port    = 5099
+ready_timeout = 20
+title         = "SnowLuma"
 
 [bot]
 argv          = ["uv", "run", "--no-sync", "python", "bot.py"]

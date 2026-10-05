@@ -60,6 +60,29 @@ def test_all_targets_only_include_external_processes() -> None:
     assert launcher.parse_targets(["all"]) == ["napcat", "bot"]
 
 
+def test_snowluma_startup_order_and_explicit_rollback_target(monkeypatch, tmp_path) -> None:
+    cfg = {"startup": {"order": ["snowluma", "bot"]}, "paths": {"snowluma": str(tmp_path)}}
+    assert launcher.parse_targets(["all"], cfg) == ["snowluma", "bot"]
+    assert launcher.parse_targets(["napcat"], cfg) == ["napcat"]
+    (tmp_path / "node.exe").touch()
+    (tmp_path / "index.mjs").touch()
+    calls = []
+    monkeypatch.setattr(launcher, "spawn", lambda *args: calls.append(args) or 1234)
+    assert launcher.start_snowluma(cfg, hidden=True) == 1234
+    assert calls[0][1:4] == ("snowluma", [str(tmp_path / "node.exe"), str(tmp_path / "index.mjs")], tmp_path)
+    monkeypatch.setattr(launcher, "read_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "clear_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "write_pid", lambda *args: None)
+    monkeypatch.setitem(launcher.STARTERS, "napcat", lambda *args: calls.append("napcat") or 1234)
+    assert launcher.cmd_start(cfg, ["napcat"], set()) == 0
+    assert calls[-1] == "napcat"
+    monkeypatch.setattr(launcher, "read_pid", lambda cfg, name: 1234 if name == "bot" else 5678)
+    monkeypatch.setattr(launcher, "is_alive", lambda pid: True)
+    monkeypatch.setattr(launcher, "kill_tree", lambda pid: calls.append(pid))
+    assert launcher.cmd_stop(cfg, ["bot"]) == 0
+    assert calls[-1] == 1234 and 5678 not in calls
+
+
 def test_spawn_enables_utf8_for_child_process(monkeypatch) -> None:
     captured_kwargs: dict[str, object] = {}
 

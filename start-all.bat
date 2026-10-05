@@ -9,7 +9,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 :: ============================================================
 :: start-all.bat - 启动本地服务 + MaiBot 全套组件
-:: 双击即可运行，按顺序执行：构建前端 → 本地服务 → NapCat → Bot
+:: 双击即可运行，按顺序执行：构建前端 → 本地服务 → 配置中的 QQ 客户端 → Bot
 :: ============================================================
 
 set "REPO_ROOT=%~dp0"
@@ -54,7 +54,7 @@ echo -----------------------------------------------
 call "%REPO_ROOT%start-services.bat"
 echo.
 
-:: Step 3: 启动 MaiBot 组件 (NapCat + Bot；Adapter 由 Bot 插件运行时加载)
+:: Step 3: 启动 MaiBot 组件 (QQ 客户端 + Bot；Adapter 由 Bot 插件运行时加载)
 echo [STEP 3 OF 3] 启动 MaiBot 组件...
 echo -----------------------------------------------
 

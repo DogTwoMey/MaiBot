@@ -1,14 +1,15 @@
-"""Unified launcher for MaiBot + NapCatQQ.
+"""Unified launcher for MaiBot and its QQ client.
 
-The NapCat adapter is loaded by MaiBot's plugin runtime and is not a separate process.
-Default behavior: open two separate cmd windows (bot / napcat),
-each showing its own live log. Flags control which components are hidden
+QQ adapters are loaded by MaiBot's plugin runtime and are not separate processes.
+The configured components each open a window showing their live log.
+Flags control which components are hidden
 (run in background with output redirected to log files).
 
 Commands:
-    python scripts/launcher.py start              # start all (two visible windows)
+    python scripts/launcher.py start              # start configured components
     python scripts/launcher.py start --hide napcat
     python scripts/launcher.py start bot          # start only bot
+    python scripts/launcher.py start snowluma     # start SnowLuma
     python scripts/launcher.py stop               # stop all
     python scripts/launcher.py restart [target]
     python scripts/launcher.py logs <name> [--tail N]
@@ -406,8 +407,20 @@ def start_bot(cfg: dict[str, Any], hidden: bool) -> int:
     return spawn(cfg, "bot", argv, cwd, hidden)
 
 
+def start_snowluma(cfg: dict[str, Any], hidden: bool) -> int:
+    cwd = resolve(cfg, "snowluma")
+    node = cwd / "node.exe"
+    entrypoint = cwd / "index.mjs"
+    if not node.is_file() or not entrypoint.is_file():
+        raise SystemExit(f"[launcher] SnowLuma Windows distribution not found: {cwd}")
+    if cfg.get("snowluma", {}).get("elevate", False) and not is_admin():
+        return spawn_elevated_windows(str(node), subprocess.list2cmdline([str(entrypoint)]), str(cwd), hidden)
+    return spawn(cfg, "snowluma", [str(node), str(entrypoint)], cwd, hidden)
+
+
 STARTERS = {
     "napcat": start_napcat,
+    "snowluma": start_snowluma,
     "bot": start_bot,
 }
 
@@ -417,7 +430,7 @@ STARTERS = {
 
 def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> int:
     order = cfg.get("startup", {}).get("order", ["napcat", "bot"])
-    to_start = [t for t in order if t in targets]
+    to_start = [t for t in dict.fromkeys([*order, *targets]) if t in targets]
     rc = 0
     for name in to_start:
         existing = read_pid(cfg, name)
@@ -452,7 +465,7 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
 def cmd_stop(cfg: dict[str, Any], targets: list[str]) -> int:
     # Reverse of startup order.
     order = cfg.get("startup", {}).get("order", ["napcat", "bot"])
-    for name in reversed(order):
+    for name in reversed(list(dict.fromkeys([*order, *targets]))):
         if name not in targets:
             continue
         pid = read_pid(cfg, name)
@@ -485,9 +498,9 @@ def cmd_logs(cfg: dict[str, Any], name: str, tail: int) -> int:
 # ---------------------------------------------------------------------------
 # CLI
 
-def parse_targets(raw: list[str]) -> list[str]:
+def parse_targets(raw: list[str], cfg: dict[str, Any] | None = None) -> list[str]:
     if not raw or raw == ["all"]:
-        return ["napcat", "bot"]
+        raw = list((cfg or {}).get("startup", {}).get("order", ["napcat", "bot"]))
     unknown = [t for t in raw if t not in STARTERS]
     if unknown:
         raise SystemExit(f"[launcher] unknown target(s): {unknown}. Valid: {list(STARTERS)}")
@@ -500,7 +513,7 @@ def main() -> int:
 
     sp = sub.add_parser("start", help="Start components")
     sp.add_argument("targets", nargs="*", default=["all"],
-                    help="Any of: all, napcat, bot (default: all)")
+                    help="Any of: all, napcat, snowluma, bot (default: configured startup order)")
     sp.add_argument("--hide", action="append", default=[], choices=list(STARTERS),
                     help="Run the named component hidden (no window). Repeatable.")
 
@@ -519,11 +532,11 @@ def main() -> int:
     cfg = load_config()
 
     if args.command == "start":
-        return cmd_start(cfg, parse_targets(args.targets), set(args.hide))
+        return cmd_start(cfg, parse_targets(args.targets, cfg), set(args.hide))
     if args.command == "stop":
-        return cmd_stop(cfg, parse_targets(args.targets))
+        return cmd_stop(cfg, parse_targets(args.targets, cfg))
     if args.command == "restart":
-        targets = parse_targets(args.targets)
+        targets = parse_targets(args.targets, cfg)
         cmd_stop(cfg, targets)
         time.sleep(1.5)
         return cmd_start(cfg, targets, set(args.hide))

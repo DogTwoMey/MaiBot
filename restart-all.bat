@@ -8,7 +8,7 @@ if not defined MAIBOT_UTF8_CMD_READY (
 setlocal EnableExtensions EnableDelayedExpansion
 
 :: ============================================================
-:: restart-all.bat - 构建前端并重启 MaiBot 全套组件 + 本地服务
+:: restart-all.bat - 构建前端并重启 MaiBot + 本地服务
 :: ============================================================
 
 set "REPO_ROOT=%~dp0"
@@ -33,11 +33,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Step 1: 停止所有
+:: Step 1: 停止机器人
 echo [STEP 1 OF 4] 停止 MaiBot 组件...
 echo -----------------------------------------------
 
-"%REPO_ROOT%.venv\Scripts\python.exe" "%REPO_ROOT%scripts\launcher.py" stop
+"%REPO_ROOT%.venv\Scripts\python.exe" "%REPO_ROOT%scripts\launcher.py" stop bot
+if errorlevel 1 (
+    echo [ERROR] MaiBot 停止失败，已取消重启。
+    pause
+    exit /b 1
+)
 echo.
 
 :: Step 2: 构建 Dashboard
