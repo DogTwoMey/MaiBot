@@ -871,8 +871,11 @@ describe('ProfileConsole 空列表与检索失败', () => {
       expect(memoryApi.getMemoryProfiles).toHaveBeenCalledTimes(2)
     })
     // 回到画像库：重新列出快照，空态文案消失
-    expect(await screen.findByText('张三')).toBeInTheDocument()
-    expect(screen.queryByText('没有匹配的人物画像')).not.toBeInTheDocument()
+    const profileList = screen.getByLabelText('人物画像列表')
+    expect(await within(profileList).findByText('张三')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(within(profileList).queryByText('没有匹配的人物画像')).not.toBeInTheDocument()
+    })
   })
 })
 
@@ -1293,6 +1296,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.mocked(memoryApi.setMemoryProfileAliases).mockRejectedValue(new Error('别名写入被拒绝'))
     await renderManager()
     await screen.findByLabelText('当前有效别名')
+    await waitFor(() => expect(screen.getByRole('button', { name: /保存别名/ })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: /保存别名/ }))
 
     await waitFor(() => {
@@ -1310,6 +1314,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.mocked(memoryApi.setMemoryProfileAliases).mockResolvedValue({ success: false })
     await renderManager()
     await screen.findByLabelText('当前有效别名')
+    await waitFor(() => expect(screen.getByRole('button', { name: /保存别名/ })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: /保存别名/ }))
 
     await waitFor(() => {

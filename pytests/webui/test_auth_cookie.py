@@ -100,3 +100,22 @@ def test_plugin_release_list_uses_current_instance_cookie(monkeypatch) -> None:
             client = TestClient(app)
             client.cookies.set(cookie_name, "test-token")
             assert client.get("/releases").status_code == expected
+
+
+def test_plugin_install_and_market_routes_use_current_instance_cookie() -> None:
+    from src.webui.routers.plugin import catalog, marketplace, zip_install
+
+    app = FastAPI()
+    for router in (catalog.router, marketplace.router, zip_install.router):
+        app.include_router(router)
+    paths = app.openapi()["paths"]
+    for path, method in (
+        ("/mirrors/reset", "post"),
+        ("/marketplace/source", "get"),
+        ("/marketplace/source", "put"),
+        ("/marketplace", "get"),
+        ("/marketplace/{plugin_id}", "get"),
+        ("/install-zip", "post"),
+    ):
+        cookies = [parameter["name"] for parameter in paths[path][method]["parameters"] if parameter["in"] == "cookie"]
+        assert cookies == [auth_module.COOKIE_NAME]
