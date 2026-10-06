@@ -864,7 +864,7 @@ describe('ProfileConsole 空列表与检索失败', () => {
     fireEvent.change(screen.getByLabelText('人物关键词'), { target: { value: '空' } })
     fireEvent.click(screen.getByRole('button', { name: /查询人物画像/ }))
     expect(await screen.findByText('没有匹配的人物画像')).toBeInTheDocument()
-    expect(screen.queryByText('张三')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('张三')).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /查看画像库/ }))
     await waitFor(() => {

@@ -590,7 +590,7 @@ describe('BotConfigPage 特征化', () => {
       const menu = await openConfigMenu(user)
       expect(
         within(menu)
-          .getAllByRole('menuitem')
+          .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
           .map((item) => item.textContent)
       ).toEqual(['人格', '机器人', '实验性'])
       await user.click(within(menu).getByRole('menuitem', { name: '机器人' }))
@@ -656,7 +656,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       expect(screen.queryByText(/展开隐藏配置栏目/)).not.toBeInTheDocument()
       const menu = await openConfigMenu(user)
-      expect(within(menu).getAllByRole('menuitem')).toHaveLength(3)
+      expect(within(menu).getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })).toHaveLength(3)
     })
   })
 
@@ -1319,7 +1319,7 @@ describe('BotConfigPage 特征化', () => {
 
       const tabList = await openConfigMenu(user)
       const tabNames = within(tabList)
-        .getAllByRole('menuitem')
+        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
         .map((tab) => tab.textContent)
       expect(tabNames).toEqual(['单独'])
     })
@@ -1343,7 +1343,7 @@ describe('BotConfigPage 特征化', () => {
 
       const tabList = await openConfigMenu(user)
       const tabNames = within(tabList)
-        .getAllByRole('menuitem')
+        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
         .map((tab) => tab.textContent)
       expect(tabNames).toEqual(['alpha配置', 'zeta配置'])
     })
@@ -1381,7 +1381,7 @@ describe('BotConfigPage 补充覆盖', () => {
     await user.click(screen.getByRole('tab', { name: '详细设置' }))
     const tabList = await openConfigMenu(user)
     const tabNames = within(tabList)
-      .getAllByRole('menuitem')
+      .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
       .map((tab) => tab.textContent)
     expect(tabNames).toEqual(['有序', '无序'])
   })

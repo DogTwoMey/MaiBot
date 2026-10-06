@@ -437,7 +437,10 @@ describe('StatisticsCards 卡片渲染与状态', () => {
     expect(screen.getByTestId('bar-chart')).toHaveAttribute('data-first-ts', HOURLY_TS)
     expect(screen.getByTestId('chart-yaxis-left')).toBeInTheDocument()
     expect(screen.getByTestId('chart-yaxis-right')).toBeInTheDocument()
-    expect(screen.getByTestId('chart-legend')).toBeInTheDocument()
+    const legend = document.querySelector('[data-home-chart-guide="true"]')
+    expect(legend).toBeInTheDocument()
+    expect(legend).toHaveTextContent('请求数')
+    expect(legend).toHaveTextContent('花费')
   })
 
   it('各卡片在 resolvedLanguage 为空时都能回退到 language 完成格式化', () => {

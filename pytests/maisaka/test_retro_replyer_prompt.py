@@ -115,7 +115,6 @@ def test_retro_request_messages_fill_single_template(monkeypatch: pytest.MonkeyP
     assert "{" not in prompt
     assert "现在请你读读之前的聊天记录，把握当前的话题" in prompt
     assert "【表达习惯参考】当被问吃什么时可以用随便来表达。" in prompt
-    assert "以下是你在回复时需要参考的信息" in prompt
     assert "这次请直接回答吃什么。" in prompt
     assert "小明在问晚饭" in prompt
     assert "[12:30:00] 小明说：晚上吃什么" in prompt
@@ -185,6 +184,35 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
     assert len(normal_items) > 1
     assert normal_items[0].role == RoleType.System
     assert normal_items[-1].role == RoleType.User
+
+
+@pytest.mark.parametrize("locale", RETRO_LOCALES)
+@pytest.mark.parametrize("retro_mode", [False, True])
+def test_reply_reference_takes_priority_over_planner_content(
+    locale: str, retro_mode: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = build_retro_generator(is_group_session=True)
+    isolate_retro_blocks(generator, monkeypatch)
+    set_locale(locale)
+    monkeypatch.setattr(global_config.experimental, "replyer_retro_prompt", retro_mode)
+
+    items = generator._build_request_messages(
+        chat_history=[build_history_message("晚上吃什么")],
+        reply_message=None,
+        reply_reason="PLANNER_VISIBLE_BODY",
+        think_level=0,
+        reply_tool_args={"reply_reference": "REPLY_REFERENCE_BODY"},
+    )
+
+    text = "\n".join(read_item_text(item) for item in items)
+    assert "REPLY_REFERENCE_BODY" in text
+    assert "PLANNER_VISIBLE_BODY" not in text
+    assert (
+        generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", "REPLY_REFERENCE_BODY")
+        == "REPLY_REFERENCE_BODY"
+    )
+    assert generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", " \n ") == "PLANNER_VISIBLE_BODY"
+    assert generator._build_reply_reference_message("", "") == ""
 
 
 def test_retro_templates_are_localized_consistently() -> None:

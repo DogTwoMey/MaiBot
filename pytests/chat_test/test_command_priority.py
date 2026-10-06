@@ -9,7 +9,7 @@ def test_registered_plugin_command_is_filter_exempt_candidate(monkeypatch) -> No
     message = BotConsole._build_message("/demo 是这样的")
     message.processed_plain_text = "/demo 是这样的"
     message.session_id = "console-session"
-    command_info = SimpleNamespace(name="demo")
+    command_info = SimpleNamespace(name="demo", plugin_name="demo_plugin")
 
     monkeypatch.setattr(
         component_query_service,
