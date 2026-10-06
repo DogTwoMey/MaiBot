@@ -83,6 +83,14 @@ def add_mirror(request: AddMirrorRequest, http_request: Request) -> MirrorConfig
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
 
 
+@router.post("/mirrors/reset", response_model=AvailableMirrorsResponse)
+def reset_mirrors(http_request: Request) -> AvailableMirrorsResponse:
+    require_plugin_token(http_request)
+    config = get_git_mirror_service().get_mirror_config()
+    mirrors = [_mirror_to_response(mirror) for mirror in config.reset_default_mirrors()]
+    return AvailableMirrorsResponse(mirrors=mirrors, default_priority=config.get_default_priority_list())
+
+
 @router.put("/mirrors/{mirror_id}", response_model=MirrorConfigResponse)
 def update_mirror(
     mirror_id: str,

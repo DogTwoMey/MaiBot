@@ -90,12 +90,11 @@ def test_personality_schema_exposes_behavior_style():
     assert behavior_style.get("x-widget") == "textarea"
 
 
-def test_debug_schema_exposes_clear_context_command_switch():
-    schema = ConfigSchemaGenerator.generate_schema(DebugConfig)
-    clear_command = next(field for field in schema["fields"] if field["name"] == "enable_clear_context_command")
-    assert clear_command["default"] is False
-    assert clear_command["label"]["zh_CN"] == "启用 /clear 指令"
-    assert clear_command.get("x-widget") == "switch"
+def test_clear_context_command_uses_command_management_schema():
+    schema = ConfigSchemaGenerator.generate_schema(PluginConfig)
+    disabled_commands = next(field for field in schema["fields"] if field["name"] == "disabled_commands")
+    assert disabled_commands["hidden"] is True
+    assert PluginConfig().disabled_commands == []
 
 
 

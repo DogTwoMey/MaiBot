@@ -1444,7 +1444,7 @@ describe('PluginMarketplacePage 合并、兼容性边界与进度清理', () => 
     await renderPage()
 
     const viewport = document.querySelector('[data-dashboard-scrollbar-viewport="true"]') as HTMLDivElement
-    expect(viewport.scrollTop).toBe(88)
+    await waitFor(() => expect(viewport.scrollTop).toBe(88))
 
     viewport.scrollTop = 42
     act(() => {

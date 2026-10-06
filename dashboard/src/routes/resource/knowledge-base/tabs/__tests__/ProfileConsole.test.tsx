@@ -774,7 +774,7 @@ describe('ProfileConsole 别名维护', () => {
     const aliasInput = await screen.findByLabelText('当前有效别名')
     expect((aliasInput as HTMLTextAreaElement).value).not.toContain('产品经理')
 
-    fireEvent.click(screen.getByRole('button', { name: '加入 产品经理' }))
+    fireEvent.click(await screen.findByRole('button', { name: '加入 产品经理' }))
 
     expect(aliasInput).toHaveValue('张三\n阿三\n产品经理')
     expect(screen.getByRole('button', { name: '已加入 产品经理' })).toBeDisabled()
@@ -784,6 +784,7 @@ describe('ProfileConsole 别名维护', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderManager()
 
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {
@@ -863,15 +864,18 @@ describe('ProfileConsole 空列表与检索失败', () => {
     fireEvent.change(screen.getByLabelText('人物关键词'), { target: { value: '空' } })
     fireEvent.click(screen.getByRole('button', { name: /查询人物画像/ }))
     expect(await screen.findByText('没有匹配的人物画像')).toBeInTheDocument()
-    expect(screen.queryByText('张三')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('张三')).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /查看画像库/ }))
     await waitFor(() => {
       expect(memoryApi.getMemoryProfiles).toHaveBeenCalledTimes(2)
     })
     // 回到画像库：重新列出快照，空态文案消失
-    expect(await screen.findByText('张三')).toBeInTheDocument()
-    expect(screen.queryByText('没有匹配的人物画像')).not.toBeInTheDocument()
+    const profileList = screen.getByLabelText('人物画像列表')
+    expect(await within(profileList).findByText('张三')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(within(profileList).queryByText('没有匹配的人物画像')).not.toBeInTheDocument()
+    })
   })
 })
 
@@ -984,6 +988,7 @@ describe('ProfileConsole 查询补充', () => {
 
   it('检修侧的证据数量决定证据列表条数，非法值回落默认 12', async () => {
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: '刷新证据' })).toBeEnabled())
     const evidenceLimit = screen.getByLabelText('证据数量')
     fireEvent.change(evidenceLimit, { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: '刷新证据' }))
@@ -1291,6 +1296,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.mocked(memoryApi.setMemoryProfileAliases).mockRejectedValue(new Error('别名写入被拒绝'))
     await renderManager()
     await screen.findByLabelText('当前有效别名')
+    await waitFor(() => expect(screen.getByRole('button', { name: /保存别名/ })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: /保存别名/ }))
 
     await waitFor(() => {
@@ -1308,6 +1314,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.mocked(memoryApi.setMemoryProfileAliases).mockResolvedValue({ success: false })
     await renderManager()
     await screen.findByLabelText('当前有效别名')
+    await waitFor(() => expect(screen.getByRole('button', { name: /保存别名/ })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: /保存别名/ }))
 
     await waitFor(() => {
@@ -1324,6 +1331,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
   it('恢复可信自动别名：取消 confirm 不调用接口', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
     expect(confirmSpy).toHaveBeenCalledWith('确认恢复 p1 的可信自动别名？')
     expect(memoryApi.deleteMemoryProfileAliases).not.toHaveBeenCalled()
@@ -1336,6 +1344,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
       error: '不能恢复',
     })
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {
@@ -1353,6 +1362,7 @@ describe('ProfileConsole 证据/别名/覆写失败与取消', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(memoryApi.deleteMemoryProfileAliases).mockRejectedValue(new Error('别名删除被拒绝'))
     await renderManager()
+    await waitFor(() => expect(screen.getByRole('button', { name: /恢复可信自动别名/ })).toBeEnabled())
     fireEvent.click(await screen.findByRole('button', { name: /恢复可信自动别名/ }))
 
     await waitFor(() => {

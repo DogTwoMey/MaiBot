@@ -1454,6 +1454,7 @@ describe('KnowledgeBasePage import workflow', () => {
     expect(createButton).toBeEnabled()
     expect(screen.queryByText('公共参数')).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '资料类别' })).toHaveTextContent('叙事资料')
+    expect(screen.queryByText('请选择资料类别')).not.toBeInTheDocument()
     await user.click(screen.getByRole('combobox', { name: '资料类别' }))
     await user.click(screen.getByRole('option', { name: '叙事资料' }))
     expect(createButton).toBeEnabled()
