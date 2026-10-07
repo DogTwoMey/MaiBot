@@ -203,7 +203,7 @@ async def test_ai_self_reflect_expression_stays_unchecked(
             return "prompt"
 
     class FakeLearnModel:
-        async def generate_response_with_context(self, context_builder, options, session_id: str):
+        async def generate_response_with_context(self, context_builder, session_id: str, options=None):
             del context_builder, options, session_id
             return SimpleNamespace(response="response", provider_response=None)
 
@@ -237,6 +237,7 @@ async def test_ai_self_reflect_expression_stays_unchecked(
             expression=SimpleNamespace(
                 expression_self_reflect=True,
                 expression_selection_mode="legacy",
+                use_vector_expression=False,
             ),
         ),
     )

@@ -74,7 +74,7 @@ def test_expression_learning_list_matches_routed_session_by_chat_stream(monkeypa
     assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (False, False)
 
 
-def test_expression_learning_list_wildcard_takes_priority_over_exact(monkeypatch):
+def test_expression_learning_list_exact_takes_priority_over_wildcard(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
     monkeypatch.setattr(
         global_config.expression,
@@ -109,7 +109,7 @@ def test_expression_learning_list_wildcard_takes_priority_over_exact(monkeypatch
         lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
-    assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (True, True)
+    assert ExpressionConfigUtils.get_expression_config_for_chat(session_id) == (False, False)
 
 
 def test_expression_learning_list_exact_takes_priority_when_no_wildcard_matches(monkeypatch):
@@ -235,7 +235,7 @@ def test_jargon_learning_list_matches_routed_session_by_chat_stream(monkeypatch)
     assert JargonConfigUtils.get_jargon_config_for_chat(session_id) == (True, False)
 
 
-def test_jargon_learning_list_wildcard_takes_priority_over_exact(monkeypatch):
+def test_jargon_learning_list_exact_takes_priority_over_wildcard(monkeypatch):
     session_id = SessionUtils.calculate_session_id("qq", group_id="1036092828", account_id="bot-a")
     monkeypatch.setattr(
         global_config.jargon,
@@ -261,7 +261,7 @@ def test_jargon_learning_list_wildcard_takes_priority_over_exact(monkeypatch):
         lambda _session_id: SimpleNamespace(platform="qq", group_id="1036092828", user_id=None, is_group_session=True),
     )
 
-    assert JargonConfigUtils.get_jargon_config_for_chat(session_id) == (True, True)
+    assert JargonConfigUtils.get_jargon_config_for_chat(session_id) == (True, False)
 
 
 def test_jargon_learning_list_supports_platform_wildcard(monkeypatch):

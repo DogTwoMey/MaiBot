@@ -421,7 +421,7 @@ async def install_plugin(request: InstallPluginRequest, http_request: Request) -
             if release is not None:
                 return await install_release(
                     plugin_id, entry, release, updating=False, automatic=request.version == "latest",
-                    pinned=request.pinned, mirror_id=request.mirror_id,
+                    mirror_id=request.mirror_id,
                 )
             request = request.model_copy(update={"repository_url": entry.repositoryUrl})
         await update_progress(
@@ -660,7 +660,7 @@ async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> 
             if release is not None:
                 return await install_release(
                     plugin_id, entry, release, updating=True, automatic=request.version == "latest",
-                    pinned=request.pinned, mirror_id=request.mirror_id,
+                    mirror_id=request.mirror_id,
                 )
             request = request.model_copy(update={"repository_url": entry.repositoryUrl})
         await update_progress(

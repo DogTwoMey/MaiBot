@@ -394,7 +394,7 @@ describe('ProfileConsole 查询流程', () => {
     expect(screen.queryByText('检索结果')).not.toBeInTheDocument()
     expect(await screen.findByText('王五')).toBeInTheDocument()
     // 原画像库条目被替换
-    expect(screen.queryByText('张三')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('张三')).not.toBeInTheDocument())
   })
 
   it('切回精确查询后忽略模糊查询中保留的关键词', async () => {

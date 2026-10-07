@@ -78,6 +78,19 @@ vi.mock('motion/react', async () => {
   ))
   MotionHeader.displayName = 'MotionHeader'
 
+  const MotionDiv = ({
+    animate: _animate,
+    initial: _initial,
+    transition: _transition,
+    onAnimationComplete: _onAnimationComplete,
+    ...props
+  }: HTMLAttributes<HTMLDivElement> & {
+    onAnimationComplete?: unknown
+    animate?: unknown
+    initial?: unknown
+    transition?: unknown
+  }) => <div {...props} />
+
   const MotionSpan = ({
     children,
     layoutId,
@@ -95,6 +108,7 @@ vi.mock('motion/react', async () => {
   return {
     LayoutGroup: ({ children }: { children: ReactNode }) => <>{children}</>,
     motion: {
+      div: MotionDiv,
       header: MotionHeader,
       span: MotionSpan,
     },
@@ -304,7 +318,7 @@ describe('Header', () => {
 
     expect(container.querySelector('[data-dashboard-header-collapsed="true"]')).toBeInTheDocument()
     expect(screen.queryByTestId('background-header')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'header.searchPlaceholder' })).toHaveClass('hidden')
+    expect(screen.getByRole('button', { name: 'header.searchPlaceholder' }).closest('.hidden')).toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: 'header.expandSidebar' })).not.toBeInTheDocument()
     fireEvent.click(screen.getAllByRole('button', { name: 'header.expandTopbar' })[0])
@@ -328,7 +342,7 @@ describe('Header', () => {
     await waitFor(() => expect(screen.getByText('搜索对话框已打开')).toBeInTheDocument())
   })
 
-  it('搜索打开时高亮对应顶栏按钮', () => {
+  it('搜索打开时高亮顶栏搜索区域', () => {
     mocks.pathname = '/settings'
     const { rerender } = render(<Header {...makeProps({ searchOpen: false })} />)
 
@@ -370,11 +384,13 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'header.moreActions' })).toBeInTheDocument()
   })
 
-  it('非设置工作区隐藏移动菜单与侧栏切换，日志槽位可见', () => {
+  it('日志工作区保留移动导航，日志槽位可见', () => {
     const props = makeProps({ workspaceMode: 'logs', sidebarOpen: true })
     render(<Header {...props} />)
 
-    expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).toHaveClass('hidden')
+    expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).toHaveClass('lg:hidden')
+    fireEvent.click(screen.getByRole('button', { name: 'a11y.closeMenu' }))
+    expect(props.onMobileMenuToggle).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: 'header.switchSidebarToHover' })).toHaveClass(
       'lg:hidden'
     )
@@ -394,14 +410,14 @@ describe('Header', () => {
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
   })
 
-  it('搜索已打开时再次点击会关闭，Electron 无后端名时回退未连接文案', async () => {
+  it('提交搜索时保持窗口打开，并显示 Electron 未连接状态', async () => {
     mocks.electron = true
     mocks.getActiveBackend.mockResolvedValue(null)
     const props = makeProps({ searchOpen: true })
     render(<Header {...props} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'header.searchPlaceholder' }))
-    expect(props.onSearchOpenChange).toHaveBeenCalledWith(false)
+    expect(props.onSearchOpenChange).toHaveBeenCalledWith(true)
     expect(await screen.findByText('header.notConnected')).toBeInTheDocument()
   })
 
@@ -473,7 +489,7 @@ describe('Header', () => {
     render(<Header {...props} />)
 
     const logsTab = screen.getByRole('tab', { name: 'workspace.logs' })
-    const searchButton = screen.getByRole('button', { name: 'header.searchPlaceholder' })
+    const searchButton = screen.getByRole('search', { name: 'header.searchPlaceholder' })
 
     fireEvent.pointerEnter(logsTab)
     fireEvent.pointerEnter(searchButton)

@@ -13,15 +13,15 @@ from src.common.data_models.message_component_data_model import AtComponent, Tex
 from src.config.config import global_config
 from src.core.tooling import ToolAvailabilityContext, ToolInvocation
 
-import src.maisaka.turn_scheduler as turn_scheduler_module
+import src.maisaka.turn_trigger.scheduler as turn_scheduler_module
 from src.maisaka.builtin_tool import reply as reply_tool_module
 from src.maisaka.builtin_tool import get_builtin_tools
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 from src.maisaka.builtin_tool.wait import handle_tool as handle_wait_tool
-from src.maisaka.mode_policy import is_idle_cycle_reason, is_reply_necessity_trigger_enabled
+from src.maisaka.mode_policy import is_dynamic_reply_trigger_enabled, is_idle_cycle_reason
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
 from src.maisaka.runtime import MaisakaHeartFlowChatting
-from src.maisaka.turn_scheduler import MessageTurnScheduler
+from src.maisaka.turn_trigger.scheduler import MessageTurnScheduler
 
 import src.maisaka.runtime as maisaka_runtime_module
 
@@ -85,7 +85,7 @@ def test_planner_exposes_wait_without_no_action_or_finish() -> None:
 
 
 def test_rich_reply_hides_standalone_media_tools(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.experimental, "enable_rich_reply", True, raising=False)
+    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", True)
 
     tool_names = _tool_names(get_builtin_tools(_availability_context()))
 
@@ -95,7 +95,8 @@ def test_rich_reply_hides_standalone_media_tools(monkeypatch) -> None:
 
 
 def test_rich_reply_adds_reply_attachment_parameters(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.experimental, "enable_rich_reply", True, raising=False)
+    monkeypatch.setattr(global_config.chat, "enable_reply_at", True)
+    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", True)
 
     reply_tool = next(tool for tool in get_builtin_tools(_availability_context()) if tool["name"] == "reply")
     properties = reply_tool["parameters_schema"]["properties"]
@@ -108,14 +109,15 @@ def test_rich_reply_adds_reply_attachment_parameters(monkeypatch) -> None:
     assert "reference_info" not in required
 
 
-def test_reply_attachment_parameters_are_hidden_when_rich_reply_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.experimental, "enable_rich_reply", False, raising=False)
+def test_reply_optional_attachment_parameters_follow_disabled_switches(monkeypatch) -> None:
+    monkeypatch.setattr(global_config.chat, "enable_reply_at", False)
+    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", False)
 
     reply_tool = next(tool for tool in get_builtin_tools(_availability_context()) if tool["name"] == "reply")
     properties = reply_tool["parameters_schema"]["properties"]
     required = reply_tool["parameters_schema"]["required"]
 
-    assert "attach_pic" not in properties
+    assert "attach_pic" in properties
     assert "attach_emoji" not in properties
     assert "attach_at" not in properties
     assert "reference_info" not in properties
@@ -123,7 +125,8 @@ def test_reply_attachment_parameters_are_hidden_when_rich_reply_disabled(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_rich_reply_output_expands_at_and_text() -> None:
+async def test_rich_reply_output_expands_at_and_text(monkeypatch) -> None:
+    monkeypatch.setattr(global_config.chat, "enable_reply_at", True)
     target_message = SessionMessage(message_id="msg-1", timestamp=datetime.now(), platform="qq")
     target_message.message_info = MessageInfo(
         user_info=UserInfo(
@@ -146,7 +149,9 @@ async def test_rich_reply_output_expands_at_and_text() -> None:
     tool_ctx = BuiltinToolRuntimeContext.__new__(BuiltinToolRuntimeContext)
     tool_ctx.runtime = DummyRuntime()
 
-    sequences = await tool_ctx.post_process_rich_reply_message_sequences_async("你好", {"attach_at": ["msg-1"]})
+    sequences = await tool_ctx.post_process_reply_message_sequences_async(
+        "你好", {"attach_at": ["msg-1"]}, skip_post_process=True
+    )
 
     assert len(sequences) == 1
     components = sequences[0].components
@@ -154,12 +159,17 @@ async def test_rich_reply_output_expands_at_and_text() -> None:
     assert components[0].target_user_id == "user-1"
     assert components[0].target_user_cardname == "群名片"
     assert isinstance(components[1], TextComponent)
-    assert components[1].text == "你好"
+    assert components[1].text == " "
+    assert isinstance(components[2], TextComponent)
+    assert components[2].text == "你好"
 
 
 @pytest.mark.asyncio
 async def test_rich_reply_uses_action_parameters_without_checker(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.experimental, "enable_rich_reply", True, raising=False)
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(global_config.chat, "enable_reply_at", True)
+    monkeypatch.setattr(reply_tool_module, "_invoke_before_post_process_hook", AsyncMock(return_value=("啥基米弓前端是真好用吧", {"skip_post_process": True})))
 
     target_message = SessionMessage(message_id="msg-1", timestamp=datetime.now(), platform="qq")
     target_message.message_info = MessageInfo(
@@ -208,6 +218,7 @@ async def test_rich_reply_uses_action_parameters_without_checker(monkeypatch) ->
 
     tool_ctx = BuiltinToolRuntimeContext.__new__(BuiltinToolRuntimeContext)
     tool_ctx.runtime = DummyRuntime()
+    tool_ctx.runtime.record_planner_reply = lambda: None
     invocation = ToolInvocation(
         tool_name="reply",
         arguments={"msg_id": "msg-1", "attach_at": ["msg-1"]},
@@ -217,73 +228,30 @@ async def test_rich_reply_uses_action_parameters_without_checker(monkeypatch) ->
     result = await reply_tool_module.handle_tool(tool_ctx, invocation)
 
     assert result.success is True
-    assert sent_segments == ["@群名片啥基米弓前端是真好用吧"]
+    assert sent_segments == ["@群名片 啥基米弓前端是真好用吧"]
     assert isinstance(sent_sequences[0].components[0], AtComponent)
     monitor_detail = result.metadata["monitor_detail"]
-    assert monitor_detail["output_text"] == "@群名片啥基米弓前端是真好用吧"
+    assert monitor_detail["output_text"] == "@群名片 啥基米弓前端是真好用吧"
     assert "extra_sections" not in monitor_detail
 
 
 @pytest.mark.asyncio
-async def test_reply_ignores_attachment_parameters_when_rich_reply_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(global_config.experimental, "enable_rich_reply", False, raising=False)
+async def test_reply_rejects_at_parameters_when_disabled(monkeypatch) -> None:
+    from unittest.mock import AsyncMock
 
-    target_message = SessionMessage(message_id="msg-1", timestamp=datetime.now(), platform="qq")
-    target_message.message_info = MessageInfo(
-        user_info=UserInfo(
-            user_id="user-1",
-            user_nickname="用户",
-            user_cardname="群名片",
-        ),
-        additional_config={},
-    )
-
-    class DummyReplyer:
-        async def generate_reply_with_context(self, **kwargs):
-            assert "attach_at" not in kwargs["reply_tool_args"]
-            assert kwargs["reply_tool_args"]["reference_info"] == "这是一条关键信息"
-            return True, ReplyGenerationResult(
-                success=True,
-                completion=LLMCompletionResult(response_text="不开启就只发正文"),
-            )
-
-    class DummyRuntime:
-        session_id = "session-1"
-        chat_stream = SimpleNamespace(platform="qq", is_group_session=True)
-        log_prefix = "[test]"
-
-        def __init__(self) -> None:
-            self._chat_history = []
-
-        @staticmethod
-        def find_source_message_by_id(message_id: str):
-            return target_message if message_id == "msg-1" else None
-
-        @staticmethod
-        def _update_stage_status(stage: str, detail: str) -> None:
-            del stage, detail
-
-    sent_segments: list[str] = []
-
-    async def fake_send_to_target_with_message(**kwargs):
-        sent_segments.append(kwargs["processed_plain_text"])
-        return SimpleNamespace(message_id="sent-1")
-
-    monkeypatch.setattr(reply_tool_module.replyer_manager, "get_replyer", lambda **kwargs: DummyReplyer())
-    monkeypatch.setattr(reply_tool_module.send_service, "_send_to_target_with_message", fake_send_to_target_with_message)
-
+    monkeypatch.setattr(global_config.chat, "enable_reply_at", False)
+    get_replyer = AsyncMock()
+    send_message = AsyncMock()
+    monkeypatch.setattr(reply_tool_module.replyer_manager, "get_replyer", get_replyer)
+    monkeypatch.setattr(reply_tool_module.send_service, "_send_to_target_with_message", send_message)
     tool_ctx = BuiltinToolRuntimeContext.__new__(BuiltinToolRuntimeContext)
-    tool_ctx.runtime = DummyRuntime()
-    invocation = ToolInvocation(
-        tool_name="reply",
-        arguments={"msg_id": "msg-1", "attach_at": ["msg-1"], "reference_info": "这是一条关键信息"},
-        call_id="reply-1",
+    tool_ctx.runtime = SimpleNamespace(log_prefix="[test]")
+    result = await reply_tool_module.handle_tool(
+        tool_ctx, ToolInvocation(tool_name="reply", arguments={"msg_id": "msg-1", "attach_at": ["msg-1"]}, call_id="reply-1")
     )
-
-    result = await reply_tool_module.handle_tool(tool_ctx, invocation)
-
-    assert result.success is True
-    assert sent_segments == ["不开启就只发正文"]
+    assert result.success is False
+    get_replyer.assert_not_called()
+    send_message.assert_not_awaited()
 
 
 def test_planner_no_tool_ends_cycle() -> None:
@@ -326,14 +294,14 @@ def test_planner_no_tool_ends_cycle() -> None:
     assert runtime.wait_reset_reason == "planner_no_tool_end"
 
 
-def test_reply_necessity_trigger_is_optional(monkeypatch) -> None:
+def test_dynamic_reply_trigger_is_optional(monkeypatch) -> None:
     monkeypatch.setattr(global_config.chat.reply_timing, "reply_trigger_mode", "frequency")
 
-    assert is_reply_necessity_trigger_enabled() is False
+    assert is_dynamic_reply_trigger_enabled() is False
 
-    monkeypatch.setattr(global_config.chat.reply_timing, "reply_trigger_mode", "reply_necessity")
+    monkeypatch.setattr(global_config.chat.reply_timing, "reply_trigger_mode", "dynamic")
 
-    assert is_reply_necessity_trigger_enabled() is True
+    assert is_dynamic_reply_trigger_enabled() is True
 
 
 def test_wait_completed_message_includes_elapsed_seconds() -> None:
@@ -354,7 +322,7 @@ def test_wait_completed_message_includes_elapsed_seconds() -> None:
 
 def test_private_chat_message_breaks_wait(monkeypatch) -> None:
     monkeypatch.setattr(turn_scheduler_module.focus_mode_manager, "can_decide", lambda *args, **kwargs: True)
-    monkeypatch.setattr(turn_scheduler_module, "is_reply_necessity_trigger_enabled", lambda: False)
+    monkeypatch.setattr(turn_scheduler_module, "is_dynamic_reply_trigger_enabled", lambda: False)
 
     class DummyIdleBackoff:
         @staticmethod
@@ -434,7 +402,10 @@ def test_forced_turn_recovers_stale_scheduled_flag(monkeypatch) -> None:
         log_prefix = "[test]"
         session_id = "session-1"
         chat_stream = SimpleNamespace(is_group_session=True)
-        message_cache = [object()]
+        message_cache = [SimpleNamespace(
+            platform="qq", message_id="msg-forced",
+            message_info=SimpleNamespace(user_info=SimpleNamespace(user_id="external-user")),
+        )]
         _last_processed_index = 0
         _internal_turn_queue = DummyQueue()
 

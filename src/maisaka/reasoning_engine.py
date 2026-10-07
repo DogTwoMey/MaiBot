@@ -867,9 +867,10 @@ class MaisakaReasoningEngine:
 
     @staticmethod
     def _get_planner_content(response: ChatResponse) -> str:
-        """只读取 Planner 正文，保留提供商推理内容的独立边界。"""
+        """只提取 Planner 正文，不将 Provider 原生 reasoning 传给工具和 replyer。"""
 
-        return str(response.content or "").strip()
+        content = response.content
+        return content.strip() if content is not None else ""
 
     @staticmethod
     def _cycle_end_for_pause_tool(pause_tool_name: Optional[str]) -> CycleEnd:

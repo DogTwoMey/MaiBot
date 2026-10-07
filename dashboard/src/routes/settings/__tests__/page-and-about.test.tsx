@@ -7,14 +7,14 @@ import { SettingsPage } from '../index'
 
 const { navigateMock, routerState } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
-  routerState: { searchStr: '' },
+  routerState: { searchStr: '', hash: '' },
 }))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
   useRouterState: ({
     select,
   }: {
-    select: (state: { location: { searchStr: string } }) => string
+    select: (state: { location: { searchStr: string; hash: string } }) => string
   }) => select({ location: routerState }),
 }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
@@ -23,18 +23,20 @@ vi.mock('../SecurityTab', () => ({ SecurityTab: () => <div>安全页内容</div>
 vi.mock('../OtherTab', () => ({ OtherTab: () => <div>其他页内容</div> }))
 
 beforeEach(() => {
+  navigateMock.mockClear()
   routerState.searchStr = ''
+  routerState.hash = ''
 })
 afterEach(cleanup)
 
-describe('内嵌 WebUI 设置与关于页', () => {
-  it('读取路由查询参数，切换时保留其他参数并进入 WebUI 模式', async () => {
+describe('WebUI 设置与关于页', () => {
+  it('切换标签时保留独立设置页的查询参数', async () => {
     routerState.searchStr = '?mode=webui&tab=security&extra=keep'
     const view = render(<SettingsPage />)
     expect(screen.getByText('安全页内容')).toBeInTheDocument()
     await userEvent.setup().click(screen.getByRole('tab', { name: 'settings.tabs.other' }))
     expect(navigateMock).toHaveBeenCalledWith({
-      href: '/config/bot?mode=webui&tab=other&extra=keep',
+      href: '/settings?tab=other&extra=keep',
       replace: true,
     })
     routerState.searchStr = '?mode=webui&tab=other&extra=keep'
@@ -42,7 +44,7 @@ describe('内嵌 WebUI 设置与关于页', () => {
     expect(screen.getByText('其他页内容')).toBeInTheDocument()
   })
 
-  it('缺省或未知标签显示外观页，滚动由外层麦麦设置管理', () => {
+  it('缺省或未知标签显示外观页', () => {
     const view = render(<SettingsPage />)
     expect(screen.getByText('外观页内容')).toBeInTheDocument()
     routerState.searchStr = '?tab=unknown'
@@ -51,11 +53,11 @@ describe('内嵌 WebUI 设置与关于页', () => {
     expect(screen.queryByRole('heading', { name: 'settings.title' })).not.toBeInTheDocument()
   })
 
-  it('切回外观页删除 tab 参数，保留 WebUI 模式', async () => {
+  it('切回外观页使用独立设置页路径', async () => {
     routerState.searchStr = '?tab=about&mode=webui'
     render(<SettingsPage />)
     await userEvent.setup().click(screen.getByRole('tab', { name: 'settings.tabs.appearance' }))
-    expect(navigateMock).toHaveBeenCalledWith({ href: '/config/bot?mode=webui', replace: true })
+    expect(navigateMock).toHaveBeenCalledWith({ href: '/settings', replace: true })
   })
 
   it('关于页展示版本、技术栈、许可证和安全的外部链接属性', () => {

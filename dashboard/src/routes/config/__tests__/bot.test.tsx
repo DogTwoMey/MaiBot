@@ -590,12 +590,11 @@ describe('BotConfigPage 特征化', () => {
       const menu = await openConfigMenu(user)
       expect(
         within(menu)
-          .getAllByRole('menuitem')
+          .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
           .map((item) => item.textContent)
       ).toEqual(['人格', '机器人', '实验性'])
       await user.click(within(menu).getByRole('menuitem', { name: '机器人' }))
       expect(await screen.findByTestId('form-bot-sections')).toHaveTextContent('bot,sub_feature')
-
     })
 
     it('表单修改更新分节值，防抖后按分节自动保存', async () => {
@@ -657,7 +656,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       expect(screen.queryByText(/展开隐藏配置栏目/)).not.toBeInTheDocument()
       const menu = await openConfigMenu(user)
-      expect(within(menu).getAllByRole('menuitem')).toHaveLength(3)
+      expect(within(menu).getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })).toHaveLength(3)
     })
   })
 
@@ -1169,7 +1168,7 @@ describe('BotConfigPage 特征化', () => {
       expect(screen.getByTestId('form-experimental')).toBeInTheDocument()
     })
 
-    it('uiUseSubTabs 按根字段/子类/高级子页拆分，聊天子页不再显示回复风格', async () => {
+    it('uiUseSubTabs 按根字段/子类/高级子页拆分，并保留聊天管理入口', async () => {
       const config = {
         ...baseConfig(),
         chat: { enabled: true, reply_timing: { talk_value: 1 }, reply_style: { style: 'a' } },
@@ -1194,7 +1193,7 @@ describe('BotConfigPage 特征化', () => {
       const defaultSubtabNames = within(subtabList)
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-      expect(defaultSubtabNames).toEqual(['总览', '时机子页'])
+      expect(defaultSubtabNames).toEqual(['总览', '时机子页', '聊天流prompt'])
       // 回复风格已迁至人格配置，不再列为聊天子页。
       expect(within(subtabList).queryByRole('tab', { name: '回复风格' })).not.toBeInTheDocument()
 
@@ -1202,7 +1201,7 @@ describe('BotConfigPage 特征化', () => {
       expect(await screen.findByTestId('form-ReplyTiming-values')).toHaveTextContent('talk_value')
       expect(screen.getByText('麦麦聊天')).toBeInTheDocument()
 
-      await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
+      await user.click(within(subtabList).getByRole('button', { name: '展开更多设置栏目' }))
       expect(within(subtabList).getByRole('tab', { name: '高级文档' })).toBeInTheDocument()
       expect(within(subtabList).getByRole('tab', { name: '内部组' })).toBeInTheDocument()
 
@@ -1320,7 +1319,7 @@ describe('BotConfigPage 特征化', () => {
 
       const tabList = await openConfigMenu(user)
       const tabNames = within(tabList)
-        .getAllByRole('menuitem')
+        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
         .map((tab) => tab.textContent)
       expect(tabNames).toEqual(['单独'])
     })
@@ -1344,7 +1343,7 @@ describe('BotConfigPage 特征化', () => {
 
       const tabList = await openConfigMenu(user)
       const tabNames = within(tabList)
-        .getAllByRole('menuitem')
+        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
         .map((tab) => tab.textContent)
       expect(tabNames).toEqual(['alpha配置', 'zeta配置'])
     })
@@ -1382,7 +1381,7 @@ describe('BotConfigPage 补充覆盖', () => {
     await user.click(screen.getByRole('tab', { name: '详细设置' }))
     const tabList = await openConfigMenu(user)
     const tabNames = within(tabList)
-      .getAllByRole('menuitem')
+      .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
       .map((tab) => tab.textContent)
     expect(tabNames).toEqual(['有序', '无序'])
   })
@@ -1593,7 +1592,7 @@ describe('BotConfigPage 补充覆盖', () => {
     await user.click(screen.getByText('change-deep-root-ReplyTiming'))
     expect(screen.getByTestId('form-ReplyTiming-values')).toHaveTextContent('deep-新值')
 
-    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
+    await user.click(within(subtabList).getByRole('button', { name: '展开更多设置栏目' }))
     await user.click(within(subtabList).getByRole('tab', { name: '内部组' }))
     const groupForm = await screen.findByTestId('form-chat_inner.chat_leaf-values')
     const beforeEmpty = groupForm.textContent
@@ -1665,7 +1664,7 @@ describe('BotConfigPage 补充覆盖', () => {
     expect(within(subtabList).getByRole('tab', { name: 'mystery' })).toBeInTheDocument()
     expect(within(subtabList).queryByRole('tab', { name: '备注' })).not.toBeInTheDocument()
 
-    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
+    await user.click(within(subtabList).getByRole('button', { name: '展开更多设置栏目' }))
     await user.click(within(subtabList).getByRole('tab', { name: 'chat_inner' }))
     expect(await screen.findByTestId('form-chat_inner.chat_leaf-sections')).toHaveTextContent(
       'chat_inner,chat_leaf'
@@ -1715,7 +1714,7 @@ describe('BotConfigPage 补充覆盖', () => {
       return node
     })
     expect(within(subtabList).queryByRole('tab', { name: '机密页' })).not.toBeInTheDocument()
-    await user.click(within(subtabList).getByRole('button', { name: /^(展开更多设置栏目|收起设置栏目)$/ }))
+    await user.click(within(subtabList).getByRole('button', { name: '展开更多设置栏目' }))
     expect(within(subtabList).getByRole('tab', { name: '机密页' })).toBeInTheDocument()
     expect(await screen.findByTestId('form-Secret')).toBeInTheDocument()
 

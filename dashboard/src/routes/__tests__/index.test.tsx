@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render as renderWithContext, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,6 +18,11 @@ import { UPDATE_NOTICE_OPEN_EVENT, type UpdateNoticeTarget } from '@/lib/update-
 import { APP_VERSION } from '@/lib/version'
 
 const originalRandomUUID = globalThis.crypto.randomUUID
+
+function render(ui: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderWithContext(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+}
 
 // 模块级仪表盘/状态/缓存 TTL 跨用例存活；resetModules 后需复用同一批 mock。
 const mocks = vi.hoisted(() => ({
@@ -53,7 +59,7 @@ vi.mock('react-i18next', () => {
   return { useTranslation: () => ({ t, i18n }) }
 })
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,
+  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
 }))
 vi.mock('@/lib/restart-context', () => ({
   RestartProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -102,6 +108,7 @@ vi.mock('recharts', () => {
 })
 vi.mock('@/lib/http', () => ({ backendApi: { get: mocks.backendGet } }))
 vi.mock('@/lib/config-api', () => ({
+  getBotConfigSchema: vi.fn().mockResolvedValue({ className: 'BotConfig', fields: [], nested: {} }),
   getBotConfigCached: mocks.getBotConfigCached,
   getModelConfigCached: mocks.getModelConfigCached,
 }))
@@ -1088,7 +1095,13 @@ describe('IndexPage 一言与版本条', () => {
 })
 
 describe('IndexPage 快捷操作与审核器', () => {
-  it('默认快捷操作可重启、打开审核器，关闭后刷新统计', async () => {
+  beforeEach(() => {
+    localStorage.setItem('maibot-home-quick-shortcuts', JSON.stringify([
+      'action:restart', 'action:expression-review', 'route:logs',
+    ]))
+  })
+
+  it('已保存快捷操作可重启、打开审核器，关闭后刷新统计', async () => {
     const user = userEvent.setup()
     render(<IndexPage />)
     await screen.findByText('home.botStatus.running')
@@ -1154,16 +1167,14 @@ describe('IndexPage 快捷操作与审核器', () => {
     await user.click(await screen.findByRole('button', { name: 'home.quickActions.dialog.done' }))
     await user.click(await screen.findByRole('button', { name: 'home.cards.done' }))
 
-    expect(
-      await screen.findByRole('button', { name: 'home.quickActions.restart' })
-    ).toBeInTheDocument()
-    expect(
-      await screen.findByRole('button', { name: /home\.quickActions\.expressionReview/ })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /home\.quickActions\.chat/ })).toHaveAttribute('href', '/chat')
     expect(JSON.parse(localStorage.getItem('maibot-home-quick-shortcuts') ?? '[]')).toEqual([
-      'action:restart',
-      'action:expression-review',
       'route:logs',
+      'route:settings-appearance',
+      'route:model-list',
+      'route:chat',
+      'route:logs:replyer',
+      'route:logs:reasoning',
     ])
   }, 30_000)
 

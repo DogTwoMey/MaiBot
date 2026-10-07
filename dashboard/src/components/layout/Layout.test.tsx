@@ -636,7 +636,8 @@ describe('Layout 壳层、快捷键与公告入口', () => {
     if (workspace === 'settings') {
       expect(screen.getAllByTestId('sidebar').length).toBeGreaterThan(0)
     } else {
-      expect(screen.queryByTestId('sidebar')).not.toBeInTheDocument()
+      expect(document.querySelector('[data-dashboard-sidebar-layout="true"]')).not.toBeInTheDocument()
+      expect(screen.getByTestId('sidebar')).toBeInTheDocument()
     }
   })
 

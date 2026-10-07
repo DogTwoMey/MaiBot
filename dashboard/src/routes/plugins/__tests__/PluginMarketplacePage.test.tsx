@@ -13,13 +13,26 @@ import { PLUGIN_MARKET_VIEW_STATE_KEY } from '@/lib/plugin-market-navigation'
 
 // toast 与 navigate 使用 hoisted 稳定引用：toast 位于页面 useEffect 依赖数组中，
 // 引用不稳定会导致初始化 effect 反复执行
-const { toastMock, navigateMock } = vi.hoisted(() => ({
+const { toastMock, navigateMock, routerState } = vi.hoisted(() => ({
   toastMock: vi.fn(),
   navigateMock: vi.fn(),
+  routerState: { search: {} as { pluginId?: string }, listeners: new Set<() => void>() },
 }))
 
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }))
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateMock }))
+vi.mock('@tanstack/react-router', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useNavigate: () => navigateMock,
+    useSearch: () => useSyncExternalStore(
+      (listener) => {
+        routerState.listeners.add(listener)
+        return () => { routerState.listeners.delete(listener) }
+      },
+      () => routerState.search,
+    ),
+  }
+})
 
 // 重启上下文与遮罩层：页面仅作为容器使用，桩掉避免引入 system-api 链路
 vi.mock('@/lib/restart-context', () => ({
@@ -216,6 +229,14 @@ let progressHandler: ((progress: PluginLoadProgress) => void) | null = null
 let wsErrorHandler: ((error: Error) => void) | null = null
 
 beforeEach(() => {
+  routerState.search = {}
+  routerState.listeners.clear()
+  navigateMock.mockImplementation((options: { search?: { pluginId?: string } }) => {
+    if (options.search) {
+      routerState.search = options.search
+      routerState.listeners.forEach((listener) => listener())
+    }
+  })
   window.localStorage.clear()
   window.sessionStorage.clear()
   progressHandler = null
