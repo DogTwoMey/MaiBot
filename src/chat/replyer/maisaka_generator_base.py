@@ -388,7 +388,9 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
         if raw_emoji:
             lines.append(f"当前文字回复后还会单独发送已选中的第 {raw_emoji} 号表情包，无需在正文中输出序号。")
 
-        return "\n".join(lines)
+        if not lines:
+            return ""
+        return self._load_prompt("reply_attachments", attachments="\n".join(lines))
 
     @staticmethod
     def _get_chat_prompt_for_chat(chat_id: str, is_group_chat: Optional[bool]) -> str:
@@ -1073,6 +1075,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
             result.error_message = str(exc)
             logger.error(f"回复模型路由失败: {exc}")
             return finalize(False)
+        plugin_reply_prompt = str(active_reply_tool_args.get("_plugin_reply_prompt", ""))
         if chat_history is None:
             result.error_message = "聊天历史为空"
             return finalize(False)
@@ -1138,7 +1141,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
                     request_type=self.request_type,
                     task_name=default_task_name,
                     model_name=routed_model_name or "",
-                    extra_prompt="",
+                    extra_prompt=plugin_reply_prompt,
                     attempt=retry_count + 1,
                     retry_count=retry_count,
                     max_retries=REPLYER_MAX_HOOK_RETRIES,
@@ -1152,7 +1155,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
                     active_reply_tool_args = dict(before_request_kwargs["reply_tool_args"])
             except Exception as exc:
                 logger.warning(f"Maisaka 回复器 before_request Hook 调用失败，将继续使用当前请求参数: {exc}")
-                before_request_kwargs = {}
+                before_request_kwargs = {"extra_prompt": plugin_reply_prompt}
 
             active_task_name = str(before_request_kwargs.get("task_name") or default_task_name).strip()
             if not active_task_name:

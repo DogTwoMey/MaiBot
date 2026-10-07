@@ -13,13 +13,26 @@ import { PLUGIN_MARKET_VIEW_STATE_KEY } from '@/lib/plugin-market-navigation'
 
 // toast 与 navigate 使用 hoisted 稳定引用：toast 位于页面 useEffect 依赖数组中，
 // 引用不稳定会导致初始化 effect 反复执行
-const { toastMock, navigateMock } = vi.hoisted(() => ({
+const { toastMock, navigateMock, routerState } = vi.hoisted(() => ({
   toastMock: vi.fn(),
   navigateMock: vi.fn(),
+  routerState: { search: {} as { pluginId?: string }, listeners: new Set<() => void>() },
 }))
 
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }))
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateMock }))
+vi.mock('@tanstack/react-router', async () => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    useNavigate: () => navigateMock,
+    useSearch: () => useSyncExternalStore(
+      (listener) => {
+        routerState.listeners.add(listener)
+        return () => { routerState.listeners.delete(listener) }
+      },
+      () => routerState.search,
+    ),
+  }
+})
 
 // 重启上下文与遮罩层：页面仅作为容器使用，桩掉避免引入 system-api 链路
 vi.mock('@/lib/restart-context', () => ({
@@ -46,6 +59,7 @@ vi.mock('@/lib/plugin-api', () => ({
 vi.mock('@/lib/plugin-stats', () => ({
   getCachedPluginStatsSummary: vi.fn(),
   getPluginStatsSummary: vi.fn(),
+  getPluginUserStates: vi.fn(),
   likePlugin: vi.fn(),
   recordPluginDownload: vi.fn(),
 }))
@@ -216,6 +230,14 @@ let progressHandler: ((progress: PluginLoadProgress) => void) | null = null
 let wsErrorHandler: ((error: Error) => void) | null = null
 
 beforeEach(() => {
+  routerState.search = {}
+  routerState.listeners.clear()
+  navigateMock.mockImplementation((options: { search?: { pluginId?: string } }) => {
+    if (options.search) {
+      routerState.search = options.search
+      routerState.listeners.forEach((listener) => listener())
+    }
+  })
   window.localStorage.clear()
   window.sessionStorage.clear()
   progressHandler = null
@@ -259,6 +281,7 @@ beforeEach(() => {
 
   vi.mocked(pluginStatsApi.getCachedPluginStatsSummary).mockReturnValue(null)
   vi.mocked(pluginStatsApi.getPluginStatsSummary).mockResolvedValue({})
+  vi.mocked(pluginStatsApi.getPluginUserStates).mockResolvedValue({})
   vi.mocked(pluginStatsApi.likePlugin).mockResolvedValue({
     success: true,
     likes: 1,
@@ -321,7 +344,7 @@ describe('PluginMarketplacePage 初始加载与数据合并', () => {
   it('存在缓存清单时先渲染缓存内容，拉取完成后替换为最新清单', async () => {
     vi.mocked(pluginApi.getCachedPluginList).mockReturnValue([makeMarketPlugin('cached-x')])
     vi.mocked(pluginStatsApi.getCachedPluginStatsSummary).mockReturnValue({
-      'cached-x': { plugin_id: 'cached-x', likes: 3, dislikes: 0, downloads: 9, rating: 5, rating_count: 2 },
+      'cached-x': { plugin_id: 'cached-x', likes: 3, dislikes: 0, downloads: 9, rating: 5, rating_count: 2, comment_count: 2 },
     })
 
     render(<PluginMarketplacePage />)
@@ -1637,6 +1660,7 @@ describe('PluginMarketplacePage 合并、兼容性边界与进度清理', () => 
         downloads: 3,
         rating: 5,
         rating_count: 1,
+        comment_count: 1,
       },
     })
 

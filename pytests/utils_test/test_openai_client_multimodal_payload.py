@@ -32,6 +32,7 @@ async def test_qwen_omni_transcription_uses_chat_completions() -> None:
         choices=[SimpleNamespace(message=SimpleNamespace(content="transcribed"))], usage=None,
     ))
     client = object.__new__(OpenaiClient)
+    client._omit_sdk_authorization = False
     client.api_provider = SimpleNamespace(name="BaiLian", base_url="https://example.test", organization=None, project=None)
     client.client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
     request = SimpleNamespace(

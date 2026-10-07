@@ -1193,7 +1193,7 @@ describe('BotConfigPage 特征化', () => {
       const defaultSubtabNames = within(subtabList)
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-      expect(defaultSubtabNames).toEqual(['总览', '时机子页'])
+      expect(defaultSubtabNames).toEqual(['总览', '时机子页', '聊天流prompt'])
       // 回复风格已迁至人格配置，不再列为聊天子页。
       expect(within(subtabList).queryByRole('tab', { name: '回复风格' })).not.toBeInTheDocument()
 

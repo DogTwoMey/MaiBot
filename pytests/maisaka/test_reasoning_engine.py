@@ -330,7 +330,7 @@ async def test_handle_tool_calls_pauses_after_successful_reply() -> None:
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
     engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
-    engine._append_tool_display_results = lambda **kwargs: None
+    engine._append_tool_display_results = AsyncMock()
 
     paused, tool_name, _, _ = await engine._handle_tool_calls(
         [ToolCall(call_id="call-reply-1", func_name="reply", args={})],
@@ -379,7 +379,7 @@ async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
     engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
-    engine._append_tool_display_results = lambda **kwargs: None
+    engine._append_tool_display_results = AsyncMock()
 
     paused, tool_name, _, _ = await engine._handle_tool_calls(
         [
