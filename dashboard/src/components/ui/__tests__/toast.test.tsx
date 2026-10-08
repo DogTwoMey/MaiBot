@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   Toast,
@@ -13,8 +13,11 @@ import {
   ToastViewport,
 } from '../toast'
 
-const { mobileState } = vi.hoisted(() => ({
+const { mobileState, animateMock, cancelMock, updatePlaybackRateMock } = vi.hoisted(() => ({
   mobileState: { value: false },
+  animateMock: vi.fn(),
+  cancelMock: vi.fn(),
+  updatePlaybackRateMock: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-media-query', () => ({
@@ -37,7 +40,11 @@ function queryToast(suffix = '') {
 
 beforeEach(() => {
   mobileState.value = false
+  animateMock.mockReturnValue({ cancel: cancelMock, updatePlaybackRate: updatePlaybackRateMock })
+  Object.defineProperty(Element.prototype, 'animate', { configurable: true, writable: true, value: animateMock })
 })
+
+afterEach(() => { vi.useRealTimers() })
 
 describe('ToastViewport', () => {
   it('桌面端靠右堆叠，并带视口标记与自定义 class', () => {
@@ -111,10 +118,11 @@ describe('Toast', () => {
 
     const progress = queryToast('-progress')
     expect(progress).not.toBeNull()
-    expect(progress).toHaveStyle({
-      animationDuration: '2400ms',
-      animationPlayState: 'running',
-    })
+    expect(animateMock).toHaveBeenCalledWith(
+      [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
+      { duration: 2400, easing: 'linear', fill: 'forwards' },
+    )
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
 
     rerender(
       <ToastProvider>
@@ -125,6 +133,7 @@ describe('Toast', () => {
       </ToastProvider>
     )
     expect(queryToast('-progress')).toBeNull()
+    expect(cancelMock).toHaveBeenCalled()
 
     rerender(
       <ToastProvider>
@@ -154,10 +163,13 @@ describe('Toast', () => {
         <ToastViewport />
       </ToastProvider>
     )
-    expect(queryToast('-progress')).toBeNull()
+    expect(queryToast('-progress')).not.toBeNull()
+    expect(animateMock).toHaveBeenLastCalledWith(
+      expect.any(Array), { duration: 4000, easing: 'linear', fill: 'forwards' },
+    )
   })
 
-  it('视口暂停 / 恢复时同步进度动画，并转发 onPause / onResume', () => {
+  it('视口悬停 / 离开时同步减速和恢复进度动画，并转发回调', () => {
     const onPause = vi.fn()
     const onResume = vi.fn()
 
@@ -168,18 +180,18 @@ describe('Toast', () => {
     )
 
     const region = screen.getByRole('region', { name: /Notifications/i })
-    expect(queryToast('-progress')).toHaveStyle({ animationPlayState: 'running' })
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
 
     fireEvent.pointerMove(region)
     expect(onPause).toHaveBeenCalledTimes(1)
-    expect(queryToast('-progress')).toHaveStyle({ animationPlayState: 'paused' })
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1 / 3)
 
     fireEvent.pointerLeave(region)
     expect(onResume).toHaveBeenCalledTimes(1)
-    expect(queryToast('-progress')).toHaveStyle({ animationPlayState: 'running' })
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
   })
 
-  it('未传入 onPause / onResume 时仍能切换进度条播放状态', () => {
+  it('未传入回调时仍能切换进度条速率', () => {
     renderToast(
       <Toast open duration={8000}>
         <ToastTitle>无回调</ToastTitle>
@@ -188,10 +200,22 @@ describe('Toast', () => {
 
     const region = screen.getByRole('region', { name: /Notifications/i })
     fireEvent.pointerMove(region)
-    expect(queryToast('-progress')).toHaveStyle({ animationPlayState: 'paused' })
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1 / 3)
 
     fireEvent.pointerLeave(region)
-    expect(queryToast('-progress')).toHaveStyle({ animationPlayState: 'running' })
+    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
+  })
+
+  it('悬停时按剩余时长的三倍计时关闭', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const onOpenChange = vi.fn()
+    renderToast(<Toast open duration={3000} onOpenChange={onOpenChange}><ToastTitle>计时</ToastTitle></Toast>)
+    act(() => { vi.advanceTimersByTime(1000) })
+    fireEvent.pointerMove(screen.getByRole('region', { name: /Notifications/i }))
+    act(() => { vi.advanceTimersByTime(5999) })
+    expect(onOpenChange).not.toHaveBeenCalled()
+    act(() => { vi.advanceTimersByTime(1) })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
 

@@ -65,6 +65,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
+
 /** 构造一个市场插件 */
 function makePlugin(overrides: Partial<PluginInfo> = {}): PluginInfo {
   return {
@@ -194,7 +195,7 @@ describe('插件发布版本选择', () => {
     renderPage()
     await waitDetailReady()
     expect(screen.getByRole('button', { name: '安装' })).toBeDisabled()
-    expect(screen.getByRole('option', { name: '2.0.0 · SDK 版本不兼容' })).toBeDisabled()
+    expect(screen.getByRole('option', { name: '2.0.0 · SDK 版本不兼容 · 更新于 时间未知' })).toBeDisabled()
     expect(pluginApi.installPlugin).not.toHaveBeenCalled()
   })
 })

@@ -149,8 +149,8 @@ describe('Toaster', () => {
 
     expect(screen.getByTestId('toast-provider')).toHaveAttribute('data-swipe', 'right')
     expect(screen.getAllByTestId('toast').map((toast) => toast.dataset.duration)).toEqual([
-      '5000',
-      '10000',
+      '4000',
+      '7500',
       '1234',
     ])
     expect(screen.getByText('五秒')).toBeInTheDocument()

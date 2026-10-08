@@ -371,7 +371,10 @@ describe('IndexPage 特征化', () => {
 
   it('一言通过原生 fetch 拉取', async () => {
     render(<IndexPage />)
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('hitokoto')))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('hitokoto'),
+      { signal: expect.any(AbortSignal) }
+    ))
   })
 
   it('缺少 randomUUID 时仍可停用默认一言、维护自定义列表，并在列表为空时留空', async () => {
