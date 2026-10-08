@@ -346,9 +346,12 @@ class BuiltinToolRuntimeContext:
         emoji_path = resolve_stored_image_path(selected_emoji.full_path)
         emoji_bytes = await asyncio.to_thread(emoji_path.read_bytes)
         await asyncio.to_thread(emoji_manager.update_emoji_usage, selected_emoji)
+        # content 是表情的文本表示，会写入已发送消息的纯文本、数据库和 Maisaka 历史；
+        # 必须与入站表情一致渲染为「[表情包: 描述]」，裸描述会被模型当作自身正文模仿。
+        emoji_description = selected_emoji.description.strip()
         return EmojiComponent(
             binary_hash=selected_emoji.file_hash,
-            content=selected_emoji.description.strip() or "[表情包]",
+            content=f"[表情包: {emoji_description}]" if emoji_description else "[表情包]",
             binary_data=emoji_bytes,
         )
 

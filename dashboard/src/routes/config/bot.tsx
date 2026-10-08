@@ -666,7 +666,7 @@ function BotConfigPageContent() {
             )}
             {editMode === 'detail' && pinnedTabs.length > 0 && (
               <div data-config-pinned-tabs-frame="true" className="min-w-0 flex-1 overflow-hidden rounded-md border bg-muted/30 p-1 shadow-inner">
-                <nav aria-label="钉固的设置页面" tabIndex={0} className="flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-0.5">
+                <nav aria-label="钉固的设置页面" className="flex min-w-0 items-center gap-2 overflow-x-auto px-1 py-0.5">
                   {pinnedTabs.map((pinned) => {
                     const tab = tabGroups.find((item) => item.id === pinned.id)
                     if (!tab) return null

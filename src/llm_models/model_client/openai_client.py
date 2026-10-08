@@ -441,36 +441,28 @@ def _get_portable_text_part(part: Any) -> str | None:
     return None
 
 
-def _convert_text_only_message_content(
-    message: SystemMessageItem | AssistantMessageItem,
-) -> str | List[ChatCompletionContentPartTextParam]:
+def _convert_text_only_message_content(message: SystemMessageItem | AssistantMessageItem) -> str:
     """将仅允许文本的消息转换为 OpenAI 兼容内容。
+
+    部分 OpenAI 兼容服务（如阿里云百炼）只接受字符串形式的 system content，
+    因此无论消息由几个文本片段组成，都按顺序直接拼接为一个字符串发送。
 
     Args:
         message: 内部统一消息对象。
 
     Returns:
-        str | List[ChatCompletionContentPartTextParam]: 文本内容结构。
+        str: 拼接后的文本内容。
 
     Raises:
         ValueError: 当消息中包含非文本片段时抛出。
     """
-    if not message.parts:
-        return ""
-    if len(message.parts) == 1 and (single_part_text := _get_portable_text_part(message.parts[0])) is not None:
-        return single_part_text
-
-    content: List[ChatCompletionContentPartTextParam] = []
+    text_parts: List[str] = []
     for part in message.parts:
         part_text = _get_portable_text_part(part)
         if part_text is None:
             raise ValueError(f"{message.role.value} 消息仅支持文本片段")
-        if not part_text.strip():
-            continue
-        content.append(_build_text_content_part(part_text))
-    if not content:
-        return ""
-    return content
+        text_parts.append(part_text)
+    return "".join(text_parts)
 
 
 def _convert_user_message_content(
@@ -486,8 +478,13 @@ def _convert_user_message_content(
     Returns:
         str | List[ChatCompletionContentPartParam]: 用户消息内容结构。
     """
-    if len(message.parts) == 1 and isinstance(message.parts[0], ContextTextPart):
-        return message.parts[0].text
+    # 纯文本消息统一发送字符串：部分 OpenAI 兼容服务（如阿里云百炼）只接受字符串 content，
+    # 收到多段 text 数组会返回 400 "Input should be a valid string"。
+    # 文本片段是同一条消息按组件顺序切分出的连续内容，片段自身已带有所需的空白与换行，
+    # 因此与 get_item_text 一致地直接拼接，不额外插入分隔符；含图片时仍需使用数组。
+    text_parts = [part.text for part in message.parts if isinstance(part, ContextTextPart)]
+    if len(text_parts) == len(message.parts):
+        return "".join(text_parts)
 
     content: List[ChatCompletionContentPartParam] = []
     for part in message.parts:

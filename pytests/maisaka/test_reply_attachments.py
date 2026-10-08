@@ -11,15 +11,23 @@ import pytest
 
 from src.chat.replyer.maisaka_generator_base import BaseMaisakaReplyGenerator
 from src.chat.utils.utils import ProcessedResponseSegment
-from src.common.data_models.message_component_data_model import AtComponent, ImageComponent, MessageSequence, TextComponent
+from src.common.data_models.message_component_data_model import (
+    AtComponent,
+    EmojiComponent,
+    ImageComponent,
+    MessageSequence,
+    TextComponent,
+)
 from src.common.data_models.reply_generation_data_models import LLMCompletionResult, ReplyGenerationResult
 from src.common.prompt_i18n import list_prompt_templates, load_prompt
 from src.config.config import global_config
 from src.core.tooling import ToolInvocation
+from src.llm_models.payload_content.context_item import ContextItemMeta, ContextTextPart, UserMessageItem
 from src.maisaka.builtin_tool import build_builtin_tool_handlers, get_all_builtin_tool_specs
 from src.maisaka.builtin_tool import context as context_module
 from src.maisaka.builtin_tool import reply as reply_tool
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
+from src.maisaka.context.emoji_candidates import EmojiCandidateMessage
 from src.maisaka.context.messages import SessionBackedMessage
 
 
@@ -88,6 +96,66 @@ async def test_reply_sends_selected_picture_and_at_together(reply_context, monke
     assert generator.generate_reply_with_context.call_args.kwargs["reply_tool_args"] == {
         "attach_at": ["msg-1"], "attach_pic": [{"msg_id": "msg-1", "index": 1}],
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "description,expected_text",
+    [("开心,得意,比心", "[表情包: 开心,得意,比心]"), ("  ", "[表情包]")],
+)
+async def test_reply_attached_emoji_renders_like_inbound_emoji(
+    reply_context, monkeypatch, tmp_path, description, expected_text
+):
+    """附带表情的文本表示必须是 [表情包: 描述]，裸描述会作为自身历史回灌并被模型模仿进正文。"""
+
+    from src.common.utils import image_path as image_path_module
+    from src.emoji_system.emoji_manager import emoji_manager
+
+    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", True)
+    monkeypatch.setattr(image_path_module, "PROJECT_ROOT", tmp_path)
+    emoji_file = tmp_path / "emoji.gif"
+    emoji_file.write_bytes(b"emoji-bytes")
+    selected_emoji = SimpleNamespace(file_hash="emoji-hash", description=description, full_path=emoji_file)
+    monkeypatch.setattr(
+        emoji_manager, "get_emoji_by_hash", lambda emoji_hash: selected_emoji if emoji_hash == "emoji-hash" else None
+    )
+    monkeypatch.setattr(emoji_manager, "update_emoji_usage", lambda emoji: None)
+    timestamp = datetime.now()
+    candidate_item = UserMessageItem(
+        meta=ContextItemMeta.create(timestamp=timestamp),
+        parts=(ContextTextPart("表情包选择图"),),
+    )
+    reply_context.runtime._chat_history.append(
+        EmojiCandidateMessage(
+            item=candidate_item,
+            emoji_hashes={1: "emoji-hash"},
+            visible_text="表情包选择图",
+            timestamp=timestamp,
+        )
+    )
+    reply_result = ReplyGenerationResult(success=True, completion=LLMCompletionResult(response_text="任务都完成啦"))
+    generator = SimpleNamespace(generate_reply_with_context=AsyncMock(return_value=(True, reply_result)))
+    monkeypatch.setattr(reply_tool.replyer_manager, "get_replyer", lambda **kwargs: generator)
+    monkeypatch.setattr(
+        reply_tool,
+        "_invoke_before_post_process_hook",
+        AsyncMock(return_value=("任务都完成啦", {"skip_post_process": True})),
+    )
+    sender = AsyncMock(return_value=SimpleNamespace(message_id="sent-1"))
+    monkeypatch.setattr(reply_tool.send_service, "_send_to_target_with_message", sender)
+
+    result = await reply_tool.handle_tool(
+        reply_context, ToolInvocation("reply", arguments={"msg_id": "msg-1", "attach_emoji": 1})
+    )
+
+    assert result.success
+    assert [call.kwargs["processed_plain_text"] for call in sender.call_args_list] == ["任务都完成啦", expected_text]
+    # 发往平台的仍是表情图片二进制，content 只是该表情的文本表示
+    emoji_component = sender.call_args_list[1].kwargs["message_sequence"].components[0]
+    assert isinstance(emoji_component, EmojiComponent)
+    assert emoji_component.binary_data == b"emoji-bytes"
+    assert emoji_component.content == expected_text
+    assert result.structured_content["reply_text"] == f"任务都完成啦{expected_text}"
 
 
 @pytest.mark.asyncio

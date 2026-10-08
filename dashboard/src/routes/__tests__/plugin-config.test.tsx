@@ -378,6 +378,7 @@ describe('PluginConfigPage 特征化', () => {
     failedPlugin.load_status = 'failed'
     const disabledPlugin = makePlugin('test.disabled', 'Disabled Plugin')
     disabledPlugin.enabled = false
+    disabledPlugin.load_status = 'disabled'
     const loadingPlugin = makePlugin('test.loading', 'Loading Plugin')
     loadingPlugin.load_status = 'loading'
     const successPlugin = makePlugin('test.success', 'Success Plugin')
@@ -798,7 +799,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     expect(screen.queryByRole('button', { name: /重置/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
 
-    await user.click(screen.getAllByRole('combobox')[0])
+    await user.click(screen.getAllByRole('combobox')[1])
     await user.click(await screen.findByText('默认不接收消息'))
     await user.click(screen.getAllByRole('button', { name: '添加列表项' })[0])
 
@@ -820,7 +821,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     await user.click(await screen.findByRole('button', { name: /QQ Adapter/ }))
     await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
     await user.click(await screen.findByText('群聊规则'))
-    await user.click(screen.getAllByRole('combobox')[0])
+    await user.click(screen.getAllByRole('combobox')[1])
     await user.click(await screen.findByText('默认不接收消息'))
 
     await waitFor(
@@ -2118,6 +2119,7 @@ describe('PluginConfigPage 列表操作与状态', () => {
     themeState.dashboardStyle = 'future-retro'
     const disabled = makePlugin('p.off', 'Off Plugin')
     disabled.enabled = false
+    disabled.load_status = 'disabled'
     const failed = makePlugin('p.bad', 'Bad Plugin')
     failed.load_status = 'failed'
     failed.load_error = 'boom'
