@@ -240,6 +240,37 @@ export function getContextItemImages(item: ContextItemSnapshot): ContextItemImag
   })
 }
 
+type ContextItemContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'images'; images: ContextItemImage[]; startIndex: number }
+
+function getContextItemContentBlocks(item: ContextItemSnapshot): ContextItemContentBlock[] {
+  if (!['SystemMessageItem', 'UserMessageItem', 'AssistantMessageItem'].includes(item.item_type)) {
+    const text = getContextItemReadableText(item)
+    return text ? [{ type: 'text', text }] : []
+  }
+
+  const blocks: ContextItemContentBlock[] = []
+  let imageIndex = 0
+  // 按请求 parts 的顺序展示，只合并连续同类片段，保留图片与前后发言的对应关系。
+  for (const part of item.parts ?? []) {
+    const partItem = { ...item, parts: [part] }
+    const images = getContextItemImages(partItem)
+    const previous = blocks.at(-1)
+    if (images.length > 0) {
+      if (previous?.type === 'images') previous.images.push(...images)
+      else blocks.push({ type: 'images', images, startIndex: imageIndex })
+      imageIndex += images.length
+      continue
+    }
+    const text = getContextItemReadableText(partItem)
+    if (!text) continue
+    if (previous?.type === 'text') previous.text += `\n${text}`
+    else blocks.push({ type: 'text', text })
+  }
+  return blocks
+}
+
 function ContextItemImagePreview({ image, index }: { image: ContextItemImage; index: number }) {
   const [src, setSrc] = useState('')
 
@@ -794,6 +825,7 @@ export function ContextItemCard({
   )
   const readableText = getContextItemReadableText(item)
   const images = getContextItemImages(item)
+  const contentBlocks = getContextItemContentBlocks(item)
   const toolCalls = getContextItemToolCalls(item)
   const callId =
     item.item_type === 'FunctionCallItem' && isRecord(item.tool_call)
@@ -831,17 +863,20 @@ export function ContextItemCard({
         {callId && (
           <div className="text-muted-foreground font-mono text-[11px]">call_id: {callId}</div>
         )}
-        {readableText && <NaturalLanguageText text={readableText} avatarMap={avatarMap} />}
-        {images.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {images.map((image, imageIndex) => (
-              <ContextItemImagePreview
-                key={`${image.path}-${imageIndex}`}
-                image={image}
-                index={imageIndex}
-              />
-            ))}
-          </div>
+        {contentBlocks.map((block, blockIndex) =>
+          block.type === 'text' ? (
+            <NaturalLanguageText key={blockIndex} text={block.text} avatarMap={avatarMap} />
+          ) : (
+            <div key={blockIndex} className="grid gap-2 sm:grid-cols-2">
+              {block.images.map((image, imageIndex) => (
+                <ContextItemImagePreview
+                  key={`${image.path}-${imageIndex}`}
+                  image={image}
+                  index={block.startIndex + imageIndex}
+                />
+              ))}
+            </div>
+          )
         )}
         {toolCalls.length > 0 && <ToolCallsCollapsible toolCalls={toolCalls} />}
         {item.item_type === 'ProviderActivityItem' && item.details && item.details.length > 0 && (

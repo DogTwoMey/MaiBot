@@ -695,6 +695,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
                 stream_id=stream_id,
                 think_level=think_level,
                 reply_tool_args=reply_tool_args,
+                enable_visual_message=enable_visual_message,
             )
 
         items: List[ContextItem] = []
