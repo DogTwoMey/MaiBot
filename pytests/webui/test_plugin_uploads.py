@@ -22,6 +22,13 @@ def png():
     return buffer.getvalue()
 
 
+@pytest.mark.parametrize("format,suffix", [("JPEG", ".jpg"), ("PNG", ".png"), ("WEBP", ".webp")])
+def test_supported_static_formats(format, suffix):
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), "red").save(buffer, format=format)
+    assert storage.validate_image(buffer.getvalue()) == suffix
+
+
 def declaration():
     return dict(
         required_capabilities=["file_upload_v1"],

@@ -28,7 +28,7 @@ def validate_image(raw: bytes) -> str:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(raw)) as image:
-                if image.format not in {"JPEG", "PNG", "WEBP"} or image.n_frames != 1:
+                if image.format not in {"JPEG", "PNG", "WEBP"} or getattr(image, "n_frames", 1) != 1:
                     raise ValueError("仅支持 JPEG、PNG、静态 WebP")
                 if image.width * image.height > MAX_PIXELS:
                     raise ValueError("图片超过 4000 万像素")

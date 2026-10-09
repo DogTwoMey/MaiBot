@@ -28,6 +28,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { nodeVisible, resolveNodeValue, validateRenderSize } from '@/lib/plugin-webui'
 import type { DataContexts, Scalar, WebUINode } from '@/lib/plugin-webui'
+import { prepareUploadImage } from '@/lib/upload-image'
+import type { PreparedImage } from '@/lib/upload-image'
 
 interface RendererProps {
   nodes: WebUINode[]
@@ -77,12 +79,12 @@ function galleryLink(value: unknown): string | undefined {
   }
 }
 
-function UploadControl({ label, action, busy, upload, complete }: {
-  label: string; action: string; busy: boolean; upload: RendererProps['onUpload']; complete: RendererProps['onUploadComplete']
+function UploadControl({ label, action, busy, upload, complete, maxEdge }: {
+  label: string; action: string; busy: boolean; upload: RendererProps['onUpload']; complete: RendererProps['onUploadComplete']; maxEdge?: number | null
 }) {
   const id = useId()
   const [running, setRunning] = useState(false)
-  const [status, setStatus] = useState<Array<{ name: string; progress: number; error?: string }>>([])
+  const [status, setStatus] = useState<Array<{ name: string; progress: number; error?: string; note?: string }>>([])
   return <div className="space-y-2">
     <Label htmlFor={id}>{label}</Label>
     {!upload && <p role="alert">Host does not support file_upload_v1</p>}
@@ -92,13 +94,15 @@ function UploadControl({ label, action, busy, upload, complete }: {
         event.target.value = ''
         setStatus(files.map(file => ({ name: file.name, progress: 0 })))
         setRunning(true)
-        const update = (index: number, change: { progress?: number; error?: string }) =>
+        const update = (index: number, change: { progress?: number; error?: string; note?: string }) =>
           setStatus(rows => rows.map((row, i) => i === index ? { ...row, ...change } : row))
         try {
           for (const [index, file] of files.entries()) {
             try {
-              if (file.size > 20 * 1024 * 1024) throw new Error('File exceeds 20 MiB')
-              await upload!(action, file, percent => update(index, { progress: percent }))
+              const prepared: PreparedImage = maxEdge ? await prepareUploadImage(file, maxEdge) : { file }
+              if (prepared.file.size > 20 * 1024 * 1024) throw new Error('File exceeds 20 MiB')
+              if (prepared.note) update(index, { note: prepared.note })
+              await upload!(action, prepared.file, percent => update(index, { progress: percent }))
               update(index, { progress: 100 })
             } catch (error) { update(index, { error: String(error) }) }
           }
@@ -107,6 +111,7 @@ function UploadControl({ label, action, busy, upload, complete }: {
       }} />
     {status.map((row, index) => <div key={index} role={row.error ? 'alert' : 'status'}>
       {row.name}: {row.error ?? `${row.progress}%`}
+      {row.note && <span className="ml-2 text-muted-foreground">{row.note}</span>}
       {!row.error && <progress max={100} value={row.progress} aria-label={row.name} />}
     </div>)}
   </div>
@@ -147,7 +152,7 @@ function NodeRenderer({ node, ...props }: Omit<RendererProps, 'nodes'> & { node:
 
   switch (node.type) {
     case 'upload':
-      return <UploadControl label={node.label!} action={node.action!} busy={props.busy} upload={props.onUpload} complete={props.onUploadComplete} />
+      return <UploadControl label={node.label!} action={node.action!} busy={props.busy} upload={props.onUpload} complete={props.onUploadComplete} maxEdge={node.image_max_edge} />
     case 'dialog':
       return (
         <Dialog

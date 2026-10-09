@@ -129,6 +129,7 @@ class WebUINode(StrictModel):
     detail: Optional[Identifier] = None
     max_items: int = Field(default=50, ge=1, le=100)
     default_open: bool = False
+    image_max_edge: Optional[int] = Field(default=None, ge=1, le=8192)
 
     @model_validator(mode="after")
     def validate_component(self) -> "WebUINode":
@@ -152,7 +153,7 @@ class WebUINode(StrictModel):
             "switch": {"name", "value"},
             "date": {"name", "value"},
             "button": {"action", "variant"},
-            "upload": {"action"},
+            "upload": {"action", "image_max_edge"},
         }[self.type]
         # RPC 的 model_dump 会带上默认字段；只允许非适用字段保持协议默认值。
         for name in self.model_fields_set - common - allowed:

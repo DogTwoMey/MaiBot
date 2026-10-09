@@ -62,6 +62,7 @@ export interface WebUINode {
   detail?: string | null
   max_items?: number
   default_open?: boolean
+  image_max_edge?: number | null
   when?: VisibilityCondition | null
 }
 export interface VisibilityCondition {
@@ -296,8 +297,15 @@ export async function uploadPluginWebUI(
     xhr.onload = () => {
       if (xhr.status === 401) window.location.href = '/auth'
       try {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          let detail = `HTTP ${xhr.status}: ${xhr.statusText || 'Upload failed'}`
+          try {
+            const errorBody = JSON.parse(xhr.responseText)
+            if (typeof errorBody.detail === 'string') detail = errorBody.detail
+          } catch { /* Servers may return plain text for an internal error. */ }
+          throw new Error(detail)
+        }
         const body = JSON.parse(xhr.responseText)
-        if (xhr.status < 200 || xhr.status >= 300) throw new Error(body.detail ?? `HTTP ${xhr.status}`)
         resolve(body.result)
       } catch (error) { reject(error) }
     }
