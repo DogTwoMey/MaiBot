@@ -1,5 +1,7 @@
 {
   "pluginWebUI": {
+    "workspaceOrder": "Top tab order",
+    "workspaceOrderHint": "Visible plugins follow this order. Up to two tabs appear in the header; the rest are in the adjacent More menu. The active plugin stays visible. Changes apply immediately and are saved in this browser.",
     "galleryLayout": "Gallery layout",
     "paginationSummary": "Page {{page}} / {{pages}} · {{total}} images",
     "galleryAuto": "Auto layout",

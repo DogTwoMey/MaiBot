@@ -1,5 +1,7 @@
 {
   "pluginWebUI": {
+    "workspaceOrder": "上部タブの順序",
+    "workspaceOrderHint": "非表示でないプラグインはこの順序で並びます。上部には最大2つのタブを表示し、残りは隣の「その他」メニューから開けます。現在のプラグインは常に表示されます。変更は即座に反映され、このブラウザーに保存されます。",
     "galleryLayout": "配置選択",
     "paginationSummary": "{{page}} / {{pages}}ページ · {{total}}枚",
     "galleryAuto": "自動配置",

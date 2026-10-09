@@ -1,5 +1,7 @@
 {
   "pluginWebUI": {
+    "workspaceOrder": "顶部 Tab 排序",
+    "workspaceOrderHint": "未隐藏的插件按此顺序排列，顶部最多显示两个，其余从旁边的“更多”菜单进入；当前打开的插件保持可见。排序立即生效，并保存在当前浏览器。",
     "galleryLayout": "布局选择",
     "paginationSummary": "第{{page}} / {{pages}}页 · 共{{total}}张",
     "galleryAuto": "自动排布",

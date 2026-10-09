@@ -22,6 +22,7 @@ import {
   togglePlugin,
 } from '@/lib/plugin-api'
 import type { InstalledPlugin, MaimaiVersion } from '@/lib/plugin-api'
+import { refreshPluginWebUI } from '@/lib/plugin-webui'
 import type { PluginInfo } from '@/types/plugin'
 import { useToast } from '@/hooks/use-toast'
 import { unifiedWsClient } from '@/lib/unified-ws'
@@ -190,7 +191,8 @@ export function usePluginList() {
     const requestId = ++installedRequestRef.current
     if (!background) setLoading(true)
     try {
-      const allInstalled = await getInstalledPlugins()
+      // 列表与导航同步刷新，启停操作和运行时注册通知都会更新顶部及侧栏入口。
+      const [allInstalled] = await Promise.all([getInstalledPlugins(), refreshPluginWebUI(true)])
       if (requestId !== installedRequestRef.current) return
       const installed = adapterOnly
         ? allInstalled.filter((plugin) => getPluginType(plugin) === 'adapter')

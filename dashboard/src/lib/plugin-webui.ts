@@ -105,6 +105,7 @@ export const extensionWorkspace = (pluginId: string) => `plugin:${pluginId}` as 
 interface Preferences {
   hidden: string[]
   order: string[]
+  workspaceOrder?: string[]
 }
 interface RegistryState {
   extensions: WebUIExtension[]
@@ -139,7 +140,10 @@ function readPreferences(): Preferences {
       Array.isArray(parsed.hidden) &&
       parsed.hidden.every((item: unknown) => typeof item === 'string') &&
       Array.isArray(parsed.order) &&
-      parsed.order.every((item: unknown) => typeof item === 'string')
+      parsed.order.every((item: unknown) => typeof item === 'string') &&
+      (parsed.workspaceOrder === undefined ||
+        (Array.isArray(parsed.workspaceOrder) &&
+          parsed.workspaceOrder.every((item: unknown) => typeof item === 'string')))
     )
       return parsed
   } catch {
@@ -148,8 +152,9 @@ function readPreferences(): Preferences {
   return { hidden: [], order: [] }
 }
 
-export function refreshPluginWebUI(): Promise<void> {
-  if (pending) return pending
+export function refreshPluginWebUI(ensureFresh = false): Promise<void> {
+  // 启停完成时，已有请求可能读取了变更前的注册表，需等它结束后再查询一次。
+  if (pending) return ensureFresh ? pending.then(() => refreshPluginWebUI()) : pending
   const current = generation
   pending = backendApi
     .get<{ extensions: WebUIExtension[]; capabilities?: string[] }>('/api/webui/plugins/runtime/webui')
@@ -227,6 +232,22 @@ export function visibleExtensions(registry: RegistryState): WebUIExtension[] {
   const { hidden, order } = registry.preferences
   return registry.extensions
     .filter((extension) => !hidden.includes(extension.plugin_id))
+    .sort((a, b) => {
+      const rank = (id: string) => {
+        const index = order.indexOf(id)
+        return index === -1 ? order.length : index
+      }
+      return rank(a.plugin_id) - rank(b.plugin_id) || a.plugin_id.localeCompare(b.plugin_id)
+    })
+}
+
+/** 顶部工作区独立排序；未设置时沿用原有页面顺序。 */
+export function orderedWorkspaceExtensions(
+  extensions: WebUIExtension[],
+  order: string[]
+): WebUIExtension[] {
+  return extensions
+    .filter((extension) => extension.pages.some((page) => page.placement === 'workspace'))
     .sort((a, b) => {
       const rank = (id: string) => {
         const index = order.indexOf(id)
