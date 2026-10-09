@@ -75,6 +75,7 @@ from ..utils.runtime_self_check import run_embedding_runtime_self_check  # noqa:
 from ..utils.search_execution_service import SearchExecutionRequest, SearchExecutionResult, SearchExecutionService  # noqa: F401
 from ..utils.summary_importer import SummaryImporter
 from ..utils.web_import_manager import ImportTaskManager
+from .services.vector_rebuild_checkpoint import VectorRebuildCheckpoint
 from .kernel_compat import KernelCompatibilityMixin
 from .models import KernelSearchRequest, _NormalizedSearchTimeWindow
 from .runtime_facade import KernelRuntimeFacade
@@ -129,6 +130,8 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
         self._last_maintenance_at: Optional[float] = None
         self._request_dedup_tasks: Dict[str, asyncio.Task] = {}
         self._vector_rebuild_lock = asyncio.Lock()
+        self._vector_rebuild_configuration_key: Optional[str] = None
+        self._vector_rebuild_fingerprint: Optional[Dict[str, Any]] = None
         self._active_vector_space_id = ""
         self._target_vector_space_id = ""
         self._vector_space_inputs: Dict[str, str] = {}
@@ -548,6 +551,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
         stats: Dict[str, Dict[str, int]],
         migration_stats: Dict[str, Dict[str, int]],
         generation_reason: str = "",
+        build_fingerprint: Optional[Dict[str, Any]] = None,
     ) -> None:
         service = self._dual_vector_state_service
         return type(service)._write_dual_vector_ready_manifest(
@@ -555,6 +559,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
             stats=stats,
             migration_stats=migration_stats,
             generation_reason=generation_reason,
+            build_fingerprint=build_fingerprint,
         )
 
     def _remove_dual_vector_ready_manifest(self) -> None:
@@ -778,6 +783,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
         batch_size: int,
         vector_store: Optional[VectorStore] = None,
         item_type: str = "paragraph",
+        checkpoint: Optional[VectorRebuildCheckpoint] = None,
     ) -> tuple[int, int, str, List[str], List[str]]:
         service = self._vector_runtime_service
         return await type(service)._encode_and_add_rebuild_vectors(
@@ -786,6 +792,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
             batch_size=batch_size,
             vector_store=vector_store,
             item_type=item_type,
+            checkpoint=checkpoint,
         )
 
     def _copy_rebuild_vectors_from_store(
@@ -813,6 +820,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
         target_store: Optional[VectorStore],
         target_id_prefix: str = "",
         source_store: Optional[VectorStore] = None,
+        checkpoint: Optional[VectorRebuildCheckpoint] = None,
     ) -> tuple[int, int, str, List[str], List[str], Dict[str, int]]:
         service = self._vector_runtime_service
         return await type(service)._copy_or_encode_dual_rebuild_vectors(
@@ -821,6 +829,7 @@ class SDKMemoryKernel(KernelCompatibilityMixin):
             batch_size=batch_size,
             target_store=target_store,
             target_id_prefix=target_id_prefix,
+            checkpoint=checkpoint,
             source_store=source_store,
         )
 
