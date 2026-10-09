@@ -44,6 +44,7 @@ export interface StageStatusInfo {
   detail: string
   roundText: string
   agentState: string
+  waitUntil?: number
   stageStartedAt: number
   updatedAt: number
 }
@@ -177,6 +178,7 @@ function toStageStatusInfo(raw: Record<string, unknown>): StageStatusInfo | null
     detail: typeof raw.detail === 'string' ? raw.detail : '',
     roundText: typeof raw.round_text === 'string' ? raw.round_text : '',
     agentState: typeof raw.agent_state === 'string' ? raw.agent_state : '',
+    waitUntil: typeof raw.wait_until === 'number' ? raw.wait_until : undefined,
     stageStartedAt:
       typeof raw.stage_started_at === 'number' ? raw.stage_started_at : Date.now() / 1000,
     updatedAt: typeof raw.updated_at === 'number' ? raw.updated_at : Date.now() / 1000,

@@ -2162,7 +2162,6 @@ function PluginConfigPageContent() {
               <Button
                 variant="outline"
                 onClick={closeUpdatePluginDialog}
-                disabled={updateProgress?.stage === 'loading'}
               >
                 {updateProgress?.stage === 'success' || updateProgress?.stage === 'error'
                   ? '关闭'

@@ -293,6 +293,13 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             detail=detail,
             round_text=round_text,
             agent_state=self._agent_state,
+            wait_until=(
+                self._pending_wait_started_at + self._pending_wait_seconds
+                if self._agent_state == self._STATE_WAIT
+                and self._pending_wait_started_at is not None
+                and self._pending_wait_seconds is not None
+                else None
+            ),
         )
 
     async def start(self) -> None:

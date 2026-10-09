@@ -73,6 +73,7 @@ import type {
   ToolExecutionEvent,
 } from '@/lib/maisaka-monitor-client'
 import type { SessionInfo, StageStatusInfo, TimelineEntry } from './use-maisaka-monitor'
+import { StageStatusLabel } from './StageStatusLabel'
 import { useMaisakaMonitorOverview, useMaisakaMonitorSession } from './use-maisaka-monitor'
 
 // ─── 工具函数 ──────────────────────────────────────────────────
@@ -352,7 +353,11 @@ function SessionSidebar({
             {!collapsed && (
               <div className="text-muted-foreground flex w-full min-w-0 items-center justify-between gap-2 overflow-hidden text-xs">
                 <span className="shrink-0">{formatRelativeTime(session.lastActivity)}</span>
-                {status && <span className="text-primary min-w-0 truncate">{status.stage}</span>}
+                {status && (
+                  <span className="text-primary min-w-0 truncate">
+                    <StageStatusLabel status={status} />
+                  </span>
+                )}
               </div>
             )}
           </button>
@@ -742,7 +747,7 @@ function StageStatusPanel({
       <div className="flex shrink-0 items-center gap-1.5">
         <Badge variant="default" className="gap-1 border-0! px-1.5 text-[10px]">
           <Activity className="h-2.5 w-2.5" />
-          {status.stage || '未知阶段'}
+          <StageStatusLabel status={status} />
         </Badge>
         {status.roundText && (
           <Badge variant="secondary" className="border-0! px-1.5 text-[10px]">
