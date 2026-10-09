@@ -73,13 +73,14 @@ class PromptPreviewLogger:
 
     @classmethod
     @contextmanager
-    def _timed_storage_lock(cls, operation: str) -> Iterator[None]:
+    def _timed_storage_lock(cls, operation: str, *, quiet: bool = False) -> Iterator[None]:
         """记录锁等待与持有时间，让主循环等待后台清理的原因可见。"""
         started_at = time.perf_counter()
         thread_name = threading.current_thread().name
         previous_operation = cls._storage_operation
         waiting_owner = previous_operation or "空闲"
-        logger.debug(f"存储锁等待开始: operation={operation} thread={thread_name} owner={waiting_owner}")
+        if not quiet:
+            logger.debug(f"存储锁等待开始: operation={operation} thread={thread_name} owner={waiting_owner}")
         with cls._storage_lock:
             acquired_at = time.perf_counter()
             wait_seconds = acquired_at - started_at
@@ -87,17 +88,19 @@ class PromptPreviewLogger:
             previous_operation = cls._storage_operation
             cls._storage_operation = f"{operation} thread={thread_name}"
             log = logger.warning if wait_seconds >= 0.5 else logger.debug
-            log(
-                f"存储锁已获取: operation={operation} thread={thread_name} "
-                f"等待={wait_seconds:.3f}s waiting_owner={waiting_owner}"
-            )
+            if not quiet or wait_seconds >= 0.5:
+                log(
+                    f"存储锁已获取: operation={operation} thread={thread_name} "
+                    f"等待={wait_seconds:.3f}s waiting_owner={waiting_owner}"
+                )
             try:
                 yield
             finally:
                 hold_seconds = time.perf_counter() - acquired_at
                 cls._storage_operation = previous_operation
                 log = logger.warning if hold_seconds >= 0.5 else logger.debug
-                log(f"存储锁操作结束: operation={operation} thread={thread_name} 持有={hold_seconds:.3f}s")
+                if not quiet or hold_seconds >= 0.5:
+                    log(f"存储锁操作结束: operation={operation} thread={thread_name} 持有={hold_seconds:.3f}s")
 
     @classmethod
     @contextmanager
@@ -398,13 +401,15 @@ class PromptPreviewLogger:
         cache_path = cls._BASE_DIR / ".image-reference-index.sqlite3"
         if cache_path.exists():
             with log_operation(logger, "preview.load_image_index", report=True, path=str(cache_path)) as stats:
-                # 启动时只读索引；格式/内容损坏时明确报错，不能依据不完整缓存清理图片。
+                # 图片清理只需有引用的记录；无图片日志留在数据库，不逐条构造内存对象。
+                # 引用记录的格式/内容损坏时明确报错，不能依据不完整缓存清理图片。
                 with closing(sqlite3.connect(cache_path)) as connection:
                     version = connection.execute("PRAGMA user_version").fetchone()[0]
                     if version != cls._INDEX_SCHEMA_VERSION:
                         raise ValueError(f"图片引用索引数据库版本不支持: {version}")
                     for relative_path, mtime_ns, size, image_names in connection.execute(
-                        "SELECT path, mtime_ns, size, image_names FROM records"
+                        "SELECT path, mtime_ns, size, image_names FROM records "
+                        "WHERE image_names IS NOT NULL AND image_names != '[]'"
                     ):
                         names = json.loads(image_names) if image_names is not None else []
                         cls._restore_index_record(relative_path, mtime_ns, size, names)

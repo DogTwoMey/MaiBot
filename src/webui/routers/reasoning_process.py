@@ -20,6 +20,8 @@ from sqlmodel import Session, col, select
 from src.common.data_models.llm_service_data_models import LLMServiceRequest
 from src.common.database.database import get_db_session
 from src.common.database.database_model import ChatSession, Messages
+from src.common.logger import get_logger
+from src.common.operation_timing import timed_operation
 from src.config.config import config_manager
 from src.llm_models.payload_content.context_item import CONTEXT_ITEM_SCHEMA_VERSION, ContextItem
 from src.llm_models.payload_content.context_protocol import ContextProtocolMode, validate_context_items
@@ -2001,6 +2003,7 @@ def clear_reasoning_prompt_stage(stage: str):
 
 
 @router.get("/files", response_model=ReasoningPromptListResponse)
+@timed_operation(get_logger("reasoning_process"), "preview.list_history", quiet=True)
 def list_reasoning_prompt_files(
     stage: str = Query("planner"),
     session: str = Query("auto"),

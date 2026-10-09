@@ -1,6 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import base64
 import json
@@ -39,6 +40,75 @@ def _build_provider() -> APIProvider:
         client_type="openai",
         default_headers={"Authorization": "secret"},
     )
+
+
+def test_normal_history_reads_are_quiet_and_do_not_take_storage_lock(monkeypatch, tmp_path):
+    from src.maisaka.display.prompt_preview_logger import PromptPreviewLogger
+
+    diagnostic_logger = Mock()
+    monkeypatch.setattr(request_snapshot, "logger", diagnostic_logger)
+    lock = Mock(side_effect=AssertionError("ordinary history read took storage lock"))
+    monkeypatch.setattr(PromptPreviewLogger, "_timed_storage_lock", lock)
+    path = tmp_path / "history.json"
+    path.write_text('{"metadata": {"model_name": "test"}}', encoding="utf-8")
+    for _ in range(100):
+        assert _load_prompt_json(path)["metadata"]["model_name"] == "test"
+    lock.assert_not_called()
+    assert diagnostic_logger.mock_calls == []
+
+
+def test_image_index_restart_loads_only_references_and_handles_shared_deletions(monkeypatch, tmp_path):
+    from src.maisaka.display.prompt_preview_logger import PromptPreviewLogger
+
+    _patch_snapshot_paths(monkeypatch, tmp_path)
+    images = tmp_path / "images"
+    images.mkdir()
+    monkeypatch.setattr(PromptPreviewLogger, "_IMAGE_DIR", images)
+    root = PromptPreviewLogger._BASE_DIR
+    image_name = "a" * 64 + ".png"
+    image = images / image_name
+    image.write_bytes(b"image")
+    first = root / "first.json"
+    second = root / "second.events.jsonl"
+    empty = root / "empty.json"
+    PromptPreviewLogger.write_record_file(first, "prompt_imgs/" + image_name, {})
+    PromptPreviewLogger.append_record_event(second, json.dumps({"image": "prompt_imgs/" + image_name}), {})
+    PromptPreviewLogger.write_record_file(empty, "{}", {})
+    assert empty in PromptPreviewLogger._record_signatures
+
+    PromptPreviewLogger._image_index_ready = False
+    monkeypatch.setattr(PromptPreviewLogger, "_refresh_image_index", Mock(side_effect=AssertionError("full scan")))
+    PromptPreviewLogger._ensure_image_index()
+    assert set(PromptPreviewLogger._record_signatures) == {first, second}
+    assert PromptPreviewLogger._previews_by_image[image_name] == {first, second}
+    first.unlink()
+    assert PromptPreviewLogger.cleanup_orphan_images() == 0
+    assert image.exists()
+    second.unlink()
+    assert PromptPreviewLogger.cleanup_orphan_images() == 1
+    assert not image.exists()
+    PromptPreviewLogger._image_index_ready = False
+    PromptPreviewLogger._ensure_image_index()
+    assert not PromptPreviewLogger._record_signatures
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_history_read_reports_only_slow_or_failed_operations(monkeypatch, tmp_path, failed):
+    import src.common.operation_timing as operation_timing
+
+    diagnostic_logger = Mock()
+    monkeypatch.setattr(request_snapshot, "logger", diagnostic_logger)
+    monkeypatch.setattr(operation_timing.time, "perf_counter", Mock(side_effect=[0, 0.01 if failed else 0.8]))
+    path = tmp_path / "history.json"
+    path.write_text("broken" if failed else "{}", encoding="utf-8")
+    if failed:
+        with pytest.raises(json.JSONDecodeError):
+            request_snapshot.read_request_snapshot(path)
+    else:
+        assert request_snapshot.read_request_snapshot(path) == {}
+    diagnostic_logger.warning.assert_called_once()
+    diagnostic_logger.debug.assert_not_called()
+    assert ("outcome=failed" if failed else "耗时=0.800s") in diagnostic_logger.warning.call_args.args[0]
 
 
 def _build_model() -> ModelInfo:

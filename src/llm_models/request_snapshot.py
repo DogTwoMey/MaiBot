@@ -980,8 +980,7 @@ def _build_display_path(file_path: Path) -> str:
 
 
 def _read_snapshot(snapshot_path: Path) -> Dict[str, Any]:
-    with log_operation(logger, "snapshot.read", path=str(snapshot_path)):
-        return json.loads(snapshot_path.read_text(encoding="utf-8"))
+    return json.loads(snapshot_path.read_text(encoding="utf-8"))
 
 
 def _append_snapshot_event(
@@ -1006,13 +1005,16 @@ def read_request_snapshot(snapshot_path: Path) -> Dict[str, Any]:
     """读取原始快照并在内存汇总事件；兼容没有事件流的旧快照。"""
     from src.maisaka.display.prompt_preview_logger import PromptPreviewLogger
 
-    # 与追加互斥，保证 WebUI 不会读到只写了一半的事件行。
-    with PromptPreviewLogger._timed_storage_lock("snapshot.read_events"):
-        return _read_request_snapshot_events(snapshot_path)
+    with log_operation(logger, "snapshot.read", quiet=True, path=str(snapshot_path)):
+        payload = _read_snapshot(snapshot_path)
+        # 普通预览与不可变快照无需存储锁；只有实际存在事件流时才与追加互斥。
+        if not snapshot_path.with_suffix(".events.jsonl").exists():
+            return payload
+        with PromptPreviewLogger._timed_storage_lock("snapshot.read_events", quiet=True):
+            return _read_request_snapshot_events(snapshot_path, payload)
 
 
-def _read_request_snapshot_events(snapshot_path: Path) -> Dict[str, Any]:
-    payload = _read_snapshot(snapshot_path)
+def _read_request_snapshot_events(snapshot_path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
     event_path = snapshot_path.with_suffix(".events.jsonl")
     if not event_path.exists():
         return payload
