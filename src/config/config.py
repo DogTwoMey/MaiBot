@@ -194,6 +194,10 @@ class ModelConfig(ConfigBase):
         if len(model_names) != len(set(model_names)):
             raise ValueError(t("config.model_name_duplicate"))
 
+        for model_name in self.model_task_config.embedding.model_list:
+            if model_name not in model_names:
+                raise ValueError(f"embedding.model_list references an undefined model: {model_name}")
+
         api_providers_dict = {provider.name: provider for provider in self.api_providers}
 
         for model in self.models:
