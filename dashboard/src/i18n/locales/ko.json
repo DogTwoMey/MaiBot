@@ -1,5 +1,9 @@
 {
   "pluginWebUI": {
+    "galleryLayout": "갤러리 배치",
+    "paginationSummary": "{{page}} / {{pages}}페이지 · {{total}}장",
+    "galleryAuto": "자동 배치",
+    "galleryColumns": "{{count}}열",
     "extensions": "플러그인 확장",
     "manage": "플러그인 페이지 관리",
     "more": "다른 플러그인 작업 공간",

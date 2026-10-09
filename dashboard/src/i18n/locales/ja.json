@@ -1,5 +1,9 @@
 {
   "pluginWebUI": {
+    "galleryLayout": "配置選択",
+    "paginationSummary": "{{page}} / {{pages}}ページ · {{total}}枚",
+    "galleryAuto": "自動配置",
+    "galleryColumns": "{{count}}列",
     "extensions": "プラグイン拡張",
     "manage": "プラグインページの管理",
     "more": "その他のプラグインワークスペース",

@@ -1,5 +1,9 @@
 {
   "pluginWebUI": {
+    "galleryLayout": "布局选择",
+    "paginationSummary": "第{{page}} / {{pages}}页 · 共{{total}}张",
+    "galleryAuto": "自动排布",
+    "galleryColumns": "{{count}}列",
     "extensions": "插件扩展",
     "manage": "管理插件页面",
     "more": "更多插件工作区",

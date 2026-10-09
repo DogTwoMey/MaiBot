@@ -46,6 +46,37 @@ def declaration():
     }
 
 
+@pytest.mark.parametrize("columns", [0, 5])
+def test_gallery_requires_bounded_columns(columns):
+    raw = declaration()
+    raw["pages"][0]["content"] = [{"type": "gallery", "columns": columns, "value": {"source": "summary", "field": "images"}}]
+    with pytest.raises(ValidationError):
+        WebUIExtension.model_validate(raw)
+
+
+def test_gallery_accepts_declared_query_and_rejects_inline_images():
+    raw = declaration()
+    gallery = {"type": "gallery", "columns": 3, "value": {"source": "summary", "field": "images"}}
+    raw["pages"][0]["content"] = [gallery]
+    assert WebUIExtension.model_validate(raw).pages[0].content[0].type == "gallery"
+    gallery["columns"] = None
+    assert WebUIExtension.model_validate(raw).pages[0].content[0].columns is None
+    gallery["value"] = "data:image/jpeg;base64,aGVsbG8="
+    with pytest.raises(ValidationError):
+        WebUIExtension.model_validate(raw)
+
+
+def test_pagination_requires_bound_query_and_page_parameter():
+    raw = declaration()
+    raw["pages"][0]["auto_refresh"] = True
+    node = {"type": "pagination", "name": "page", "value": {"source": "summary", "field": "pagination"}}
+    raw["pages"][0]["content"] = [node]
+    assert WebUIExtension.model_validate(raw).pages[0].auto_refresh
+    del node["name"]
+    with pytest.raises(ValidationError):
+        WebUIExtension.model_validate(raw)
+
+
 @pytest.mark.parametrize("property_name", ["html", "script", "style", "className", "onClick", "href"])
 def test_rejects_executable_and_arbitrary_style_properties(property_name):
     raw = declaration()
@@ -72,6 +103,69 @@ def test_rejects_deep_component_trees():
         node = {"type": "stack", "children": [node]}
     raw["pages"][0]["content"] = [node]
     with pytest.raises(ValidationError, match="8 层"):
+        WebUIExtension.model_validate(raw)
+
+
+def detail_declaration():
+    raw = declaration()
+    page = raw["pages"][0]
+    page["actions"]["reset"]["arguments"] = {
+        "count": {"scope": "selection", "source": "selectedRow", "field": "count"}
+    }
+    page["content"] = [
+        {"type": "table", "value": {"source": "summary", "field": "rows"},
+         "columns": [{"field": "count", "label": "数量"}], "selection": "selectedRow", "detail": "details"},
+        {"type": "dialog", "name": "details", "label": "详情", "children": [
+            {"type": "text", "value": {"scope": "selection", "source": "selectedRow", "field": "count"}},
+            {"type": "button", "label": "重置", "action": "reset", "variant": "danger"},
+        ]},
+        {"type": "repeat", "name": "row", "value": {"source": "summary", "field": "rows"}, "max_items": 20,
+         "when": {"reference": {"source": "summary", "field": "rows"}, "operator": "not_empty"},
+         "children": [{"type": "text", "value": {"scope": "item", "source": "row", "field": "count"}}]},
+    ]
+    return raw
+
+
+def test_details_loop_and_action_binding_roundtrip():
+    extension = WebUIExtension.model_validate(detail_declaration())
+    assert WebUIExtension.model_validate(extension.model_dump()) == extension
+    # Row fields still go through the same strict gateway scalar validation.
+    binding = extension.pages[0].actions["reset"]
+    binding.validate_args({"count": 2})
+    with pytest.raises(ValueError):
+        binding.validate_args({"count": {"count": 2}})
+
+
+@pytest.mark.parametrize("mutation", [
+    "unknown_dialog", "unknown_selection", "item_outside_loop", "loop_input", "duplicate_selection",
+    "undeclared_argument", "query_arguments", "loop_limit", "condition_source", "wrong_property",
+])
+def test_rejects_invalid_detail_and_loop_declarations(mutation):
+    raw = detail_declaration()
+    page = raw["pages"][0]
+    table, dialog, repeat = page["content"]
+    if mutation == "unknown_dialog":
+        table["detail"] = "missing"
+    elif mutation == "unknown_selection":
+        dialog["children"][0]["value"]["source"] = "missing"
+    elif mutation == "item_outside_loop":
+        dialog["children"][0]["value"] = {"scope": "item", "source": "row", "field": "count"}
+    elif mutation == "loop_input":
+        repeat["children"] = [{"type": "input", "name": "repeated", "value": ""}]
+    elif mutation == "duplicate_selection":
+        page["content"].append(deepcopy(table))
+    elif mutation == "undeclared_argument":
+        page["actions"]["reset"]["arguments"]["extra"] = {"source": "summary", "field": "count"}
+    elif mutation == "query_arguments":
+        page["queries"]["summary"]["arguments"] = {"count": {"scope": "selection", "source": "selectedRow"}}
+        page["queries"]["summary"]["parameters"] = {"count": {"type": "integer"}}
+    elif mutation == "loop_limit":
+        repeat["max_items"] = 101
+    elif mutation == "condition_source":
+        repeat["when"]["reference"]["source"] = "missing"
+    elif mutation == "wrong_property":
+        dialog["selection"] = "unsupported"
+    with pytest.raises(ValidationError):
         WebUIExtension.model_validate(raw)
 
 

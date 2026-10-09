@@ -93,7 +93,12 @@ async def save_limit(self, limit: int):
 | `tabs` | `children` | 每个子节点必须有 `label` |
 | `text` | `label`、`value` | 纯文本，HTML 不执行 |
 | `stat` | `label`、`value` | 统计卡片 |
-| `table` | `label`、`value`、`columns` | `columns` 是 `[{"field":"name","label":"名称"}]`；绑定对象数组，每页 50 行 |
+| `table` | `label`、`value`、`columns`、`selection`、`detail` | 绑定对象数组，每页 50 行；点击或 Enter / 空格选择一行，`detail` 打开具名弹窗 |
+| `dialog` | `name`、`label`、`children` | 在 `content` 顶层声明详情弹窗；`name` 是表格 `detail` 的目标，支持 Escape / 关闭按钮 |
+| `collapsible` | `label`、`children`、`default_open` | 可展开区块，默认收起 |
+| `repeat` | `name`、`value`、`children`、`max_items` | 为数组每项重复子组件；`name` 定义循环项上下文，默认最多 50 项，可设 1–100 |
+| `gallery` | `label`、`value`、`columns` | 最多 24 个图片对象；自动布局或 1–4 列；只接受受限的 JPEG / PNG / WebP data URL 缩略图 |
+| `pagination` | `label`、`name`、`value` | 绑定 `{page,pages,total}`；上一页 / 下一页修改 `name` 对应参数，搭配页面 `auto_refresh: true` 使用 |
 | `chart` | `label`、`value`、`chart_type`、`x`、`y` | `line` 或 `bar`；绑定对象数组，x 为字符串或数字，y 为数字，最多 2000 行 |
 | `input` | `name`、`label`、`value` | 数字默认值对应数字输入框，其余为文本 |
 | `date` | `name`、`label`、`value` | 字符串日期输入 |
@@ -107,6 +112,60 @@ async def save_limit(self, limit: int):
 
 页面打开和刷新时依次执行查询；操作成功后再次刷新查询，更新数据。查询失败、API 下线、结果不符合组件要求时显示错误，不使用伪造数据。写操作不会自动重试。需要确认的操作使用宿主确认弹窗，网关也要求确认标记；确认只是防误触机制，不是独立的授权或业务校验。
 
+## 行详情、动态卡片与条件显示
+
+数据引用增加可选 `scope`：默认 `query` 读取查询结果；`selection` 读取表格选中的行；`item` 读取所在 `repeat` 的当前项。`source` 分别填写查询别名、表格 `selection` 名、循环 `name`。循环项只能在该循环的子树使用；不同表格的选择名和弹窗名必须分别唯一。
+
+例如 `summary` 返回 `{"rows":[{"id":1,"title":"记录 A","description":"完整详情"}]}`，可声明以下 `content`：
+
+```json
+[
+  {
+    "type": "table", "value": {"source":"summary","field":"rows"},
+    "columns": [{"field":"title","label":"标题"}],
+    "selection": "record", "detail": "recordDetails"
+  },
+  {
+    "type": "dialog", "name": "recordDetails", "label": "记录详情",
+    "children": [
+      {"type":"text","value":{"scope":"selection","source":"record","field":"description"}},
+      {"type":"button","label":"删除记录","action":"remove","variant":"danger"}
+    ]
+  },
+  {
+    "type": "grid", "columns": 3,
+    "when": {"reference":{"source":"summary","field":"rows"},"operator":"not_empty"},
+    "children": [{
+      "type":"repeat", "name":"entry", "value":{"source":"summary","field":"rows"}, "max_items":20,
+      "children":[{"type":"card","children":[
+        {"type":"text","value":{"scope":"item","source":"entry","field":"title"}}
+      ]}]
+    }]
+  }
+]
+```
+
+对应操作绑定：
+
+```json
+"actions": {
+  "remove": {
+    "api": "remove_record",
+    "parameters": {"id":{"type":"integer","required":true,"minimum":1}},
+    "arguments": {"id":{"scope":"selection","source":"record","field":"id"}},
+    "confirmation": "确认删除选中的记录？"
+  }
+}
+```
+
+`arguments` 仅适用于操作，逐字段覆盖同名表单参数，只能映射已声明的标量参数，不会把整行对象传给 API。确认弹窗出现时锁定参数快照。插件 API 仍应核验记录存在性及业务权限。查询刷新成功后清除选中行并关闭详情，避免使用过期记录；没有选择时，选择引用为 null，必填操作参数会报错。
+
+所有组件支持可选 `when`。操作符为 `truthy`、`empty`、`not_empty`、`equals`；`equals` 搭配标量 `expected`。null、空字符串、空数组和空对象视为空，数字 0 不属于空数据。首次查询完成前，有条件的区块不显示。条件只控制显示，不替代权限校验。
+
+`repeat` 保留数组顺序，仅展示前 `max_items` 项。支持嵌套循环，但展开后的整个页面最多 1000 个节点；超过时显示数据错误，不继续展开。循环内可使用展示容器和操作按钮，不能声明输入、详情弹窗或行选择，避免复制表单和交互状态。弹窗放在顶层，可防止详情被折叠区块或未激活的 tab 隐藏。
+
+完整示例见 [Hello World 声明](../plugins/hello_world_plugin/webui.json) 的 `details` 页及 [插件 API](../plugins/hello_world_plugin/plugin.py)；只操作内存中的问候预览。
+
 ## 限制与生命周期
 
 - 文件最多 128 KiB，Host 注册载荷最多 512 KiB；不接受越界路径或符号链接文件。
@@ -117,3 +176,26 @@ async def save_limit(self, limit: int):
 - 无效声明或引用未注册 API 会使插件本次注册失败，并在日志中说明原因。现有无 `webui.json` 的插件不受影响。
 
 修改声明后重载插件。`queries` 和 `actions` 内的 API 名是本插件 API 的短名，版本默认 `"1"`，字段、引用和类型错误会直接拒绝。协议 JSON Schema 可由 `WebUIExtension.model_json_schema()` 生成。
+
+
+## 通用文件上传与后台任务轮询（宿主1.3.6）
+
+声明兼容现有 schema_version=1。使用上传的扩展增加 `required_capabilities: ["file_upload_v1"]`，宿主注册表同时返回 capabilities；旧宿主会拒绝未知声明，前端遇到缺失能力明确提示升级。插件 manifest 要求 SDK2.11.0 与宿主1.3.6；SDK发布前，本地开发通过 `MAIBOT_PLUGIN_SDK_PATH` 使用新SDK，主程序依然兼容PyPI的2.10.0。
+
+```json
+{
+  "schema_version": 1,
+  "required_capabilities": ["file_upload_v1"],
+  "pages": [{
+    "id": "images", "title": "图片",
+    "actions": {"add": {"api": "receive_image", "parameters": {"upload_id": {"type": "string", "required": true}}}},
+    "content": [{"type": "upload", "label": "上传图片", "action": "add"}]
+  }]
+}
+```
+
+上传使用已登录的 multipart POST `/api/webui/plugins/runtime/webui/{plugin}/{page}/uploads/{action}`；每请求一个 file，args为有界标量参数JSON字符串，文件内容不能放进args或RPC。组件允许多文件选择，逐文件显示进度和失败。宿主在解析multipart之前校验登录/声明归属与请求总量，按实际图片解码验证格式和像素，随机命名暂存，一小时一次性插件归属凭证；随后仅将upload_id传给插件API。插件声明能力 `webui.claim_upload`，SDK通过 `ctx.webui.claim_upload(upload_id)` 领取到本插件的data_dir/uploads。
+
+首版仅JPEG/PNG/静态WebP，每文件20MiB、4000万像素；不支持压缩包/动画/客户端自定义路径。输入格式错误返回422，超限请求413，未登录401，未开放上传操作403。插件卸载或API下线后拒绝调用。
+
+`poll_interval_seconds` 可在页面声明为3至60秒，0（默认）不轮询；只调用queries，页面离开时停止，操作忙碌时跳过。插件必须保证queries只读，训练action冻结快照、启动独立子进程后立即返回任务编号，不阻塞网关10秒预算。缩略图、分页与每响应512KiB限制保持不变。
