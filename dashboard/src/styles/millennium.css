@@ -2939,3 +2939,256 @@
 :root[data-dashboard-style='millennium'] [data-search-answer='true'] > .text-muted-foreground {
   color: var(--mil-screen-ink);
 }
+
+/* ---------- 日志 → 推理过程：两个凸起模块，记录列表和记录内容各是一块屏幕 ---------- */
+
+/* 模块底部的塑料厚度画在外侧，给它让出位置，免得被页面裁掉 */
+:root[data-dashboard-style='millennium'] [data-reasoning-process='true'] {
+  padding-bottom: 5px;
+}
+
+/* 这一页原来到处是 1px 细线框：统一加粗到 2px。带语义色的边框（角色、状态）保留颜色，
+   其余换成刻线色。用 :where 压低优先级，让下面的模块、屏幕、标签规则都能覆盖。 */
+:root[data-dashboard-style='millennium']
+  [data-reasoning-process='true']
+  :where(:is(article, section, aside, div, pre, details, figure).border) {
+  border-width: 2px;
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-process='true']
+  :where(
+    :is(article, section, aside, div, pre, details, figure).border:not(
+        [data-dashboard-badge='true'],
+        [class*='border-orange'],
+        [class*='border-cyan'],
+        [class*='border-emerald'],
+        [class*='border-amber'],
+        [class*='border-violet'],
+        [class*='border-indigo'],
+        [class*='border-fuchsia'],
+        [class*='border-sky'],
+        [class*='border-teal'],
+        [class*='border-destructive'],
+        [class*='border-primary'],
+        [class*='border-muted-foreground']
+      )
+  ) {
+  border-color: var(--mil-lo);
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-process='true']
+  [data-dashboard-badge='true'].text-foreground {
+  border-color: var(--mil-line);
+}
+
+/* 列表和内容两栏、重放面板：凸起的塑料模块 */
+:root[data-dashboard-style='millennium'] [data-reasoning-panel='true'] {
+  background-color: var(--mil-panel);
+  background-image: var(--mil-speck);
+  background-size: 5px 5px;
+  border: 2px solid var(--mil-line);
+  box-shadow: var(--mil-raise);
+  color: var(--mil-ink);
+}
+
+/* 标题条下面是一道刻线（暗线 + 亮线） */
+:root[data-dashboard-style='millennium'] [data-reasoning-panel-header='true'] {
+  border-bottom: 2px solid var(--mil-lo);
+  box-shadow: 0 2px 0 var(--mil-hi);
+}
+
+/* 记录数和页码是印在壳上的丝印小字 */
+:root[data-dashboard-style='millennium'] [data-reasoning-panel-count='true'] {
+  color: var(--mil-print);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* 筛选栏和翻页键直接放在机壳上，和屏幕之间不再画线 */
+:root[data-dashboard-style='millennium'] [data-reasoning-panel-toolbar='true'] {
+  border-bottom: 0;
+  padding: 0.5rem 0.625rem 0.125rem;
+}
+
+/* 筛选栏里的键帽和输入框统一收到小一档的高度，给下面的记录列表多留位置 */
+:root[data-dashboard-style='millennium']
+  [data-reasoning-panel-toolbar='true']
+  [data-dashboard-button='true']:is(.h-8, .h-9) {
+  font-size: 0.8125rem;
+  height: 2.25rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-panel-toolbar='true']
+  [data-dashboard-button='true'].w-8 {
+  padding-left: 0;
+  padding-right: 0;
+  width: 2.25rem;
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-panel-toolbar='true']
+  :is([data-dashboard-input='true'], [data-dashboard-select-trigger='true']).h-9 {
+  font-size: 0.8125rem;
+  height: 2.25rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-panel-footer='true'] {
+  border-top: 0;
+  height: auto;
+  padding: 0.125rem 0.625rem 0.5rem;
+}
+
+/* 下沉屏幕：记录列表、结构化 / 文本 / HTML 内容 */
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'] {
+  background-color: var(--mil-screen);
+  background-image: var(--mil-screen-tex);
+  background-size: 3px 3px;
+  border: 2px solid var(--mil-line);
+  /* 屏幕紧贴在模块里，只留内侧的下沉阴影，不再画外圈的亮暗两道边，免得和模块的斜面叠成一排竖线 */
+  box-shadow: inset 3px 3px 0 var(--mil-screen-shade);
+  color: var(--mil-screen-ink);
+  margin: 0.625rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'][data-reasoning-list='true'] {
+  margin: 0.375rem 0.625rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'] .text-foreground {
+  color: var(--mil-screen-ink);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'] .text-muted-foreground {
+  color: var(--mil-screen-dim);
+}
+
+/* 屏幕里的分区框用浅刻线，折叠区的分隔线是虚线 */
+:root[data-dashboard-style='millennium']
+  [data-reasoning-screen='true']
+  :where(
+    :is(article, section, div, pre, details, figure).border:not(
+        [data-dashboard-badge='true'],
+        [class*='border-orange'],
+        [class*='border-cyan'],
+        [class*='border-emerald'],
+        [class*='border-amber'],
+        [class*='border-violet'],
+        [class*='border-indigo'],
+        [class*='border-fuchsia'],
+        [class*='border-sky'],
+        [class*='border-teal'],
+        [class*='border-destructive'],
+        [class*='border-primary'],
+        [class*='border-muted-foreground']
+      )
+  ) {
+  border-color: var(--mil-rule);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'] .border-t {
+  border-top: 2px dashed var(--mil-rule);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-screen='true'] .border-b {
+  border-bottom: 2px dashed var(--mil-rule);
+}
+
+/* 记录列表：一行一条，行间虚线，选中的是整行薄荷绿 */
+:root[data-dashboard-style='millennium'] [data-reasoning-list-items='true'] {
+  padding: 0;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-list-item='true'] {
+  border: 0;
+  border-bottom: 2px dashed var(--mil-rule);
+  color: var(--mil-screen-ink);
+  margin-top: 0;
+  padding: 0.625rem 0.75rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-list-item='true']:hover {
+  background-color: color-mix(in srgb, var(--mil-on) 22%, transparent);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-list-item='true'][data-active='true'] {
+  background-color: var(--mil-on);
+  color: var(--mil-on-ink);
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-list-item='true'][data-active='true']
+  :is(.text-foreground, .text-muted-foreground) {
+  color: var(--mil-on-ink);
+}
+
+/* 「完整 Item JSON」收起时只是屏幕上一个浅刻线的小入口，不抢正文；展开后才浮成一块屏幕 */
+:root[data-dashboard-style='millennium'] [data-reasoning-item-json='true'] {
+  background-color: transparent !important;
+  border: 2px solid var(--mil-rule);
+  box-shadow: none;
+  color: var(--mil-screen-dim);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-item-json='true']:hover {
+  color: var(--mil-screen-ink);
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-item-json='true'][data-state='open'] {
+  background-color: var(--mil-screen) !important;
+  border-color: var(--mil-line);
+  box-shadow: 6px 6px 0 var(--mil-float-shadow);
+  color: var(--mil-screen-ink);
+}
+
+/* 类型总览：每个类型是一块凸起的小模块 */
+:root[data-dashboard-style='millennium'] [data-reasoning-stage-card='true'] {
+  background-color: var(--mil-panel);
+  border: 2px solid var(--mil-line);
+  box-shadow: var(--mil-raise);
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-stage-card='true']:is(:hover, :focus-within) {
+  background-color: var(--mil-key-hover);
+  box-shadow: var(--mil-raise);
+}
+
+/* 屏幕里的层级只留两层：屏幕本身和带颜色的 Item 卡片。
+   「请求 Items」这类分区不再画框，改用标题和区间虚线分隔；消息前的引用竖线也去掉。 */
+:root[data-dashboard-style='millennium']
+  [data-reasoning-screen='true']
+  > div
+  > :is(section, div).border:not([class*='bg-']) {
+  border: 0;
+  padding: 0;
+}
+
+:root[data-dashboard-style='millennium']
+  [data-reasoning-screen='true']
+  > div
+  > :is(section, div).border:not([class*='bg-']):not(:last-child) {
+  border-bottom: 2px dashed var(--mil-rule);
+  padding-bottom: 0.75rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-message-block='true'] {
+  border-left: 0;
+  padding-left: 0;
+}
+
+/* 最终输出：屏幕最上方一块深色实线框，下面再压一道实线，和请求过程明确分开 */
+:root[data-dashboard-style='millennium'] [data-reasoning-output='true'] {
+  border-bottom: 2px solid var(--mil-line);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.875rem;
+}
+
+:root[data-dashboard-style='millennium'] [data-reasoning-output='true'] > section {
+  border: 2px solid var(--mil-line);
+  box-shadow: 4px 4px 0 var(--mil-screen-shade);
+}

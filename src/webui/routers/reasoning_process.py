@@ -52,6 +52,11 @@ ALL_GROUP_SESSIONS = "__all_group_chats__"
 BEHAVIOR_REFERENCE_MARKER = "[行为表现参考]"
 PROMPT_METADATA_MARKER = "[请求信息]"
 PROMPT_SEPARATOR = "=" * 80
+# 工具推理记录相对发起它的请求最多晚多久（毫秒），以及定位调用 ID 需要读取的文件头长度
+TOOL_CALL_RECORD_WINDOW_MS = 30 * 60 * 1000
+TOOL_CALL_RECORD_HEAD_SIZE = 8192
+# 反查发起调用的记录时需要完整解析 JSON，每个类型最多往前看这么多条
+TOOL_CALL_SOURCE_MAX_CANDIDATES = 12
 PROMPT_METADATA_SCRIPT_PATTERN = re.compile(
     r"<script[^>]*id=[\"']prompt-preview-metadata[\"'][^>]*>(?P<payload>.*?)</script>",
     re.IGNORECASE | re.DOTALL,
@@ -271,6 +276,27 @@ class ReasoningPromptListResponse(BaseModel):
     sessions: list[str] = Field(default_factory=list)
     session_infos: list[ReasoningPromptSessionInfo] = Field(default_factory=list)
     selected_session: str = ""
+
+
+class ReasoningToolCallRecord(BaseModel):
+    """工具调用对应的推理过程记录定位信息。"""
+
+    call_id: str
+    stage: str
+    session: str
+    stem: str
+
+
+class ReasoningToolCallRecordsResponse(BaseModel):
+    """工具调用推理记录查找响应。"""
+
+    records: list[ReasoningToolCallRecord] = Field(default_factory=list)
+
+
+class ReasoningToolCallSourceResponse(BaseModel):
+    """发起某次工具调用的推理记录查找响应。"""
+
+    record: ReasoningToolCallRecord | None = None
 
 
 class ReasoningPromptStagesResponse(BaseModel):
@@ -2063,6 +2089,139 @@ def list_reasoning_prompt_files(
         session_infos=session_infos,
         selected_session=selected_session,
     )
+
+
+def _find_tool_call_record_stem(session_dir: Path, source_timestamp: int, pending_call_ids: set[str]) -> dict[str, str]:
+    """在某个类型的会话目录里，按调用 ID 查找工具自己的推理记录。"""
+
+    # 工具是在发起它的那次请求结束之后才执行的，记录文件名（毫秒时间戳）一定更晚；只看时间窗口内的文件
+    candidate_files = sorted(
+        (
+            file_path
+            for file_path in session_dir.glob("*.json")
+            if file_path.stem.isdigit()
+            and source_timestamp <= int(file_path.stem) <= source_timestamp + TOOL_CALL_RECORD_WINDOW_MS
+        ),
+        key=lambda file_path: int(file_path.stem),
+    )
+
+    found: dict[str, str] = {}
+    for file_path in candidate_files:
+        # 调用 ID 写在 JSON 开头的 request.selection_reason 里，读文件头即可
+        with file_path.open("r", encoding="utf-8", errors="replace") as file:
+            head = file.read(TOOL_CALL_RECORD_HEAD_SIZE)
+        for call_id in pending_call_ids - found.keys():
+            if re.search(rf"ID[:：]\s*{re.escape(call_id)}(?![\w-])", head):
+                found[call_id] = file_path.stem
+        if len(found) == len(pending_call_ids):
+            break
+    return found
+
+
+@router.get("/tool-call-records", response_model=ReasoningToolCallRecordsResponse)
+def find_reasoning_tool_call_records(
+    session: str = Query(..., min_length=1),
+    source_stage: str = Query("planner"),
+    source_stem: str = Query(..., min_length=1),
+    call_id: tuple[str, ...] = Query(()),
+):
+    """查找一次请求输出的工具调用里，哪些工具（如 reply）留有自己的推理过程记录。"""
+
+    if not _is_safe_name(session):
+        raise HTTPException(status_code=400, detail="会话名称不合法")
+    normalized_source_stage = _resolve_stage_name(source_stage)
+    pending_call_ids = {item.strip() for item in call_id if item.strip()}
+    if not pending_call_ids or not source_stem.isdigit():
+        return ReasoningToolCallRecordsResponse()
+
+    records: list[ReasoningToolCallRecord] = []
+    for stage_name in _list_stage_names():
+        if stage_name == normalized_source_stage or not pending_call_ids:
+            continue
+        session_dir = PROMPT_LOG_ROOT / stage_name / session
+        if not session_dir.is_dir():
+            continue
+        found = _find_tool_call_record_stem(session_dir, int(source_stem), pending_call_ids)
+        for found_call_id, stem in found.items():
+            records.append(ReasoningToolCallRecord(call_id=found_call_id, stage=stage_name, session=session, stem=stem))
+        pending_call_ids -= found.keys()
+
+    return ReasoningToolCallRecordsResponse(records=records)
+
+
+def _payload_outputs_tool_call(payload: dict[str, Any], call_id: str) -> bool:
+    """判断一条推理记录的输出里是否发起了指定的工具调用。"""
+
+    output_items = payload.get("output_items")
+    if not isinstance(output_items, list):
+        return False
+    return any(
+        isinstance(item, dict)
+        and item.get("item_type") == "FunctionCallItem"
+        and isinstance(item.get("tool_call"), dict)
+        and str(item["tool_call"].get("call_id") or "") == call_id
+        for item in output_items
+    )
+
+
+def _find_tool_call_source_stem(session_dir: Path, tool_timestamp: int, call_id: str) -> str | None:
+    """在某个类型的会话目录里，查找输出了指定工具调用的那条推理记录。"""
+
+    # 发起调用的请求一定早于工具自己的记录；从最近的往前找
+    candidate_files = sorted(
+        (
+            file_path
+            for file_path in session_dir.glob("*.json")
+            if file_path.stem.isdigit()
+            and tool_timestamp - TOOL_CALL_RECORD_WINDOW_MS <= int(file_path.stem) <= tool_timestamp
+        ),
+        key=lambda file_path: int(file_path.stem),
+        reverse=True,
+    )
+
+    for file_path in candidate_files[:TOOL_CALL_SOURCE_MAX_CANDIDATES]:
+        # 调用 ID 也会出现在后续请求的历史上下文里，必须确认它在这条记录的输出中
+        if _payload_outputs_tool_call(_load_prompt_json(file_path), call_id):
+            return file_path.stem
+    return None
+
+
+@router.get("/tool-call-source", response_model=ReasoningToolCallSourceResponse)
+def find_reasoning_tool_call_source(
+    session: str = Query(..., min_length=1),
+    stage: str = Query(..., min_length=1),
+    stem: str = Query(..., min_length=1),
+    call_id: str = Query(..., min_length=1),
+):
+    """从工具自己的推理记录（如回复器）反查发起这次调用的推理记录（通常是规划器）。"""
+
+    if not _is_safe_name(session):
+        raise HTTPException(status_code=400, detail="会话名称不合法")
+    tool_stage = _resolve_stage_name(stage)
+    normalized_call_id = call_id.strip()
+    if not normalized_call_id or not stem.isdigit():
+        return ReasoningToolCallSourceResponse()
+
+    # 绝大多数工具调用由规划器发起，优先查它
+    stage_names = sorted(_list_stage_names(), key=lambda name: name != "planner")
+    for stage_name in stage_names:
+        if stage_name == tool_stage:
+            continue
+        session_dir = PROMPT_LOG_ROOT / stage_name / session
+        if not session_dir.is_dir():
+            continue
+        source_stem = _find_tool_call_source_stem(session_dir, int(stem), normalized_call_id)
+        if source_stem:
+            return ReasoningToolCallSourceResponse(
+                record=ReasoningToolCallRecord(
+                    call_id=normalized_call_id,
+                    stage=stage_name,
+                    session=session,
+                    stem=source_stem,
+                )
+            )
+
+    return ReasoningToolCallSourceResponse()
 
 
 @router.get("/file", response_model=ReasoningPromptContentResponse)

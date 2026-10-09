@@ -566,8 +566,36 @@ export function extractReasoningHeaderMeta(text?: string): ReasoningHeaderMeta {
     remainingLines.push(line)
   }
 
-  meta.remainingText = remainingLines.join('\n').trim()
+  meta.remainingText = mergeContextSummaryLines(remainingLines).join('\n').trim()
   return meta
+}
+
+/**
+ * 把「实际发送 N 条消息|消息 …|tool …|cache_window …」和「请求模型：…」两行合成一行：
+ * 模型放在最前，消息数改称上下文长度，cache_window 是内部调参信息，不展示。
+ */
+function mergeContextSummaryLines(lines: string[]): string[] {
+  const summaryIndex = lines.findIndex((line) => /^实际发送\s*\d+\s*条消息/.test(line.trim()))
+  if (summaryIndex < 0) return lines
+
+  const [sentPart, ...restParts] = lines[summaryIndex].trim().split('|')
+  const sentCount = sentPart.match(/\d+/)?.[0] ?? '0'
+  const summaryParts = [
+    `上下文长度：${sentCount} 条`,
+    ...restParts
+      .map((part) => part.trim())
+      .filter((part) => part && !part.startsWith('cache_window')),
+  ]
+
+  const modelIndex = lines.findIndex((line) => /^请求模型[：:]/.test(line.trim()))
+  if (modelIndex >= 0) {
+    summaryParts.unshift(lines[modelIndex].trim())
+  }
+
+  return lines.flatMap((line, index) => {
+    if (index === summaryIndex) return [summaryParts.join(' | ')]
+    return index === modelIndex ? [] : [line]
+  })
 }
 
 export function getReasoningRecordTitle(
@@ -729,7 +757,11 @@ export function NaturalLanguageText({
         }
 
         return (
-          <div key={`message-${index}`} className="border-primary/60 border-l-2 pl-2">
+          <div
+            key={`message-${index}`}
+            data-reasoning-message-block="true"
+            className="border-primary/60 border-l-2 pl-2"
+          >
             {renderMessageTagMeta(block.attrs, avatarMap)}
             <pre className={baseClassName}>{block.body || '空消息'}</pre>
           </div>
@@ -840,7 +872,8 @@ export function ContextItemCard({
       )}
     >
       <div className="min-w-0 space-y-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {/* 桌面端右上角浮着「完整 Item JSON」，标题行给它让出宽度，窄屏时标签换行而不是叠上去 */}
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 lg:min-h-8 lg:pr-52">
           <Badge variant="outline">#{index + 1}</Badge>
           <Badge variant="outline" className={cn('font-mono', roleStyle.badgeClassName)}>
             {roleStyle.label}
@@ -895,6 +928,7 @@ export function ContextItemCard({
         open={itemJsonOpen}
         onOpenChange={setItemJsonOpen}
         style={ITEM_JSON_PANEL_STYLE}
+        data-reasoning-item-json="true"
         className={cn(
           'min-w-0 rounded-md border',
           'lg:absolute lg:top-3 lg:right-3',

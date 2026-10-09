@@ -47,6 +47,8 @@ vi.mock('@/lib/config-api', () => ({
 }))
 
 vi.mock('@/lib/reasoning-process-api', () => ({
+  findReasoningToolCallRecords: vi.fn(),
+  findReasoningToolCallSource: vi.fn(),
   listReasoningPromptFiles: vi.fn(),
   listReasoningPromptStages: vi.fn(),
   clearReasoningPromptStage: vi.fn(),
@@ -427,6 +429,8 @@ function lastFilesQuery() {
 }
 
 function installDefaultApiMocks() {
+  vi.mocked(reasoningApi.findReasoningToolCallRecords).mockResolvedValue({ records: [] })
+  vi.mocked(reasoningApi.findReasoningToolCallSource).mockResolvedValue({ record: null })
   vi.mocked(reasoningApi.listReasoningPromptStages).mockResolvedValue({
     stages: defaultStages,
     stage_infos: defaultStageInfos,
