@@ -151,6 +151,12 @@ function NodeRenderer({ node, ...props }: Omit<RendererProps, 'nodes'> & { node:
     )
 
   switch (node.type) {
+    case 'image': {
+      const source = galleryThumbnail(value)
+      return source ? <img src={source} alt={node.label ?? ''} loading="lazy" decoding="async"
+        className="h-72 w-full object-contain bg-muted rounded-md" /> :
+        <p className="text-muted-foreground text-sm">{t('pluginWebUI.empty')}</p>
+    }
     case 'upload':
       return <UploadControl label={node.label!} action={node.action!} busy={props.busy} upload={props.onUpload} complete={props.onUploadComplete} maxEdge={node.image_max_edge} />
     case 'dialog':

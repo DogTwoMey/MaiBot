@@ -37,6 +37,7 @@ export interface WebUINode {
     | 'table'
     | 'chart'
     | 'gallery'
+    | 'image'
     | 'pagination'
     | 'input'
     | 'select'

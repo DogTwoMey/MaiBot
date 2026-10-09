@@ -111,7 +111,7 @@ class VisibilityCondition(StrictModel):
 
 class WebUINode(StrictModel):
     type: Literal[
-        "stack", "grid", "card", "tabs", "text", "stat", "table", "chart", "gallery", "pagination", "input", "select", "switch", "date", "button", "dialog", "collapsible", "repeat", "upload"
+        "stack", "grid", "card", "tabs", "text", "stat", "table", "chart", "gallery", "image", "pagination", "input", "select", "switch", "date", "button", "dialog", "collapsible", "repeat", "upload"
     ]
     label: Optional[Label] = None
     value: Union[Text, int, float, bool, DataReference, None] = None
@@ -146,6 +146,7 @@ class WebUINode(StrictModel):
             "collapsible": {"children", "default_open"},
             "repeat": {"value", "name", "children", "max_items"},
             "gallery": {"value", "columns"},
+            "image": {"value"},
             "pagination": {"value", "name"},
             "chart": {"value", "chart_type", "x", "y"},
             "input": {"name", "value"},

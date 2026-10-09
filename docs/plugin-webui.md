@@ -168,6 +168,8 @@ async def save_limit(self, limit: int):
 
 ## 限制与生命周期
 
+单张预览使用 `image` 节点，`value` 指向一条受大小限制的JPEG/PNG/WebP data URL，`label` 用作图片替代文本。它只显示图片，不带图库排列控件；`gallery` 继续用于图片列表。
+
 `upload` 可声明 `image_max_edge`（1–8192）。启用后网页在上传前检查整幅图片；超过边长限制时等比例缩小并转JPEG，超过20MiB但边长合格时保持尺寸转JPEG压缩。透明背景补白，不裁剪、不修改本地原文件，上传副本必须不超过20MiB。未声明时保留原上传行为。角色识别插件设置为4000。
 
 - 文件最多 128 KiB，Host 注册载荷最多 512 KiB；不接受越界路径或符号链接文件。
