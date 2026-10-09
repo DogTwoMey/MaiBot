@@ -168,6 +168,7 @@ function getSessionInitial(session: SessionInfo) {
 
 function isWaitingForMessage(status: StageStatusInfo) {
   return (
+    status.stage === '空闲' ||
     status.stage === '等待消息' ||
     status.detail.includes('等待消息') ||
     status.agentState === 'wait'

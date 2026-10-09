@@ -17,5 +17,5 @@ export function StageStatusLabel({ status }: { status: StageStatusInfo }) {
   if (waitUntil !== undefined) {
     return <>等待({Math.max(0, Math.ceil(waitUntil - now))}s)</>
   }
-  return <>{status.stage || '未知阶段'}</>
+  return <>{status.stage === '等待消息' ? '空闲' : status.stage || '未知阶段'}</>
 }

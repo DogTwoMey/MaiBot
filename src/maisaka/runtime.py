@@ -73,7 +73,7 @@ from .reasoning_engine import MaisakaReasoningEngine
 
 logger = get_logger("maisaka_runtime")
 
-MAX_INTERNAL_ROUNDS = 10
+MAX_INTERNAL_ROUNDS = 16
 MAX_RETAINED_MESSAGE_CACHE_SIZE = 200
 CONTEXT_RESTORE_FILL_RATIO = 0.5
 CONTEXT_RESTORE_SHORT_RESTART_SECONDS = 5 * 60

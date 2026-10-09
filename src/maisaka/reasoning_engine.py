@@ -1172,7 +1172,7 @@ class MaisakaReasoningEngine:
                     if self._runtime._agent_state == self._runtime._STATE_RUNNING:
                         self._runtime._enter_stop_state()
                     if self._runtime._running:
-                        self._runtime._update_stage_status("等待消息", "本轮处理结束")
+                        self._runtime._update_stage_status("空闲", "本轮处理结束")
         except asyncio.CancelledError:
             self._runtime._log_internal_loop_cancelled()
             raise
@@ -1211,7 +1211,7 @@ class MaisakaReasoningEngine:
         )
         self._runtime._enter_stop_state()
         if self._runtime._running:
-            self._runtime._update_stage_status("等待消息", "回复频率为 0，已静默接收消息")
+            self._runtime._update_stage_status("空闲", "回复频率为 0，已静默接收消息")
 
         trigger_labels: list[str] = []
         if cached_messages:
