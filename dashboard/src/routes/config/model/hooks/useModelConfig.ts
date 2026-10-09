@@ -235,6 +235,7 @@ export function useModelConfig() {
 
   // ---- provider 自动保存定时器 / 快照 ----
   const providerAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isMountedRef = useRef(true)
   const providersSnapshotRef = useRef<string | null>(null)
   const latestProvidersSnapshotRef = useRef('')
   const providerGenerationRef = useRef(0)
@@ -737,6 +738,14 @@ export function useModelConfig() {
     ]
   )
 
+  // 在定时器清理前标记卸载，让切换页面时的待保存改动立即入队。
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
   // 监听 apiProviders 变化，防抖自动保存
   useEffect(() => {
     if (initialLoadRef.current) return
@@ -761,6 +770,9 @@ export function useModelConfig() {
       if (providerAutoSaveTimerRef.current) {
         clearTimeout(providerAutoSaveTimerRef.current)
         providerAutoSaveTimerRef.current = null
+        if (!isMountedRef.current) {
+          void autoSaveProviders(apiProviders, snapshot, generation)
+        }
       }
     }
   }, [apiProviders, autoSaveProviders, initialLoadRef])
