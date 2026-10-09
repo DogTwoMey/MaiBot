@@ -1,4 +1,5 @@
 import type { PluginConfigSchema } from '@/lib/plugin-api'
+import type { VectorSpace, VectorSpaceList } from '@/types/vector-space'
 
 import { backendApi } from '@/lib/http'
 import type { HttpMethod } from '@/lib/http'
@@ -2113,6 +2114,16 @@ export async function protectMemory(
 
 export async function getMemoryRuntimeConfig(): Promise<MemoryRuntimeConfigPayload> {
   return requestJson<MemoryRuntimeConfigPayload>('/runtime/config')
+}
+
+export type MemoryVectorSpace = VectorSpace
+
+export async function getMemoryVectorSpaces(): Promise<VectorSpaceList> {
+  return requestJson('/runtime/vectors/spaces')
+}
+
+export async function deleteMemoryVectorSpace(spaceId: string): Promise<{ success: boolean }> {
+  return requestJson(`/runtime/vectors/spaces/${encodeURIComponent(spaceId)}`, { method: 'DELETE' })
 }
 
 export async function refreshMemoryRuntimeSelfCheck(): Promise<MemoryRuntimeSelfCheckPayload> {

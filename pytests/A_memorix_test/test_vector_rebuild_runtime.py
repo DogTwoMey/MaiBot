@@ -208,37 +208,26 @@ async def test_pending_single_pool_recovers_after_real_probe(
         assert result["success"] is True
         assert result["recovered"] is True
         assert embedding.observed_model == "fake-embedding"
-        assert len(embedding.encode_calls) == 1
-        assert kernel._dual_vector_pools_enabled() is False
-        if stored_state == "compatible":
-            assert result["vector_restored"] is True
-            assert result["vector_available"] is True
-            assert result["vector_health"]["state"] == "healthy"
-            assert paragraph_hash in kernel.vector_store
-            assert kernel._runtime_capabilities["vector_read"] is True
-            assert kernel._runtime_capabilities["vector_write"] is True
-            assert kernel.retriever is not None
-            assert kernel.retriever.config.vector_pools.mode == "single"
-            assert kernel.retriever._is_sparse_only_runtime() is False
-            hashes, _ = kernel.vector_store.search(vector, k=1)
-            assert hashes == [paragraph_hash]
-        else:
-            assert result["vector_restored"] is False
-            assert result["vector_available"] is False
-            expected_code = (
-                "vector_generation_missing" if stored_state == "missing" else "v2_fingerprint_mismatch"
-            )
-            assert result["vector_health"]["error_code"] == expected_code
-            assert result["vector_health"]["recovery_stage"] == "rebuild_required"
-            assert kernel.vector_store is None
-            # 再次手动探测必须仍返回真实的向量故障，不能把 Embedding 成功当作通道恢复。
-            repeated = await kernel.memory_runtime_admin(action="recover_embedding")
-            assert repeated["vector_available"] is False
-            assert repeated["vector_health"]["error_code"] == expected_code
-        for name, content in files_before.items():
-            assert (data_dir / "vectors" / name).read_bytes() == content
+        assert len(embedding.encode_calls) == 3
+        assert result["vector_restored"] is True
+        assert result["vector_available"] is True
+        assert result["vector_health"]["state"] == "healthy"
+        current_store = kernel._paragraph_store()
+        assert paragraph_hash in current_store
+        assert kernel._runtime_capabilities["vector_read"] is True
+        assert kernel._runtime_capabilities["vector_write"] is True
+        hashes, _ = current_store.search(vector, k=1)
+        assert hashes == [paragraph_hash]
+        assert kernel._active_vector_space_id
+        assert kernel._dual_vector_pools_enabled() == (pool_mode == "dual")
+        # 旧模型的已知身份仍保存在独立目录，重建不会覆写旧库内容。
+        if stored_state in {"fingerprint_mismatch", "dual_fingerprint_mismatch"}:
+            old_hash = "different-model-fingerprint" if stored_state == "fingerprint_mismatch" else "different-dual-model"
+            old_id = kernel._vector_space_service.space_id({"hash": old_hash})
+            old_root = data_dir / "vectors" / "spaces" / old_id
+            for name, content in files_before.items():
+                assert (old_root / name).read_bytes() == content
         assert not (data_dir / "vector_quarantine").exists()
-        assert (data_dir / "vectors" / "dual_ready.json").exists() == (stored_state == "dual_fingerprint_mismatch")
     finally:
         await kernel.shutdown()
 
@@ -1043,6 +1032,10 @@ async def test_runtime_admin_rebuild_all_vectors_rejects_concurrent_request(
         config=_kernel_config(data_dir, fake_embedding_manager.default_dimension),
     )
 
+    async def no_background_tasks():
+        pass
+    monkeypatch.setattr(kernel, "_start_background_tasks", no_background_tasks)
+
     await kernel.initialize()
     assert kernel.metadata_store is not None
     kernel.metadata_store.add_paragraph("并发重建测试", source="test")
@@ -1273,7 +1266,7 @@ async def test_dual_rebuild_detects_new_embedding_dimension_without_recover(
         assert second_kernel.graph_vector_store.dimension == second_embedding_manager.default_dimension
         assert paragraph_hash in second_kernel.paragraph_vector_store
         assert f"entity:{entity_hash}" in second_kernel.graph_vector_store
-        manifest = json.loads((data_dir / "vectors" / "dual_ready.json").read_text(encoding="utf-8"))
+        manifest = json.loads((second_kernel._vectors_root() / "dual_ready.json").read_text(encoding="utf-8"))
         assert manifest["dimension"] == second_embedding_manager.default_dimension
     finally:
         await second_kernel.shutdown()

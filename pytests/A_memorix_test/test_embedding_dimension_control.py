@@ -48,7 +48,7 @@ def _build_adapter(
         model_identifier="embedding-model-id",
         extra_params=dict(model_extra_params or {}),
     )
-    provider = SimpleNamespace(name="provider-1", client_type=client_type)
+    provider = SimpleNamespace(name="provider-1", client_type=client_type, base_url="https://example.test")
 
     monkeypatch.setattr(adapter, "_resolve_candidate_model_names", lambda: ["embedding-model"])
     monkeypatch.setattr(adapter, "_find_model_info", lambda model_name: model_info)
@@ -58,6 +58,7 @@ def _build_adapter(
         "get_client_class_instance",
         lambda api_provider, force_new=True: fake_client,
     )
+    adapter._last_configuration_key = adapter._dimension_cache_key()
     return adapter, fake_client
 
 
@@ -66,13 +67,18 @@ def test_auto_embedding_fingerprint_uses_resolved_candidate_model(monkeypatch):
     adapter._dimension = 8
     adapter._dimension_detected = True
     model_info_by_name = {
-        "embedding-model": SimpleNamespace(name="embedding-model", api_provider="provider-1"),
-        "fallback-model": SimpleNamespace(name="fallback-model", api_provider="provider-2"),
+        "embedding-model": SimpleNamespace(
+            name="embedding-model", api_provider="provider-1", model_identifier="model-id", extra_params={}
+        ),
+        "fallback-model": SimpleNamespace(
+            name="fallback-model", api_provider="provider-2", model_identifier="fallback-id", extra_params={}
+        ),
     }
 
     monkeypatch.setattr(adapter, "_resolve_candidate_model_names", lambda: ["embedding-model", "fallback-model"])
     monkeypatch.setattr(adapter, "_find_model_info", lambda model_name: model_info_by_name[model_name])
 
+    monkeypatch.setattr(adapter, "_find_provider", lambda name: SimpleNamespace(base_url="https://example.test"))
     cold_fingerprint = adapter.get_embedding_fingerprint(dimension=8)
     adapter._last_success_model_name = "embedding-model"
     adapter._last_success_provider_name = "provider-1"
