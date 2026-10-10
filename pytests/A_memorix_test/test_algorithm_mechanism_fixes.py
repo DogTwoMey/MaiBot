@@ -250,7 +250,7 @@ class _IncompleteEpisodeSegmentationStub:
 
 
 @pytest.mark.asyncio
-async def test_episode_invalid_partition_falls_back_to_complete_partition() -> None:
+async def test_episode_preserves_segmented_evidence_without_rule_fallback() -> None:
     service = EpisodeService(
         metadata_store=_EpisodeMetadataStub(),
         segmentation_service=_IncompleteEpisodeSegmentationStub(),
@@ -267,10 +267,9 @@ async def test_episode_invalid_partition_falls_back_to_complete_partition() -> N
 
     result = await service._build_episode_payloads_for_group(group)
 
-    assert result["fallback_count"] == 1
-    assert result["done_hashes"] == ["a", "b", "c"]
-    assert len(result["payloads"]) == 1
-    assert result["payloads"][0]["evidence_ids"] == ["a", "b", "c"]
+    assert result["fallback_count"] == 0
+    assert result["done_hashes"] == ["a", "b"]
+    assert [payload["evidence_ids"] for payload in result["payloads"]] == [["a", "b"], ["b"]]
 
 
 class _EmbeddingStub:

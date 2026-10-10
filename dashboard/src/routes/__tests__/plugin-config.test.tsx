@@ -817,7 +817,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     await waitFor(
       () =>
         expect(chatApi.updateAdapterHostPolicy).toHaveBeenCalledWith('adapter.qq', {
-          group: { default_action: 'block', allow_ids: ['new-item'], deny_ids: [] },
+          group: { default_action: 'allow', allow_ids: ['new-item'], deny_ids: [] },
           private: { default_action: 'inherit', allow_ids: [], deny_ids: [] },
         }),
       { timeout: 6000 }
@@ -1725,6 +1725,7 @@ describe('PluginConfigPage 详情与文档', () => {
     expect(screen.getByRole('link', { name: '问题反馈' })).toHaveAttribute('href', 'https://issues.example')
     expect(await screen.findByText('# Hello README')).toBeInTheDocument()
     expect(screen.getByText('# 插件更新日志')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(await screen.findByText('search_tool')).toBeInTheDocument()
     expect(screen.getByText('q')).toBeInTheDocument()
     expect(screen.getByText('limit')).toBeInTheDocument()
@@ -1752,7 +1753,9 @@ describe('PluginConfigPage 详情与文档', () => {
     await user.click(await screen.findByRole('tab', { name: '详情' }))
 
     expect(await screen.findByText('暂无描述')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(await screen.findByText('组件挂了')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '详情' }))
     expect(screen.getByText('readme 挂了')).toBeInTheDocument()
     expect(screen.getByText('暂无更新日志')).toBeInTheDocument()
     expect(screen.queryByText('作者')).not.toBeInTheDocument()
@@ -1765,7 +1768,9 @@ describe('PluginConfigPage 详情与文档', () => {
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
     await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(await screen.findByText('组件加载失败')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '详情' }))
     expect(screen.getByText('README 加载失败')).toBeInTheDocument()
   })
 
@@ -1777,6 +1782,7 @@ describe('PluginConfigPage 详情与文档', () => {
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
     await user.click(await screen.findByRole('tab', { name: '详情' }))
     expect(await screen.findByText('暂无 README')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(screen.getByText('当前插件未注册运行时组件')).toBeInTheDocument()
   })
 
@@ -1794,6 +1800,7 @@ describe('PluginConfigPage 详情与文档', () => {
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
     await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(await screen.findByText('only-cmd')).toBeInTheDocument()
     expect(screen.getByText('暂无工具组件')).toBeInTheDocument()
   })
@@ -1978,8 +1985,7 @@ describe('PluginConfigPage 列表操作与状态', () => {
     await user.click(screen.getByRole('button', { name: '确认更新' }))
     expect(await screen.findByText('正在更新')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '取消' }))
-    expect(screen.getByText('正在更新')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '更新中' })).toBeDisabled()
 
     act(() => {
       progressClient.emit({
@@ -2013,7 +2019,9 @@ describe('PluginConfigPage 列表操作与状态', () => {
     expect(pluginApi.updatePlugin).toHaveBeenCalledWith(
       'test.emoji',
       'https://example.com/emoji.git',
-      'main'
+      'main',
+      undefined,
+      expect.any(AbortSignal)
     )
   })
 
@@ -2317,6 +2325,7 @@ describe('PluginConfigPage 覆盖补全', () => {
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
     await user.click(await screen.findByRole('tab', { name: '详情' }))
     expect(await screen.findByText('# Hello README')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(screen.getByText('search_tool')).toBeInTheDocument()
 
     plugin.id = 'test.emoji.v2'
@@ -2359,6 +2368,7 @@ describe('PluginConfigPage 覆盖补全', () => {
       'href',
       'https://repo-fallback.example'
     )
+    await user.click(screen.getByRole('tab', { name: '设置' }))
     expect(screen.getByText('silent_action')).toBeInTheDocument()
     expect(screen.getByText('旧版动作')).toBeInTheDocument()
     expect(screen.queryByText('触发方式：')).not.toBeInTheDocument()

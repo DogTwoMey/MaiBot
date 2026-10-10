@@ -26,6 +26,9 @@ class _FakeEmbeddingManager:
         self.default_dimension = dimension
         self.model_name = "migration-runtime-test"
 
+    def get_embedding_configuration_key(self) -> str:
+        return self.model_name
+
     async def _detect_dimension(self) -> int:
         return self.default_dimension
 
@@ -208,6 +211,7 @@ async def test_full_legacy_migration_remains_readable_writable_and_idempotent(
     )
     await first.initialize()
     try:
+        assert (await first._vector_space_service.synchronize())["success"] is True
         status = first._runtime_capability_status()
         assert status["runtime_ready"] is True
         assert status["capabilities"]["metadata"] is True
@@ -235,7 +239,7 @@ async def test_full_legacy_migration_remains_readable_writable_and_idempotent(
         assert len(write_result["stored_ids"]) == 1
         new_hash = write_result["stored_ids"][0]
         assert first.metadata_store.get_paragraph(new_hash)["content"] == new_content
-        assert new_hash in first.vector_store
+        assert new_hash in first._paragraph_store()
     finally:
         await first.shutdown()
 
@@ -250,12 +254,13 @@ async def test_full_legacy_migration_remains_readable_writable_and_idempotent(
     )
     await second.initialize()
     try:
+        assert (await second._vector_space_service.synchronize())["success"] is True
         assert _migration_record(data_dir) == first_record
         assert second.metadata_store is not None
         assert second.vector_store is not None
         assert second.metadata_store.count_paragraphs() == 2
         assert paragraph_hash in second.vector_store
-        assert new_hash in second.vector_store
+        assert new_hash in second._paragraph_store()
         restarted_search = await second.search_memory(
             KernelSearchRequest(query=new_content, limit=5, respect_filter=False)
         )
@@ -284,6 +289,7 @@ async def test_corrupt_legacy_vector_does_not_block_new_writes_or_restart(
     )
     await first.initialize()
     try:
+        assert (await first._vector_space_service.synchronize())["success"] is True
         assert first.is_runtime_ready() is True
         assert first.metadata_store is not None
         assert first.metadata_store.get_paragraph(paragraph_hash)["content"] == old_content
@@ -298,7 +304,7 @@ async def test_corrupt_legacy_vector_does_not_block_new_writes_or_restart(
         new_hash = write_result["stored_ids"][0]
         assert first.metadata_store.get_paragraph(new_hash) is not None
         assert first.vector_store is not None
-        assert new_hash in first.vector_store
+        assert new_hash in first._paragraph_store()
     finally:
         await first.shutdown()
 
@@ -311,11 +317,12 @@ async def test_corrupt_legacy_vector_does_not_block_new_writes_or_restart(
     )
     await second.initialize()
     try:
+        assert (await second._vector_space_service.synchronize())["success"] is True
         assert second.is_runtime_ready() is True
         assert second.metadata_store is not None
         assert second.vector_store is not None
         assert second.metadata_store.count_paragraphs() == 2
-        assert new_hash in second.vector_store
+        assert new_hash in second._paragraph_store()
         search_result = await second.search_memory(
             KernelSearchRequest(query="损坏旧向量旁的新写入仍然成功", limit=5, respect_filter=False)
         )

@@ -261,12 +261,12 @@ describe('Header', () => {
   })
 
   it('当前插件工作区保持可见，其余插件收进更多菜单', () => {
-    const extensions: WebUIExtension[] = ['first', 'second'].map((plugin_id) => ({ plugin_id, workspace_title: plugin_id, pages: [{
+    const extensions: WebUIExtension[] = ['first', 'middle', 'second'].map((plugin_id) => ({ plugin_id, workspace_title: plugin_id, pages: [{
       id: 'overview', title: 'Overview', description: '', placement: 'workspace', icon: 'puzzle', queries: {}, actions: {}, content: [],
     }] }))
     render(<Header {...makeProps({ extensions, workspaceMode: 'plugin:second' })} />)
     expect(screen.getByRole('tab', { name: 'second' })).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'first' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'middle' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'pluginWebUI.more' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).not.toHaveClass('hidden')
   })

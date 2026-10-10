@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import io
+import json
 import time
 
 import pytest
@@ -13,6 +14,7 @@ from pydantic import ValidationError
 from src.plugin_runtime import upload_store as storage
 from src.plugin_runtime.host.api_registry import APIRegistry
 from src.plugin_runtime.webui_schema import WebUIExtension, load_webui_extension
+from src.webui.core import COOKIE_NAME
 from src.webui.routers.plugin import webui_extensions as routes
 
 
@@ -43,7 +45,7 @@ def declaration():
     )
 
 
-def test_upload_declaration_and_legacy_compatibility():
+def test_upload_declaration_and_legacy_compatibility(tmp_path):
     raw = declaration()
     assert WebUIExtension.model_validate(raw).required_capabilities == ["file_upload_v1"]
     del raw["required_capabilities"]
@@ -51,7 +53,8 @@ def test_upload_declaration_and_legacy_compatibility():
         WebUIExtension.model_validate(raw)
     raw["pages"][0]["content"] = [dict(type="text", value="legacy")]
     assert WebUIExtension.model_validate(raw).required_capabilities == []
-    assert len(load_webui_extension("plugins/mai_recog_self").pages) == 4
+    (tmp_path / "webui.json").write_text(json.dumps(raw), encoding="utf-8")
+    assert len(load_webui_extension(tmp_path).pages) == 1
 
 
 def test_token_ownership_expiry_and_single_claim(tmp_path, monkeypatch):
@@ -120,7 +123,7 @@ def test_authenticated_multipart_and_owner_binding(tmp_path, monkeypatch):
     path = "/plugins/runtime/webui/test.plugin/images/uploads/add"
     with TestClient(app) as client:
         assert client.post(path, files={"file": ("fake.exe", png())}).status_code == 401
-        client.cookies.set("maibot_session", "valid")
+        client.cookies.set(COOKIE_NAME, "valid")
         assert (
             client.post(path.replace("test.plugin", "other.plugin"), files={"file": ("x.png", png())}).status_code
             == 404

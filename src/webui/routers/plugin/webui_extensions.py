@@ -15,6 +15,7 @@ from src.plugin_runtime.host.supervisor import PluginSupervisor
 from src.plugin_runtime.protocol.errors import ErrorCode, RPCError
 from src.plugin_runtime.webui_schema import Scalar, StrictModel, WebUIExtension
 from src.plugin_runtime.upload_store import MAX_BYTES, upload_store
+from src.webui.core import auth_cookie, get_auth_cookie_value
 
 from .support import require_plugin_token
 
@@ -26,7 +27,7 @@ class UploadLimitedRoute(APIRoute):
 
         async def handle(request: Request):
             if "/uploads/" in request.url.path:
-                require_plugin_token(request.cookies.get("maibot_session"))
+                require_plugin_token(get_auth_cookie_value(request))
                 params = request.path_params
                 await run_on_main_loop(_authorize_upload(params["plugin_id"], params["page_id"], params["name"]))
                 limit = MAX_BYTES + 65536
@@ -197,7 +198,7 @@ async def _authorize_upload(plugin_id: str, page_id: str, name: str) -> None:
 async def upload_webui_file(
     plugin_id: str, page_id: str, name: str,
     file: UploadFile = File(...), args: str = Form("{}"),
-    maibot_session: Optional[str] = Cookie(None),
+    maibot_session: Optional[str] = auth_cookie(),
 ) -> Dict[str, Any]:
     require_plugin_token(maibot_session)
     await run_on_main_loop(_authorize_upload(plugin_id, page_id, name))
