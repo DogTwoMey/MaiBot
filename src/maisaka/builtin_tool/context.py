@@ -423,7 +423,8 @@ class BuiltinToolRuntimeContext:
             at_prefix_components.extend([at_component, TextComponent(" ")])
 
         items[0].sequence.components = at_prefix_components + items[0].sequence.components
-        items[-1].sequence.components.extend(image_components)
+        for image_component in image_components:
+            items.append(PostProcessedReplyMessage(sequence=MessageSequence([image_component])))
         if emoji_components:
             items.append(PostProcessedReplyMessage(sequence=MessageSequence(emoji_components)))
         return items

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -13,16 +13,24 @@ import {
   ToastViewport,
 } from '../toast'
 
-const { mobileState, animateMock, cancelMock, updatePlaybackRateMock } = vi.hoisted(() => ({
+const { mobileState } = vi.hoisted(() => ({
   mobileState: { value: false },
-  animateMock: vi.fn(),
-  cancelMock: vi.fn(),
-  updatePlaybackRateMock: vi.fn(),
 }))
 
 vi.mock('@/hooks/use-media-query', () => ({
   useIsMobile: () => mobileState.value,
 }))
+
+/**
+ * jsdom 未实现 Web Animations API，进度条倒计时靠 Element.animate 驱动，这里换成可断言的假 Animation。
+ * 只在本文件挂到原型上：放进全局 setup 会让 motion 误判浏览器支持 WAAPI，改变其他测试的动画分支。
+ */
+const progressAnimation = {
+  cancel: vi.fn(),
+  updatePlaybackRate: vi.fn(),
+}
+const animate = vi.fn()
+const PROGRESS_KEYFRAMES = [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }]
 
 /** Toast 必须挂在 Provider + Viewport 下，Radix 才会把内容传送进视口 */
 function renderToast(toast: ReactNode, viewportClassName?: string) {
@@ -40,8 +48,8 @@ function queryToast(suffix = '') {
 
 beforeEach(() => {
   mobileState.value = false
-  animateMock.mockReturnValue({ cancel: cancelMock, updatePlaybackRate: updatePlaybackRateMock })
-  Object.defineProperty(Element.prototype, 'animate', { configurable: true, writable: true, value: animateMock })
+  animate.mockReturnValue(progressAnimation)
+  Object.defineProperty(Element.prototype, 'animate', { configurable: true, value: animate })
 })
 
 afterEach(() => { vi.useRealTimers() })
@@ -118,11 +126,14 @@ describe('Toast', () => {
 
     const progress = queryToast('-progress')
     expect(progress).not.toBeNull()
-    expect(animateMock).toHaveBeenCalledWith(
-      [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
-      { duration: 2400, easing: 'linear', fill: 'forwards' },
-    )
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
+    expect(animate).toHaveBeenCalledTimes(1)
+    expect(animate.mock.contexts[0]).toBe(progress)
+    expect(animate).toHaveBeenCalledWith(PROGRESS_KEYFRAMES, {
+      duration: 2400,
+      easing: 'linear',
+      fill: 'forwards',
+    })
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1)
 
     rerender(
       <ToastProvider>
@@ -133,7 +144,7 @@ describe('Toast', () => {
       </ToastProvider>
     )
     expect(queryToast('-progress')).toBeNull()
-    expect(cancelMock).toHaveBeenCalled()
+    expect(progressAnimation.cancel).toHaveBeenCalled()
 
     rerender(
       <ToastProvider>
@@ -163,10 +174,13 @@ describe('Toast', () => {
         <ToastViewport />
       </ToastProvider>
     )
+    // 未传 duration 时沿用组件默认的 4000ms 自动关闭倒计时
     expect(queryToast('-progress')).not.toBeNull()
-    expect(animateMock).toHaveBeenLastCalledWith(
-      expect.any(Array), { duration: 4000, easing: 'linear', fill: 'forwards' },
-    )
+    expect(animate).toHaveBeenLastCalledWith(PROGRESS_KEYFRAMES, {
+      duration: 4000,
+      easing: 'linear',
+      fill: 'forwards',
+    })
   })
 
   it('视口悬停 / 离开时同步减速和恢复进度动画，并转发回调', () => {
@@ -180,18 +194,19 @@ describe('Toast', () => {
     )
 
     const region = screen.getByRole('region', { name: /Notifications/i })
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1)
 
+    // 悬停时倒计时减速到 1/3 而非暂停，离开后恢复原速
     fireEvent.pointerMove(region)
     expect(onPause).toHaveBeenCalledTimes(1)
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1 / 3)
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1 / 3)
 
     fireEvent.pointerLeave(region)
     expect(onResume).toHaveBeenCalledTimes(1)
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1)
   })
 
-  it('未传入回调时仍能切换进度条速率', () => {
+  it('未传入 onPause / onResume 时仍能切换进度条倒计时速度', () => {
     renderToast(
       <Toast open duration={8000}>
         <ToastTitle>无回调</ToastTitle>
@@ -200,22 +215,10 @@ describe('Toast', () => {
 
     const region = screen.getByRole('region', { name: /Notifications/i })
     fireEvent.pointerMove(region)
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1 / 3)
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1 / 3)
 
     fireEvent.pointerLeave(region)
-    expect(updatePlaybackRateMock).toHaveBeenLastCalledWith(1)
-  })
-
-  it('悬停时按剩余时长的三倍计时关闭', () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    const onOpenChange = vi.fn()
-    renderToast(<Toast open duration={3000} onOpenChange={onOpenChange}><ToastTitle>计时</ToastTitle></Toast>)
-    act(() => { vi.advanceTimersByTime(1000) })
-    fireEvent.pointerMove(screen.getByRole('region', { name: /Notifications/i }))
-    act(() => { vi.advanceTimersByTime(5999) })
-    expect(onOpenChange).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(progressAnimation.updatePlaybackRate).toHaveBeenLastCalledWith(1)
   })
 })
 

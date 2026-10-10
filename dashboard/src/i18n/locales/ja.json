@@ -1,5 +1,11 @@
 {
   "pluginWebUI": {
+    "workspaceOrder": "上部タブの順序",
+    "workspaceOrderHint": "非表示でないプラグインはこの順序で並びます。上部には最大2つのタブを表示し、残りは隣の「その他」メニューから開けます。現在のプラグインは常に表示されます。変更は即座に反映され、このブラウザーに保存されます。",
+    "galleryLayout": "配置選択",
+    "paginationSummary": "{{page}} / {{pages}}ページ · {{total}}枚",
+    "galleryAuto": "自動配置",
+    "galleryColumns": "{{count}}列",
     "extensions": "プラグイン拡張",
     "manage": "プラグインページの管理",
     "more": "その他のプラグインワークスペース",
@@ -59,7 +65,6 @@
       "emojiManagement": "絵文字管理",
       "expressionManagement": "表現管理",
       "slangManagement": "スラング管理",
-      "behaviorLearning": "行動学習",
       "personInfo": "人物情報",
       "knowledgeGraph": "長期記憶グラフ",
       "knowledgeBase": "長期記憶",
@@ -1004,7 +1009,6 @@
       "personDesc": "人物情報を管理",
       "jargon": "スラング管理",
       "jargonDesc": "ボットが学習したスラングを管理",
-      "behaviorLearningDesc": "行動経験パスと検索ヒットを閲覧",
       "statistics": "統計情報",
       "statisticsDesc": "使用統計を表示",
       "plugins": "プラグインマーケット",

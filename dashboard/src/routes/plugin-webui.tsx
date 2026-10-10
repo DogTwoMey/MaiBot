@@ -18,43 +18,75 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   invokePluginWebUI,
+  uploadPluginWebUI,
   refreshPluginWebUI,
+  resolveReference,
   usePluginWebUI,
 } from '@/lib/plugin-webui'
-import type { APIBinding, Scalar, WebUIPage, WebUINode } from '@/lib/plugin-webui'
+import type { APIBinding, DataContexts, Scalar, WebUIPage, WebUINode } from '@/lib/plugin-webui'
 
 function initialValues(nodes: WebUINode[]): Record<string, Scalar> {
   const values: Record<string, Scalar> = {}
   const pending = [...nodes]
   while (pending.length) {
     const node = pending.pop()!
-    if (node.name !== null && (node.value === null || typeof node.value !== 'object'))
+    if (node.type === 'pagination' && node.name !== null) values[node.name] = 1
+    if (
+      ['input', 'select', 'choice', 'switch', 'date'].includes(node.type) &&
+      node.name !== null &&
+      (node.value === null || typeof node.value !== 'object')
+    )
       values[node.name] = node.value
     pending.push(...node.children)
   }
   return values
 }
 
-function argumentsFor(binding: APIBinding, values: Record<string, Scalar>): Record<string, Scalar> {
-  return Object.fromEntries(
+function argumentsFor(
+  binding: APIBinding,
+  values: Record<string, Scalar>,
+  data: Record<string, unknown> = {},
+  contexts: DataContexts = {}
+): Record<string, Scalar> {
+  const args: Record<string, Scalar> = Object.fromEntries(
     Object.keys(binding.parameters)
       .filter((name) => values[name] !== undefined && values[name] !== null)
       .map((name) => [name, values[name]])
   )
+  for (const [name, reference] of Object.entries(binding.arguments ?? {})) {
+    const value = resolveReference(reference, data, contexts)
+    if (value === null || value === undefined) {
+      delete args[name]
+      if (binding.parameters[name].required) throw new Error(`Missing action argument: ${name}`)
+    } else if (
+      !['string', 'number', 'boolean'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isFinite(value))
+    ) {
+      throw new Error(`Action argument must be scalar: ${name}`)
+    } else args[name] = value as Scalar
+  }
+  return args
 }
 
 function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }) {
   const { t } = useTranslation()
   const [values, setValues] = useState(() => initialValues(page.content))
   const valuesRef = useRef(values)
+  const galleryPreferences = useRef<Record<string, string>>({})
   const [data, setData] = useState<Record<string, unknown>>({})
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [confirmation, setConfirmation] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<{
+    name: string
+    args: Record<string, Scalar>
+  } | null>(null)
   const [revision, setRevision] = useState(0)
+  const [selectionRevision, setSelectionRevision] = useState(0)
+  const [clearSelection, setClearSelection] = useState<string | null>(null)
+  const renderFailed = useRef(false)
   const alive = useRef(true)
   const controller = useRef<AbortController | null>(null)
 
@@ -76,21 +108,28 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
       if (!signal.aborted && alive.current) {
         setData(results)
         setLoaded(true)
-        setRevision((value) => value + 1)
+        if (renderFailed.current) {
+          renderFailed.current = false
+          setRevision((value) => value + 1)
+        }
       }
     },
     [page, pluginId]
   )
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (clearError = true) => {
     if (busyRef.current) return
     busyRef.current = true
     setBusy(true)
-    setError(null)
+    if (clearError) setError(null)
     controller.current = new AbortController()
     const operation = controller.current
     try {
       await loadQueries(operation.signal)
+      if (alive.current && !operation.signal.aborted) {
+        setClearSelection(null)
+        setSelectionRevision((value) => value + 1)
+      }
     } catch (error) {
       if (alive.current && !operation.signal.aborted) setError(String(error))
     } finally {
@@ -111,11 +150,19 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
     }
   }, [refresh])
 
-  const execute = async (name: string, confirmed = false) => {
+  useEffect(() => {
+    const seconds = page.poll_interval_seconds ?? 0
+    if (seconds < 3) return
+    const timer = window.setInterval(() => { if (!busyRef.current) void refresh(false) }, seconds * 1000)
+    return () => window.clearInterval(timer)
+  }, [page.poll_interval_seconds, refresh])
+
+  const execute = async (name: string, args: Record<string, Scalar>, confirmed = false) => {
     if (busyRef.current) return
     const binding = page.actions[name]
     if (binding.confirmation && !confirmed) {
-      setConfirmation(name)
+      // Freeze the selected row's scalar arguments while the user confirms the action.
+      setConfirmation({ name, args })
       return
     }
     setConfirmation(null)
@@ -126,17 +173,13 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
     controller.current = new AbortController()
     const operation = controller.current
     try {
-      await invokePluginWebUI(
-        pluginId,
-        page.id,
-        'actions',
-        name,
-        argumentsFor(binding, valuesRef.current),
-        confirmed,
-        operation.signal
-      )
+      await invokePluginWebUI(pluginId, page.id, 'actions', name, args, confirmed, operation.signal)
       if (alive.current && !operation.signal.aborted) setMessage(t('pluginWebUI.completed'))
       await loadQueries(operation.signal)
+      if (alive.current && !operation.signal.aborted) {
+        setClearSelection(binding.clear_selection ?? null)
+        setSelectionRevision((value) => value + 1)
+      }
     } catch (error) {
       if (alive.current && !operation.signal.aborted) setError(String(error))
     } finally {
@@ -181,6 +224,7 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
       {
         <ErrorBoundary
           key={revision}
+          onError={() => { renderFailed.current = true }}
           fallback={
             <Alert variant="destructive">
               <AlertDescription>{t('pluginWebUI.invalidData')}</AlertDescription>
@@ -194,13 +238,39 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
               values={values}
               busy={busy}
               pendingData={!loaded}
+              selectionRevision={selectionRevision}
+              clearSelection={clearSelection}
+              galleryPreferences={galleryPreferences.current}
+              onUpload={async (name, file, progress) => {
+                const args = argumentsFor(page.actions[name], valuesRef.current)
+                delete args.upload_id
+                return uploadPluginWebUI(pluginId, page.id, name, file, args, progress)
+              }}
+              onUploadComplete={async () => { if (alive.current) await refresh() }}
               onChange={(name, value) => {
                 const next = { ...valuesRef.current, [name]: value }
+                if (page.auto_refresh) {
+                  const pending = [...page.content]
+                  while (pending.length) {
+                    const node = pending.pop()!
+                    if (node.type === 'pagination' && node.name !== null && node.name !== name)
+                      next[node.name] = 1
+                    pending.push(...node.children)
+                  }
+                }
                 valuesRef.current = next
                 setValues(next)
+                if (page.auto_refresh) void refresh()
               }}
-              onAction={(name) => {
-                void execute(name)
+              onAction={(name, contexts) => {
+                try {
+                  void execute(
+                    name,
+                    argumentsFor(page.actions[name], valuesRef.current, data, contexts)
+                  )
+                } catch (error) {
+                  setError(String(error))
+                }
               }}
             />
           </div>
@@ -216,14 +286,14 @@ function ExtensionPage({ pluginId, page }: { pluginId: string; page: WebUIPage }
           <AlertDialogHeader>
             <AlertDialogTitle>{t('pluginWebUI.confirmTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmation ? page.actions[confirmation].confirmation : ''}
+              {confirmation ? page.actions[confirmation.name].confirmation : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('pluginWebUI.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (confirmation) void execute(confirmation, true)
+                if (confirmation) void execute(confirmation.name, confirmation.args, true)
               }}
             >
               {t('pluginWebUI.confirm')}

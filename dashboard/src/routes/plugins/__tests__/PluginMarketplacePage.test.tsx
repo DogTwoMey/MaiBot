@@ -16,21 +16,24 @@ import { PLUGIN_MARKET_VIEW_STATE_KEY } from '@/lib/plugin-market-navigation'
 const { toastMock, navigateMock, routerState } = vi.hoisted(() => ({
   toastMock: vi.fn(),
   navigateMock: vi.fn(),
-  routerState: { search: {} as { pluginId?: string }, listeners: new Set<() => void>() },
+  routerState: {
+    search: {} as { pluginId?: string },
+    listeners: new Set<() => void>(),
+  },
 }))
 
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }))
+// 详情插件 ID 存放在路由 search 中：navigate 写入 routerState 并通知订阅者，
+// useSearch 通过 useSyncExternalStore 订阅，模拟真实路由在地址变化后重渲染
 vi.mock('@tanstack/react-router', async () => {
   const { useSyncExternalStore } = await import('react')
+  const subscribe = (listener: () => void) => {
+    routerState.listeners.add(listener)
+    return () => routerState.listeners.delete(listener)
+  }
   return {
     useNavigate: () => navigateMock,
-    useSearch: () => useSyncExternalStore(
-      (listener) => {
-        routerState.listeners.add(listener)
-        return () => { routerState.listeners.delete(listener) }
-      },
-      () => routerState.search,
-    ),
+    useSearch: () => useSyncExternalStore(subscribe, () => routerState.search),
   }
 })
 
@@ -242,6 +245,12 @@ beforeEach(() => {
   window.sessionStorage.clear()
   progressHandler = null
   wsErrorHandler = null
+
+  routerState.search = {}
+  navigateMock.mockImplementation(({ search }: { search?: { pluginId?: string } }) => {
+    routerState.search = search ?? {}
+    routerState.listeners.forEach((listener) => listener())
+  })
 
   vi.mocked(pluginApi.getCachedPluginList).mockReturnValue(null)
   vi.mocked(pluginApi.checkGitStatus).mockResolvedValue({ installed: true, version: 'git version 2.44.0' })
@@ -812,6 +821,7 @@ describe('PluginMarketplacePage 视图状态与交互', () => {
     await renderPage()
 
     await user.click(screen.getByText('detail-plugin-a'))
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/plugins', search: { pluginId: 'plugin-a' }, replace: true })
     const detail = await screen.findByTestId('plugin-detail')
     expect(detail).toHaveAttribute('data-plugin-id', 'plugin-a')
 

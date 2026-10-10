@@ -1,7 +1,10 @@
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getBotConfigSchema } from '@/lib/config-api'
 import { getInstalledPlugins, getPluginConfigSchema } from '@/lib/plugin-api'
 import type { InstalledPlugin, PluginConfigSchema } from '@/lib/plugin-api'
 
@@ -12,22 +15,27 @@ vi.mock('react-i18next', () => {
   return { useTranslation: () => ({ t }) }
 })
 
+vi.mock('@/lib/config-api', () => ({
+  getBotConfigSchema: vi.fn(),
+}))
+
 vi.mock('@/lib/plugin-api', () => ({
   getInstalledPlugins: vi.fn().mockResolvedValue([]),
   getPluginConfigSchema: vi.fn(),
 }))
 
-vi.mock('@/lib/config-api', () => ({
-  getBotConfigSchema: vi.fn().mockResolvedValue({ className: 'BotConfig', fields: [], nested: {} }),
-}))
-
+const getBotConfigSchemaMock = vi.mocked(getBotConfigSchema)
 const getInstalledPluginsMock = vi.mocked(getInstalledPlugins)
 const getPluginConfigSchemaMock = vi.mocked(getPluginConfigSchema)
 
 const STORAGE_KEY = 'maibot-home-quick-shortcuts'
 const DEFAULT_IDS = [
-  'route:logs', 'route:settings-appearance', 'route:model-list',
-  'route:chat', 'route:logs:replyer', 'route:logs:reasoning',
+  'route:logs',
+  'route:settings-appearance',
+  'route:model-list',
+  'route:chat',
+  'route:logs:replyer',
+  'route:logs:reasoning',
 ]
 const SIDEBAR_REDUNDANT_IDS = [
   'route:plugin-market',
@@ -119,14 +127,20 @@ function createTabsSchema(
   })
 }
 
+// hook 通过 react-query 读取 bot 配置 schema 生成配置分区入口，需要 QueryClient
+function makeWrapper() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+}
+
 function renderQuickShortcuts(
   overrides?: Partial<Parameters<typeof useQuickShortcuts>[0]>
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return renderHook(
     (props: Parameters<typeof useQuickShortcuts>[0]) => useQuickShortcuts(props),
     {
-      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
       initialProps: {
         isRestarting: false,
         handleRestart: vi.fn(),
@@ -134,6 +148,7 @@ function renderQuickShortcuts(
         onOpenReviewer: vi.fn(),
         ...overrides,
       },
+      wrapper: makeWrapper(),
     }
   )
 }
@@ -143,6 +158,12 @@ beforeEach(() => {
   getInstalledPluginsMock.mockReset()
   getPluginConfigSchemaMock.mockReset()
   getInstalledPluginsMock.mockResolvedValue([])
+  getBotConfigSchemaMock.mockResolvedValue({
+    className: 'BotConfig',
+    classDoc: '',
+    fields: [],
+    nested: {},
+  })
 })
 
 afterEach(() => {

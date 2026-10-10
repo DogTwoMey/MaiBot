@@ -64,8 +64,7 @@ class MessageTurnScheduler:
         formatted_frequency = f"{effective_frequency:.3f}"
         if runtime._is_reply_frequency_silent():
             logger.info(
-                f"{runtime.log_prefix} 回复频率调度: 频率={formatted_frequency} "
-                f"pending={pending_count} 判定=静默消费"
+                f"{runtime.log_prefix} 调度=静默消费 待处理={pending_count} 频率={formatted_frequency}"
             )
             runtime._enqueue_message_turn()
             return
@@ -74,8 +73,7 @@ class MessageTurnScheduler:
             # @ 强制触发的回复同样占用动态门控的回复额度
             self._dynamic_reply_gate.record_forced_turn(runtime.message_cache[runtime._last_processed_index :])
             logger.info(
-                f"{runtime.log_prefix} 回复频率调度: 频率={formatted_frequency} "
-                f"pending={pending_count} 判定=强制触发"
+                f"{runtime.log_prefix} 调度=强制触发 待处理={pending_count} 频率={formatted_frequency}"
             )
             runtime._enqueue_message_turn()
             return
@@ -84,26 +82,25 @@ class MessageTurnScheduler:
             return
 
         trigger_threshold = runtime._get_message_trigger_threshold()
-        schedule_detail = f"[频率: {formatted_frequency}][{pending_count}/{trigger_threshold} 消息]"
+        schedule_detail = f"待处理={pending_count} 阈值={trigger_threshold} 频率={formatted_frequency}"
         if is_dynamic_reply_trigger_enabled():
             dynamic_result = self._dynamic_reply_gate.evaluate(
                 pending_messages=runtime.message_cache[runtime._last_processed_index :],
                 frequency=effective_frequency,
             )
             logger.info(
-                f"{runtime.log_prefix} 回复频率调度: [频率: {formatted_frequency}][{pending_count} 消息] "
+                f"{runtime.log_prefix} 回复调度 待处理={pending_count} 频率={formatted_frequency} "
                 f"{dynamic_result.detail}"
             )
             if dynamic_result.should_trigger:
                 runtime._enqueue_message_turn()
             return
 
-        logger.info(f"{runtime.log_prefix} 回复频率调度: {schedule_detail}")
         frequency_result = self._frequency_threshold_gate.evaluate(
             pending_count=pending_count,
             trigger_threshold=trigger_threshold,
         )
-        logger.info(f"{runtime.log_prefix} 回复频率调度: {frequency_result.detail}")
+        logger.info(f"{runtime.log_prefix} 回复调度 {schedule_detail} {frequency_result.detail}")
         if frequency_result.should_trigger:
             runtime._enqueue_message_turn()
             return

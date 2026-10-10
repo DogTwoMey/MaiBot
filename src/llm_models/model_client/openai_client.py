@@ -1772,7 +1772,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             }
             return response, usage_record
         except (EmptyResponseException, RespParseException) as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -1785,7 +1786,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             attach_request_snapshot(exc, snapshot_path)
             raise
         except APIConnectionError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -1799,7 +1801,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             attach_request_snapshot(wrapped_error, snapshot_path)
             raise wrapped_error from exc
         except APIStatusError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -1817,7 +1820,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         except Exception as exc:
             if has_request_snapshot(exc):
                 raise
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -1921,7 +1925,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                     response.usage = self._build_usage_record(model_info, usage_record)
                 return response
 
-        snapshot_path = save_failed_request_snapshot(
+        snapshot_path = await asyncio.to_thread(
+            save_failed_request_snapshot,
             api_provider=self.api_provider,
             client_type="openai",
             error=wrapped_error,
@@ -2004,7 +2009,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                     response.usage = self._build_usage_record(model_info, parsed.usage)
                 return response
 
-        snapshot_path = save_failed_request_snapshot(
+        snapshot_path = await asyncio.to_thread(
+            save_failed_request_snapshot,
             api_provider=self.api_provider,
             client_type="openai",
             error=wrapped_error,
@@ -2059,7 +2065,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 extra_body=request_overrides.extra_body or None,
             )
         except APIConnectionError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2073,7 +2080,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             attach_request_snapshot(wrapped_error, snapshot_path)
             raise wrapped_error from exc
         except APIStatusError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2089,7 +2097,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         except Exception as exc:
             if has_request_snapshot(exc):
                 raise
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2105,7 +2114,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         response = APIResponse()
         if not raw_response.data:
             exc = RespParseException(raw_response, "嵌入响应解析失败，缺少 embeddings 数据。")
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2206,7 +2216,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                     extra_body=request_overrides.extra_body or None,
                 )
         except APIConnectionError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2220,7 +2231,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             attach_request_snapshot(wrapped_error, snapshot_path)
             raise wrapped_error from exc
         except APIStatusError as exc:
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2236,7 +2248,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         except Exception as exc:
             if has_request_snapshot(exc):
                 raise
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,
@@ -2258,7 +2271,8 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             usage_record = None
         if not isinstance(transcription_text, str):
             exc = RespParseException(raw_response, "音频转写响应解析失败，缺少文本内容。")
-            snapshot_path = save_failed_request_snapshot(
+            snapshot_path = await asyncio.to_thread(
+                save_failed_request_snapshot,
                 api_provider=self.api_provider,
                 client_type="openai",
                 error=exc,

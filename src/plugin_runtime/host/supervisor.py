@@ -72,7 +72,6 @@ from src.plugin_runtime.protocol.errors import ErrorCode, RPCError
 from src.plugin_runtime.transport.factory import create_transport_server
 from src.plugin_runtime.webui_schema import WebUIExtension
 from src.services.bot_account_service import (
-    BOT_ACCOUNT_SOURCE_INBOUND,
     BOT_ACCOUNT_SOURCE_READY,
     AdapterAccountIdentity,
     record_adapter_account,
@@ -1530,7 +1529,7 @@ class PluginRunnerSupervisor:
         route_key: RouteKey,
         route_metadata: Dict[str, Any],
     ) -> None:
-        """将入站路由信息写回消息的 ``additional_config``。
+        """将已校验的入站归属写入消息正式字段，其他元数据独立透传。
 
         Args:
             session_message: 已构造好的内部消息对象。
@@ -1539,22 +1538,21 @@ class PluginRunnerSupervisor:
         """
 
         session_message.platform = route_key.platform
+        session_message.account_id = route_key.account_id
+        session_message.scope = route_key.scope
         additional_config = session_message.message_info.additional_config
         if not isinstance(additional_config, dict):
             additional_config = {}
             session_message.message_info.additional_config = additional_config
 
         for key, value in route_metadata.items():
+            if key in {"platform", *RouteKeyFactory.ACCOUNT_ID_KEYS, *RouteKeyFactory.SCOPE_KEYS, "scope"}:
+                continue
             if value is None:
                 continue
             normalized_value = str(value).strip()
             if normalized_value:
                 additional_config[key] = value
-
-        if route_key.account_id:
-            additional_config.setdefault("platform_io_account_id", route_key.account_id)
-        if route_key.scope:
-            additional_config.setdefault("platform_io_scope", route_key.scope)
 
     def _build_inbound_route_key(
         self,
@@ -1575,31 +1573,27 @@ class PluginRunnerSupervisor:
             RouteKey: 供 Platform IO 使用的规范化路由键。
         """
 
-        platform = str(
-            message.get("platform")
-            or route_metadata.get("platform")
-            or runtime_state.platform
-            or gateway_entry.platform
-            or ""
-        ).strip()
-        if not platform:
-            raise ValueError(f"消息网关 {gateway_entry.full_name} 的入站消息缺少平台信息")
-
-        try:
-            route_key = RouteKeyFactory.from_message_dict(message)
-        except Exception:
-            route_key = RouteKey(platform=platform)
-
-        route_account_id, route_scope = RouteKeyFactory.extract_components(route_metadata)
-        account_id = (
-            route_key.account_id or route_account_id or runtime_state.account_id or gateway_entry.account_id or None
+        declared_route = RouteKey(
+            platform=runtime_state.platform or gateway_entry.platform,
+            account_id=runtime_state.account_id,
+            scope=runtime_state.scope,
         )
-        scope = route_key.scope or route_scope or runtime_state.scope or gateway_entry.scope or None
-        return RouteKey(
-            platform=platform,
-            account_id=account_id,
-            scope=scope,
-        )
+        route_key = RouteKeyFactory.from_message_dict(message, legacy_metadata=route_metadata)
+        if "account_id" not in message:
+            # 暂时兼容旧适配器未在消息中携带归属的情况；下个版本移除此路径。
+            route_key = RouteKey(
+                platform=route_key.platform,
+                account_id=route_key.account_id or declared_route.account_id,
+                scope=route_key.scope or declared_route.scope,
+            )
+        if not route_key.account_id:
+            raise ValueError("入站消息缺少明确的 account_id 归属")
+        # 消息只能选择所属网关已声明的路由，不能创建账号或覆盖网关平台、账号及作用域。
+        if route_key != declared_route:
+            raise ValueError(
+                f"消息归属未由网关 {gateway_entry.full_name} 声明: message={route_key}, declared={declared_route}"
+            )
+        return route_key
 
     @staticmethod
     def _resolve_policy_target(message: Dict[str, Any]) -> tuple[str, str]:
@@ -1672,7 +1666,8 @@ class PluginRunnerSupervisor:
             if payload.ready:
                 route_key = self._build_message_gateway_route_key(gateway_entry, payload)
                 if route_key.account_id:
-                    record_adapter_account(
+                    await asyncio.to_thread(
+                        record_adapter_account,
                         AdapterAccountIdentity(
                             platform=route_key.platform,
                             account_id=route_key.account_id,
@@ -1756,17 +1751,9 @@ class PluginRunnerSupervisor:
                     },
                 )
                 return envelope.make_response(payload=response.model_dump())
-            if route_key.account_id:
-                record_adapter_account(
-                    AdapterAccountIdentity(
-                        platform=route_key.platform,
-                        account_id=route_key.account_id,
-                        adapter_id=self._build_message_gateway_driver_id(envelope.plugin_id, gateway_entry.name),
-                        plugin_id=envelope.plugin_id,
-                        gateway_name=gateway_entry.name,
-                    ),
-                    BOT_ACCOUNT_SOURCE_INBOUND,
-                )
+            # 身份发现仅由网关就绪声明完成，入站消息不会新增机器人账号。
+            payload.message["account_id"] = route_key.account_id
+            payload.message["scope"] = route_key.scope
             session_message = self._message_gateway.build_session_message(payload.message)
             self._attach_inbound_route_metadata(session_message, route_key, payload.route_metadata)
         except Exception as exc:

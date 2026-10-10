@@ -678,7 +678,11 @@ async def process_llm_response_segments_async(
     if global_config.response_splitter.mode != "llm":
         return await asyncio.to_thread(process_llm_response_segments, text, enable_splitter, enable_chinese_typo)
 
-    if not global_config.response_post_process.enable_response_post_process or not enable_splitter:
+    if (
+        not global_config.response_post_process.enable_response_post_process
+        or not global_config.response_splitter.enable
+        or not enable_splitter
+    ):
         return await asyncio.to_thread(process_llm_response_segments, text, enable_splitter, enable_chinese_typo)
 
     try:

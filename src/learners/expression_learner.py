@@ -445,7 +445,7 @@ class ExpressionLearner:
         expression_log_title = (
             "待优化的表达方式" if global_config.expression.expression_self_reflect else "学习到的表达"
         )
-        logger.info(f"[{session_display_name}] {expression_log_title}：\n{learnt_expressions_str}")
+        logger.debug(f"[{session_display_name}] {expression_log_title}：\n{learnt_expressions_str}")
 
         written_expressions: List[MaiExpression] = []
         for situation, style in learnt_expressions:
@@ -486,6 +486,10 @@ class ExpressionLearner:
 
         if written_expressions:
             await self._sync_expression_vector_index_batch(written_expressions)
+        logger.info(
+            f"[{session_display_name}] 表达学习完成 "
+            f"候选={len(learnt_expressions)} 写入={len(written_expressions)}"
+        )
         return bool(written_expressions)
 
     def _resolve_learning_session_id(self, messages: List["SessionMessage"]) -> Optional[str]:
@@ -578,10 +582,10 @@ class ExpressionLearner:
         source_type: str,
         generation_result: LLMResponseResult,
     ) -> None:
-        """保存表达学习上下文预览，并在日志中输出查看入口。"""
+        """保存表达学习上下文预览，供 WebUI 查看。"""
 
         try:
-            preview_access = PromptCLIVisualizer.build_prompt_preview_access(
+            PromptCLIVisualizer.build_prompt_preview_access(
                 messages,
                 category="expression_learner",
                 chat_id=session_id,
@@ -599,12 +603,6 @@ class ExpressionLearner:
         except Exception as exc:
             logger.warning(f"{self.session_id} 表达学习上下文预览保存失败: {exc}")
             return
-
-        logger.info(
-            f"{self.session_id} 表达学习上下文预览已生成: "
-            f"WebUI={preview_access.preview_web_uri} "
-            f"JSON={preview_access.record_path}"
-        )
 
     # ====== 过滤方法 ======
     def _filter_expressions(
@@ -655,10 +653,10 @@ class ExpressionLearner:
             # 过滤掉 style 与机器人名称/昵称重复的表达
             normalized_style = normalize_expression_style_for_learning(style)
             if not normalized_style:
-                logger.info(f"跳过清洗后为空的表达方式：situation={situation}, style={style}, source_id={source_id}")
+                logger.debug(f"跳过清洗后为空的表达方式：situation={situation}, style={style}, source_id={source_id}")
                 continue
             if "SELF" in situation or "SELF" in normalized_style or "SELF" in context:
-                logger.info(f"跳过包含 SELF 的表达方式：situation={situation}, style={style}, source_id={source_id}")
+                logger.debug(f"跳过包含 SELF 的表达方式：situation={situation}, style={style}, source_id={source_id}")
                 continue
             if normalized_style and normalized_style.casefold() in banned_casefold:
                 logger.debug(
@@ -667,11 +665,11 @@ class ExpressionLearner:
                 continue
             # 过滤掉包含 "[表情" 的内容
             if "[表情包" in situation or "[表情包" in normalized_style or "[表情包" in context:
-                logger.info(f"跳过包含表情标记的表达方式：situation={situation}, style={style}, source_id={source_id}")
+                logger.debug(f"跳过包含表情标记的表达方式：situation={situation}, style={style}, source_id={source_id}")
                 continue
             # 过滤掉包含 "[图片" 的内容
             if "[图片" in situation or "[图片" in normalized_style or "[图片" in context:
-                logger.info(f"跳过包含图片标记的表达方式：situation={situation}, style={style}, source_id={source_id}")
+                logger.debug(f"跳过包含图片标记的表达方式：situation={situation}, style={style}, source_id={source_id}")
                 continue
 
             filtered_expressions.append((situation, normalized_style))
@@ -868,11 +866,8 @@ class ExpressionLearner:
         )
 
         status = "通过" if suitable else "不通过"
-        logger.info(
-            f"表达方式检查 - {status} | "
-            f"Situation: {situation} | "
-            f"Style: {style} || "
-            f"Reason: {reason[:100] if reason else '无'}..."
+        logger.debug(
+            f"表达检查{status} 场景={situation!r} 表达={style!r} 原因={reason or '无'}"
         )
         return suitable
 

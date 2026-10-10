@@ -5,7 +5,8 @@ from typing import Any, Dict, Literal, Optional, Tuple
 import asyncio
 import json
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, File, Form, HTTPException, Request, UploadFile
+from fastapi.routing import APIRoute
 from pydantic import Field
 
 from src.common.runtime_loop import run_on_main_loop
@@ -13,10 +14,45 @@ from src.plugin_runtime.component_query import component_query_service
 from src.plugin_runtime.host.supervisor import PluginSupervisor
 from src.plugin_runtime.protocol.errors import ErrorCode, RPCError
 from src.plugin_runtime.webui_schema import Scalar, StrictModel, WebUIExtension
+from src.plugin_runtime.upload_store import MAX_BYTES, upload_store
 
 from .support import require_plugin_token
 
-router = APIRouter()
+class UploadLimitedRoute(APIRoute):
+    """Authenticate and bound multipart bytes before Starlette spools any file."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def handle(request: Request):
+            if "/uploads/" in request.url.path:
+                require_plugin_token(request.cookies.get("maibot_session"))
+                params = request.path_params
+                await run_on_main_loop(_authorize_upload(params["plugin_id"], params["page_id"], params["name"]))
+                limit = MAX_BYTES + 65536
+                try:
+                    if int(request.headers.get("content-length", "0")) > limit:
+                        raise HTTPException(413, "上传请求超过20MiB限制")
+                except ValueError as exc:
+                    raise HTTPException(400, "无效Content-Length") from exc
+                receive = request._receive
+                received = 0
+
+                async def bounded_receive():
+                    nonlocal received
+                    message = await receive()
+                    received += len(message.get("body", b""))
+                    if received > limit:
+                        raise HTTPException(413, "上传请求超过20MiB限制")
+                    return message
+
+                request._receive = bounded_receive
+            return await original(request)
+
+        return handle
+
+
+router = APIRouter(route_class=UploadLimitedRoute)
 # 只在主循环读写，避免 WebUI 独立事件循环操作 Runner 的 Future 或并发状态。
 _inflight: Dict[str, int] = {}
 
@@ -44,6 +80,7 @@ async def _list_extensions() -> Dict[str, Any]:
 def _serialize_extensions(extensions: Dict[str, Tuple[PluginSupervisor, WebUIExtension]]) -> Dict[str, Any]:
     return {
         "success": True,
+        "capabilities": ["file_upload_v1"],
         "extensions": [
             {"plugin_id": plugin_id, **extension.model_dump(mode="json")}
             for plugin_id, (_, extension) in sorted(extensions.items())
@@ -117,6 +154,8 @@ async def _invoke(
             await asyncio.to_thread(_validate_result, result)
         except (ValueError, TypeError, OverflowError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if isinstance(result, dict) and result.get("success") is False:
+            raise HTTPException(422, str(result.get("error", "操作失败"))[:1000])
         return {"success": True, "result": result}
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="插件调用超时；操作可能仍在执行，请核实结果后再试") from exc
@@ -134,6 +173,46 @@ async def _invoke(
             _inflight[plugin_id] = remaining
         else:
             _inflight.pop(plugin_id)
+
+
+async def _authorize_upload(plugin_id: str, page_id: str, name: str) -> None:
+    target = _extensions().get(plugin_id)
+    if target is None:
+        raise HTTPException(404, "插件 WebUI 已下线")
+    page = next((p for p in target[1].pages if p.id == page_id), None)
+    pending = list(page.content) if page else []
+    while pending:
+        node = pending.pop()
+        if node.type == "upload" and node.action == name:
+            binding = page.actions[name]
+            entry = target[0].api_registry.get_api(plugin_id, binding.api, version=binding.version)
+            if entry is None or entry.dynamic:
+                raise HTTPException(404, "上传操作的静态API已下线")
+            return
+        pending.extend(node.children)
+    raise HTTPException(403, "页面未声明该上传操作")
+
+
+@router.post("/runtime/webui/{plugin_id}/{page_id}/uploads/{name}")
+async def upload_webui_file(
+    plugin_id: str, page_id: str, name: str,
+    file: UploadFile = File(...), args: str = Form("{}"),
+    maibot_session: Optional[str] = Cookie(None),
+) -> Dict[str, Any]:
+    require_plugin_token(maibot_session)
+    await run_on_main_loop(_authorize_upload(plugin_id, page_id, name))
+    try:
+        arguments = json.loads(args)
+        request = Invocation(args=arguments)
+        raw = await file.read(MAX_BYTES + 1)
+        store = await asyncio.to_thread(upload_store)
+        token = await asyncio.to_thread(store.stage, plugin_id, raw)
+        request.args["upload_id"] = token
+    except (ValueError, OSError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    finally:
+        await file.close()
+    return await run_on_main_loop(_invoke(plugin_id, page_id, "actions", name, request))
 
 
 @router.post("/runtime/webui/{plugin_id}/{page_id}/{kind}/{name}")

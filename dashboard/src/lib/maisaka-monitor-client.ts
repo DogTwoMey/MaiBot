@@ -46,6 +46,7 @@ export interface StageStatusEvent {
   detail: string
   round_text: string
   agent_state: string
+  wait_until?: number | null
   stage_started_at: number
   updated_at: number
   timestamp: number
