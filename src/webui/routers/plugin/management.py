@@ -456,13 +456,11 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
         try:
             with open(manifest_path, "r", encoding="utf-8") as file_obj:
                 manifest = json.load(file_obj)
-            for field in ["manifest_version", "name", "version", "author"]:
+            for field in ["manifest_version", "id", "name", "version", "author"]:
                 if field not in manifest:
                     raise ValueError(f"缺少必需字段: {field}")
-            if not _read_manifest_plugin_id(manifest):
-                manifest["id"] = plugin_id
-                with open(manifest_path, "w", encoding="utf-8") as file_obj:
-                    json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
+            if _require_manifest_plugin_id(manifest) != plugin_id:
+                raise ValueError("插件 ID 不匹配")
         except Exception as e:
             remove_tree(target_path)
             await update_progress(
@@ -844,8 +842,6 @@ def _collect_installed_plugins(snapshot: Dict[str, Any]) -> Dict[str, Any]:
                         "release": read_release_receipt(plugin_path),
                     }
                 )
-            except json.JSONDecodeError as e:
-                logger.warning(f"插件 {folder_name} 的 _manifest.json 解析失败: {e}")
             except Exception as e:
                 logger.error(f"读取插件 {folder_name} 信息时出错: {e}")
 

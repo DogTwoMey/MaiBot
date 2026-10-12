@@ -103,7 +103,7 @@ vi.mock('../modelProvider/ProviderForm', () => ({
 
 function baseConfig() {
   return {
-    models: [{ name: 'gpt-4', model_identifier: 'gpt-4', api_provider: 'openai' }],
+    models: [{ name: 'gpt-4', model_identifier: 'gpt-4', model_type: 'llm', api_provider: 'openai' }],
     api_providers: [
       {
         name: 'openai',
@@ -169,7 +169,7 @@ function baseVersions() {
 function makeModels(count: number, provider = 'openai') {
   return Array.from({ length: count }, (_, index) => ({
     name: `model-${String(index).padStart(2, '0')}`,
-    model_identifier: `id-${index}`,
+    model_identifier: `id-${index}`, model_type: 'llm',
     api_provider: provider,
     price_in: 1,
     price_out: 2,
@@ -399,9 +399,10 @@ describe('ModelConfigPage 特征化', () => {
     )
     expect(addModelButton).not.toBeNull()
     await user.click(addModelButton!)
+    await user.click(screen.getByRole('menuitem', { name: '添加 LLM 模型' }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: '添加 LLM 模型' })).toBeInTheDocument()
     expect(within(dialog).queryByText('支持缓存')).not.toBeInTheDocument()
     const thinkingSwitch = within(dialog).getByRole('switch', { name: '启用思考' })
     const effortSelect = within(dialog).getByRole('combobox', { name: '思考力度' })
@@ -456,7 +457,7 @@ describe('ModelConfigPage 特征化', () => {
     // 内层弹窗打开时 Radix 会把外层弹窗标记为 aria-hidden，但外层不应被触摸事件卸载。
     expect(dialog).toBeInTheDocument()
     await user.click(saveExtraParamsButton)
-    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: '添加 LLM 模型' })).toBeInTheDocument()
     expect(thinkingSwitch).toBeChecked()
     expect(effortSelect).toBeEnabled()
     expect(effortSelect).toHaveTextContent('最高')
@@ -483,7 +484,7 @@ describe('ModelConfigPage 特征化', () => {
     })
     await user.click(within(reopenedExtraParamsDialog).getByRole('button', { name: '保存' }))
 
-    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: '添加 LLM 模型' })).toBeInTheDocument()
     expect(within(dialog).getByText('未配置额外参数')).toBeInTheDocument()
   })
 
@@ -689,8 +690,8 @@ describe('ModelConfigPage 特征化', () => {
     const filteredConfig = {
       ...baseConfig(),
       models: [
-        { name: 'gpt-4', model_identifier: 'gpt-4', api_provider: 'openai' },
-        { name: 'local-model', model_identifier: 'local-model', api_provider: 'ollama' },
+        { name: 'gpt-4', model_identifier: 'gpt-4', model_type: 'llm', api_provider: 'openai' },
+        { name: 'local-model', model_identifier: 'local-model', model_type: 'llm', api_provider: 'ollama' },
       ],
       api_providers: [
         ...baseConfig().api_providers,
@@ -797,9 +798,10 @@ describe('ModelConfigPage 特征化', () => {
     await renderModelPage()
     await user.click(screen.getByRole('tab', { name: '模型设置' }))
     await user.click(document.querySelector<HTMLButtonElement>('[data-tour="add-model-button"]')!)
+    await user.click(screen.getByRole('menuitem', { name: '添加 LLM 模型' }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('heading', { name: '添加模型' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: '添加 LLM 模型' })).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
 
     expect(within(dialog).getByText('请输入模型名称')).toBeInTheDocument()
@@ -829,6 +831,7 @@ describe('ModelConfigPage 特征化', () => {
     await openConfigurationTab(user)
     await user.click(screen.getByRole('button', { name: '筛选厂商 custom-provider' }))
     await user.click(document.querySelector<HTMLButtonElement>('[data-tour="add-model-button"]')!)
+    await user.click(screen.getByRole('menuitem', { name: '添加 LLM 模型' }))
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('combobox', { name: 'API 提供商 *' })).toHaveTextContent(
@@ -1417,6 +1420,7 @@ describe('ModelConfigPage 特征化', () => {
     await renderModelPage()
     await user.click(screen.getByRole('tab', { name: '模型设置' }))
     await user.click(document.querySelector<HTMLButtonElement>('[data-tour="add-model-button"]')!)
+    await user.click(screen.getByRole('menuitem', { name: '添加 LLM 模型' }))
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('写入 thinking.type')).toBeInTheDocument()
@@ -1439,6 +1443,7 @@ describe('ModelConfigPage 特征化', () => {
         {
           name: 'gpt-4',
           model_identifier: 'gpt-4',
+          model_type: 'llm',
           api_provider: 'openai',
           visual: true,
           cache: true,
@@ -1571,8 +1576,8 @@ describe('ModelConfigPage 特征化', () => {
     const twoProviderConfig = {
       ...baseConfig(),
       models: [
-        { name: 'gpt-4', model_identifier: 'gpt-4', api_provider: 'openai' },
-        { name: 'local-model', model_identifier: 'local-model', api_provider: 'ollama' },
+        { name: 'gpt-4', model_identifier: 'gpt-4', model_type: 'llm', api_provider: 'openai' },
+        { name: 'local-model', model_identifier: 'local-model', model_type: 'llm', api_provider: 'ollama' },
       ],
       api_providers: [
         ...baseConfig().api_providers,
@@ -1590,6 +1595,7 @@ describe('ModelConfigPage 特征化', () => {
     await renderModelPage()
     await openConfigurationTab(user)
     await user.click(document.querySelector<HTMLButtonElement>('[data-tour="add-model-button"]')!)
+    await user.click(screen.getByRole('menuitem', { name: '添加 LLM 模型' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox', { name: '模型名称 *' }), 'gpt-4')
     await user.type(within(dialog).getByLabelText(/模型标识符/), 'dup')

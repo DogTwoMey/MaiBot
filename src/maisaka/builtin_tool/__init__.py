@@ -11,6 +11,8 @@ from src.llm_models.payload_content.tool_option import ToolDefinitionInput
 from src.maisaka.focus import focus_mode_manager
 
 from .context import BuiltinToolRuntimeContext
+from .delegate import get_tool_spec as get_delegate_tool_spec
+from .delegate import handle_tool as handle_delegate_tool
 from .fetch_history import get_tool_spec as get_fetch_history_tool_spec
 from .fetch_history import handle_tool as handle_fetch_history_tool
 from .query_memory import get_tool_spec as get_query_memory_tool_spec
@@ -19,6 +21,8 @@ from .query_image_memory import get_tool_spec as get_query_image_memory_tool_spe
 from .query_image_memory import handle_tool as handle_query_image_memory_tool
 from .query_person_profile import get_tool_spec as get_query_person_profile_tool_spec
 from .query_person_profile import handle_tool as handle_query_person_profile_tool
+from .read_tool_result import get_tool_spec as get_read_tool_result_tool_spec
+from .read_tool_result import handle_tool as handle_read_tool_result_tool
 from .reply import get_tool_spec as get_reply_tool_spec
 from .reply import handle_tool as handle_reply_tool
 from .send_emoji import get_tool_spec as get_send_emoji_tool_spec
@@ -108,6 +112,13 @@ BUILTIN_TOOL_ENTRIES: List[BuiltinToolEntry] = [
     BuiltinToolEntry("send_emoji", get_send_emoji_tool_spec, handle_send_emoji_tool, stage="action"),
     BuiltinToolEntry("show_emoji_list", get_show_emoji_list_tool_spec, handle_show_emoji_list_tool, stage="action"),
     BuiltinToolEntry("tool_search", get_tool_search_tool_spec, handle_tool_search_tool, stage="action"),
+    BuiltinToolEntry("delegate", get_delegate_tool_spec, handle_delegate_tool, stage="action"),
+    BuiltinToolEntry(
+        "read_tool_result",
+        get_read_tool_result_tool_spec,
+        handle_read_tool_result_tool,
+        stage="action",
+    ),
     BuiltinToolEntry(
         "fetch_history",
         get_fetch_history_tool_spec,
@@ -146,6 +157,11 @@ def _is_builtin_tool_enabled_by_config(entry: BuiltinToolEntry) -> bool:
         return not global_config.emoji.use_new_send_logic
     if entry.name in {"fetch_history", "switch_chat"}:
         return bool(global_config.experimental.focus_mode)
+    if entry.name == "delegate":
+        return global_config.experimental.planner_delegate
+    if entry.name == "read_tool_result":
+        # 只有开启超长结果整理时才会有被暂存的原文可读
+        return global_config.experimental.tool_result_condense
     return True
 
 

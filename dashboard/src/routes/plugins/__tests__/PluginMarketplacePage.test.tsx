@@ -270,9 +270,7 @@ beforeEach(() => {
     installedPlugins.some((item) => item.id === pluginId)
   )
   vi.mocked(pluginApi.getInstalledPluginVersion).mockImplementation((pluginId, installedPlugins) => {
-    const found = installedPlugins.find((item) => item.id === pluginId)
-    if (!found) return undefined
-    return 'manifest' in found ? found.manifest.version : found.version
+    return installedPlugins.find((item) => item.id === pluginId)?.manifest.version
   })
   vi.mocked(pluginApi.connectPluginProgressWebSocket).mockImplementation(async (onProgress, onError) => {
     progressHandler = onProgress
@@ -948,10 +946,10 @@ describe('PluginMarketplacePage 错误态与空市场', () => {
     render(<PluginMarketplacePage />)
 
     expect(await screen.findByRole('heading', { name: '加载失败' })).toBeInTheDocument()
-    expect(screen.getByText('加载失败', { selector: 'p' })).toBeInTheDocument()
+    expect(screen.getByText('加载插件失败', { selector: 'p' })).toBeInTheDocument()
     expect(toastMock).toHaveBeenCalledWith({
       title: '加载失败',
-      description: '加载失败',
+      description: '加载插件失败',
       variant: 'destructive',
     })
   })
@@ -1440,8 +1438,7 @@ describe('PluginMarketplacePage 合并、兼容性边界与进度清理', () => 
   })
 
   it('已安装但缺少本地版本时徽章按 0.0.0 比较，needsUpdate 仍为 false', async () => {
-    vi.mocked(pluginApi.checkPluginInstalled).mockReturnValue(true)
-    vi.mocked(pluginApi.getInstalledPluginVersion).mockReturnValue(undefined)
+    vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([makeInstalledPlugin('plugin-a', '')])
 
     await renderPage()
 

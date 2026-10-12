@@ -1,8 +1,13 @@
+from http.cookies import SimpleCookie
+from typing import Optional
 from unittest.mock import patch
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
+import pytest
+
+from src.config.config import global_config
 from src.webui.app import create_app
 from src.webui.core import auth as auth_module
 from src.webui.dependencies import require_auth
@@ -119,3 +124,37 @@ def test_plugin_install_and_market_routes_use_current_instance_cookie() -> None:
     ):
         cookies = [parameter["name"] for parameter in paths[path][method]["parameters"] if parameter["in"] == "cookie"]
         assert cookies == [auth_module.COOKIE_NAME]
+
+
+@pytest.mark.parametrize(
+    ("mode", "secure_cookie", "scheme", "forwarded_proto", "expected_secure"),
+    [
+        ("development", True, "http", None, True),
+        ("production", False, "http", None, True),
+        ("development", True, "http", "https", True),
+        ("development", True, "https", None, True),
+        ("development", False, "http", None, False),
+    ],
+)
+def test_cookie_security_follows_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    secure_cookie: bool,
+    scheme: str,
+    forwarded_proto: Optional[str],
+    expected_secure: bool,
+) -> None:
+    monkeypatch.setattr(global_config.webui, "mode", mode)
+    monkeypatch.setattr(global_config.webui, "secure_cookie", secure_cookie)
+    headers = [] if forwarded_proto is None else [(b"x-forwarded-proto", forwarded_proto.encode())]
+    request = Request({"type": "http", "scheme": scheme, "path": "/", "headers": headers})
+    response = Response()
+
+    auth_module.set_auth_cookie(response, "test-session-token", request)
+    cookie = SimpleCookie(response.headers["set-cookie"])[auth_module.COOKIE_NAME]
+    assert bool(cookie["secure"]) is expected_secure
+    assert cookie["httponly"]
+
+    cleared = Response()
+    auth_module.clear_auth_cookie(cleared)
+    assert bool(SimpleCookie(cleared.headers["set-cookie"])[auth_module.COOKIE_NAME]["secure"]) is expected_secure

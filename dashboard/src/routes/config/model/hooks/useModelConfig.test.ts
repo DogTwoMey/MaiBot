@@ -93,6 +93,7 @@ function model(name: string, apiProvider = 'main', extra: Partial<ModelInfo> = {
   return {
     name,
     model_identifier: `${name}-id`,
+    model_type: 'llm',
     api_provider: apiProvider,
     price_in: 1,
     price_out: 2,
@@ -717,6 +718,7 @@ describe('useModelConfig 模型编辑与校验', () => {
       result.current.setEditingModel({
         name: '   ',
         model_identifier: '',
+        model_type: 'llm',
         api_provider: '',
         price_in: 0,
         price_out: 0,
@@ -735,6 +737,7 @@ describe('useModelConfig 模型编辑与校验', () => {
       result.current.setEditingModel({
         name: 'CHAT',
         model_identifier: 'new-id',
+        model_type: 'llm',
         api_provider: 'main',
         price_in: 0,
         price_out: 0,
@@ -765,6 +768,7 @@ describe('useModelConfig 模型编辑与校验', () => {
       result.current.setEditingModel({
         name: 'vision',
         model_identifier: 'vision-id',
+        model_type: 'llm',
         api_provider: 'spare',
         price_in: null,
         price_out: null,

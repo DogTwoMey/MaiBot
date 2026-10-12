@@ -90,6 +90,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "deepseek-v4-pro",
         "name": "deepseek-v4-pro-think",
+        "model_type": "llm",
         "api_provider": "DeepSeek",
         "price_in": 9.0,
         "cache_price_in": 0.3,
@@ -102,6 +103,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "deepseek-v4-pro",
         "name": "deepseek-v4-pro-nonthink",
+        "model_type": "llm",
         "api_provider": "DeepSeek",
         "price_in": 9.0,
         "cache_price_in": 0.3,
@@ -114,6 +116,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "deepseek-flash",
         "name": "deepseek-flash",
+        "model_type": "llm",
         "api_provider": "DeepSeek",
         "price_in": 2.0,
         "cache_price_in": 0.04,
@@ -127,6 +130,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "deepseek-flash",
         "name": "deepseek-flash-think",
+        "model_type": "llm",
         "api_provider": "DeepSeek",
         "price_in": 2.0,
         "cache_price_in": 0.04,
@@ -140,6 +144,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.7-flash",
         "name": "qwen3.7-flash",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 0.2,
         "cache_price_in": 0.04,
@@ -151,6 +156,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.7-plus",
         "name": "qwen3.7-plus",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 2.0,
         "price_out": 8.0,
@@ -162,6 +168,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.8-flash",
         "name": "qwen3.8-flash",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 0.8,
         "cache_price_in": 0.1,
@@ -173,6 +180,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.8-max",
         "name": "qwen3.8-max",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 12.0,
         "cache_price_in": 1.5,
@@ -185,6 +193,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3-vl-flash",
         "name": "qwen3-vl-flash",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 0.15,
         "price_out": 1.5,
@@ -193,6 +202,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.8-omni-flash",
         "name": "qwen3.8-omni-flash",
+        "model_type": "llm",
         "api_provider": "BaiLian",
         "price_in": 0.8,
         "cache_price_in": 0.1,
@@ -204,6 +214,7 @@ DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
     {
         "model_identifier": "qwen3.7-text-embedding",
         "name": "qwen3.7-text-embedding",
+        "model_type": "embedding",
         "api_provider": "BaiLian",
         "price_in": 0.5,
         "price_out": 0.0,
