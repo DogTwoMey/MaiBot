@@ -12,8 +12,13 @@ const mocks = vi.hoisted(() => ({
   inheritedFrom: 'sidebar',
 }))
 
+vi.mock('@/lib/theme/tokens', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/theme/tokens')>()
+  return { ...actual, DEFAULT_DASHBOARD_STYLE: 'future-retro' }
+})
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' } }),
 }))
 
 vi.mock('@/hooks/use-background', () => ({

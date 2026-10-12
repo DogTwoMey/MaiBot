@@ -831,7 +831,7 @@ describe('usePluginList', () => {
 })
 
 describe('usePluginLifecycle', () => {
-  it('更新对话框：缺仓库、成功、失败、loading 守卫与二次确认短路', async () => {
+  it('更新对话框：缺仓库、成功、失败与二次确认短路', async () => {
     const plugin = makePlugin('test.emoji', { manifest: { name: 'Emoji Plugin' } })
     const getPluginRepositoryUrl = vi.fn<(plugin: InstalledPlugin) => string | undefined>()
     const { result, options } = renderLifecycle({ getPluginRepositoryUrl })
@@ -874,14 +874,13 @@ describe('usePluginLifecycle', () => {
       await result.current.handleConfirmUpdatePlugin()
     })
     expect(updatePlugin).toHaveBeenCalledTimes(1)
-    act(() => result.current.closeUpdatePluginDialog())
     expect(result.current.updateDialogOpen).toBe(true)
 
     await act(async () => {
       deferred.resolve({ success: true })
     })
     await waitFor(() => expect(result.current.updateProgress?.stage).toBe('success'))
-    expect(updatePlugin).toHaveBeenCalledWith('test.emoji', 'https://example.com/emoji.git', 'main')
+    expect(updatePlugin).toHaveBeenCalledWith('test.emoji', 'https://example.com/emoji.git', 'main', undefined, expect.any(AbortSignal))
     expect(toastMock).toHaveBeenCalledWith({
       title: '更新插件成功',
       description: 'Emoji Plugin 已完成更新/升级',
@@ -915,6 +914,26 @@ describe('usePluginLifecycle', () => {
       message: '未知错误',
       error: '未知错误',
     })
+  })
+
+  it('关闭更新对话框中止下载，完成后的结果不会显示成功提示', async () => {
+    const plugin = makePlugin('test.emoji', { manifest: { name: 'Emoji Plugin', repository_url: 'https://example.com/emoji.git' } })
+    const { result, options } = renderLifecycle()
+    const deferred = createDeferred<{ success: boolean }>()
+    vi.mocked(updatePlugin).mockReturnValueOnce(deferred.promise as never)
+    act(() => result.current.openUpdatePluginDialog(plugin, makeClickEvent()))
+    await act(async () => { void result.current.handleConfirmUpdatePlugin() })
+    await waitFor(() => expect(result.current.updateProgress?.stage).toBe('loading'))
+    const signal = vi.mocked(updatePlugin).mock.calls[0][4]!
+    expect(signal.aborted).toBe(false)
+    act(() => result.current.closeUpdatePluginDialog())
+    expect(signal.aborted).toBe(true)
+    expect(result.current.updateDialogOpen).toBe(false)
+    expect(result.current.updatingPlugin).toBeNull()
+    await act(async () => { deferred.resolve({ success: true }) })
+    expect(toastMock).not.toHaveBeenCalled()
+    expect(options.onChanged).not.toHaveBeenCalled()
+    expect(options.setActingPluginId).toHaveBeenLastCalledWith(null)
   })
 
   it('卸载对话框：成功、失败、loading 关闭守卫与未选中短路', async () => {

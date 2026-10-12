@@ -419,6 +419,55 @@ describe('MaisakaMonitor 空态与侧边栏', () => {
   })
 })
 
+describe('思考流程节点', () => {
+  it('按时间线显示流程节点、模型重试和最终失败', () => {
+    setupMonitorState({ timeline: [
+      makeEntry('flow.step', {
+        session_id: 's1', run_id: 'r1', cycle_id: 1, step: 'planner.requested',
+        title: '第 1/8 轮 · 请求模型', detail: '上下文已整理：历史 12 条，可用工具 4 个。', timestamp: nowSec(),
+      }),
+      makeEntry('flow.step', {
+        session_id: 's1', run_id: 'r1', cycle_id: 1, step: 'cycle.started',
+        title: '开始第 1/8 轮思考', detail: '准备参考信息并整理本轮上下文。', timestamp: nowSec(),
+      }),
+      makeEntry('llm.retry', {
+        session_id: 's1', task_name: 'planner', request_type: 'planner', model_name: '测试模型',
+        attempt: 2, max_attempts: 3, reason: '请求超时', retry_interval: 5, timestamp: nowSec(),
+      }),
+      makeEntry('llm.error', {
+        session_id: 's1', task_name: 'planner', request_type: 'planner', model_name: '测试模型',
+        message: '重试次数已用尽', timestamp: nowSec(),
+      }),
+    ] })
+    render(<MaisakaMonitor />)
+    expect(screen.getByText('开始第 1/8 轮思考')).toBeInTheDocument()
+    expect(screen.queryByText('第 1/8 轮 · 请求模型')).not.toBeInTheDocument()
+    expect(screen.getByTitle('准备参考信息并整理本轮上下文。')).toBeInTheDocument()
+    expect(screen.getByText('模型请求重试 2/3 · 测试模型 · planner')).toBeInTheDocument()
+    expect(screen.getByText(/5 秒后重试.*请求超时/s)).toBeInTheDocument()
+    expect(screen.getByText('模型请求失败 · 测试模型 · planner')).toBeInTheDocument()
+    expect(screen.getByText(/重试次数已用尽/)).toBeInTheDocument()
+  })
+
+  it('轮次结束后显示真实结束原因，执行中不提前展示结果', () => {
+    const data = makeFinalized({ final_state: {
+      time_records: {}, agent_state: 'wait', end_reason: 'tool_pause:wait',
+      end_detail: 'Planner 调用 wait，本轮暂停并在等待结束后继续判断。',
+    } })
+    setupMonitorState({ timeline: [makeEntry('planner.progress', data)] })
+    render(<MaisakaMonitor />)
+    expect(screen.queryByText('轮次结果')).not.toBeInTheDocument()
+    setupMonitorState({ timeline: [makeEntry('planner.finalized', data)] })
+    expect(screen.queryByText('轮次结果')).not.toBeInTheDocument()
+    const finished = makeFinalized({ final_state: {
+      time_records: {}, agent_state: 'stop', end_reason: 'tool_pause:finish', end_detail: 'Planner 调用 finish，本轮结束。',
+    } })
+    setupMonitorState({ timeline: [makeEntry('planner.finalized', finished)] })
+    expect(screen.getByText('轮次结果')).toBeInTheDocument()
+    expect(screen.getByText(finished.final_state.end_detail!)).toBeInTheDocument()
+  })
+})
+
 describe('会话侧边栏', () => {
   it('会话按最近活跃排序，展示事件数、相对时间、阶段与等待圆点', () => {
     const sessions = new Map<string, SessionInfo>([
@@ -459,7 +508,7 @@ describe('会话侧边栏', () => {
     expect(screen.getByText('刚刚')).toBeInTheDocument()
     expect(screen.getByText('2分钟前')).toBeInTheDocument()
     expect(screen.getByText('回复中')).toBeInTheDocument()
-    expect(screen.getByText('等待消息')).toBeInTheDocument()
+    expect(screen.getByText('空闲')).toBeInTheDocument()
     // 等待消息状态的会话头像角标为蓝色圆点
     expect(container.querySelector('.bg-blue-500')).not.toBeNull()
   })
@@ -530,7 +579,7 @@ describe('阶段状态栏与工具条', () => {
     setupMonitorState({ selectedSession: 's1', stageStatuses })
     render(<MaisakaMonitor />)
 
-    expect(screen.getByText('等待消息')).toBeInTheDocument()
+    expect(screen.getByText('空闲')).toBeInTheDocument()
     expect(screen.getByText('等待中')).toBeInTheDocument()
     expect(screen.queryByText('wait')).not.toBeInTheDocument()
   })
@@ -651,7 +700,7 @@ describe('阶段状态栏与工具条', () => {
     const viewport = findTimelineViewport(container, '第一条')
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
-    Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 100 })
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 100 })
     fireEvent.scroll(viewport)
 
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
@@ -677,7 +726,7 @@ describe('阶段状态栏与工具条', () => {
     const viewport = findTimelineViewport(container, '第一条')
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
-    Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 100 })
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 100 })
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
 
@@ -730,10 +779,15 @@ describe('阶段状态栏与工具条', () => {
       makeEntry('message.ingested', makeIngested({ content: '第二条' })),
     ]
     setupMonitorState({ timeline })
-    const { rerender } = render(<MaisakaMonitor />)
+    const { container, rerender } = render(<MaisakaMonitor />)
 
     await flushAutoScroll()
+    const viewport = findTimelineViewport(container, '第一条')
+    Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 800 })
     virtualizerMocks.scrollToIndex.mockClear()
+    Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1200 })
     setupMonitorState({
       timeline: [
         ...timeline,
@@ -743,10 +797,8 @@ describe('阶段状态栏与工具条', () => {
     rerender(<MaisakaMonitor />)
     await flushAutoScroll()
 
-    expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(2, {
-      align: 'end',
-      behavior: 'auto',
-    })
+    expect(viewport.scrollTop).toBe(1000)
+    expect(virtualizerMocks.scrollToIndex).not.toHaveBeenCalled()
     expect(getBackToBottomIcon()).toHaveClass('text-primary')
   })
 
@@ -1226,7 +1278,8 @@ describe('时间线事件卡片', () => {
     expect(screen.queryByText('未返回结果摘要。')).not.toBeInTheDocument()
   })
 
-  it('tool_search 将搜索词和激活工具列表单独展示', () => {
+  it('tool_search 展示新发现工具并在浮层保留查询和匹配详情', async () => {
+    const user = userEvent.setup()
     setupMonitorState({
       timeline: [
         makeEntry(
@@ -1248,10 +1301,12 @@ describe('时间线事件卡片', () => {
     })
     render(<MaisakaMonitor />)
 
-    expect(screen.getByText('搜索工具：')).toBeInTheDocument()
-    expect(screen.getAllByText('search_vcpedia_song')).toHaveLength(2)
-    expect(screen.getByText('激活工具：')).toBeInTheDocument()
-    expect(screen.getByText('get_vcpedia_lyrics')).toBeInTheDocument()
+    const discovered = screen.getByRole('button', { name: 'search_vcpedia_song' })
+    expect(discovered).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'get_vcpedia_lyrics' })).not.toBeInTheDocument()
+    await user.hover(discovered)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('搜索关键词：search_vcpedia_song')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('get_vcpedia_lyrics')
     expect(screen.queryByText('执行结果')).not.toBeInTheDocument()
   })
 
@@ -1584,7 +1639,7 @@ describe('推理记录跳转', () => {
     })
     render(<MaisakaMonitor />)
 
-    await user.click(screen.getByRole('button', { name: '推理' }))
+    await user.click(screen.getByRole('button', { name: '查看推理' }))
 
     const expectedParams = new URLSearchParams({
       stage: 'planner',
@@ -1618,7 +1673,7 @@ describe('推理记录跳转', () => {
     render(<MaisakaMonitor />)
 
     // planner 块没有记录地址，唯一的推理按钮来自工具结果行
-    await user.click(screen.getByRole('button', { name: '推理' }))
+    await user.click(screen.getByRole('button', { name: '查看推理' }))
 
     const expectedParams = new URLSearchParams({
       stage: 'tool',
@@ -1670,7 +1725,7 @@ describe('推理记录跳转', () => {
     setupMonitorState({ timeline })
     render(<MaisakaMonitor />)
 
-    expect(screen.queryAllByRole('button', { name: '推理' })).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: '查看推理' })).toHaveLength(0)
   })
 })
 

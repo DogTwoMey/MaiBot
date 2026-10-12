@@ -3,7 +3,7 @@
 from collections import deque
 from datetime import datetime
 from math import ceil
-from typing import Any, Dict, Literal, Optional, Sequence
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Sequence
 import asyncio
 import json
 import time
@@ -119,14 +119,14 @@ class PlannerInterruptController:
         if not interrupted:
             self._consecutive_count = 0
 
-    def request(self, *, max_consecutive_count: int) -> str:
+    def request(self, *, max_consecutive_count: Optional[int]) -> str:
         """尝试发起打断，返回 request/duplicate/limit/idle。"""
 
         if self._flag is None:
             return "idle"
         if self._requested:
             return "duplicate"
-        if self._consecutive_count >= max_consecutive_count:
+        if max_consecutive_count is not None and self._consecutive_count >= max_consecutive_count:
             return "limit"
 
         self._requested = True
@@ -289,6 +289,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             wait_until=(
                 self._pending_wait_started_at + self._pending_wait_seconds
                 if self._agent_state == self._STATE_WAIT
+                and self._wait_timeout_task is not None
                 and self._pending_wait_started_at is not None
                 and self._pending_wait_seconds is not None
                 else None
@@ -974,12 +975,14 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         return False
 
     def _request_planner_interrupt_for_message(self, message: SessionMessage) -> None:
-        """在运行中的 Planner 可打断时，按连续打断限制发起一次中断。"""
-
+        """打断运行中的 Planner；实验性消息引导不限制连续打断次数。"""
         if self._agent_state != self._STATE_RUNNING:
             return
 
-        planner_interrupt_max_count = self._planner_interrupt_max_consecutive_count
+        planner_interrupt_max_count = (
+            None if global_config.experimental.planner_message_steering else self._planner_interrupt_max_consecutive_count
+        )
+        limit_label = "不限" if planner_interrupt_max_count is None else str(planner_interrupt_max_count)
         request_result = self._planner_interrupt.request(max_consecutive_count=planner_interrupt_max_count)
         if request_result == "idle":
             return
@@ -990,7 +993,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 f"{self.log_prefix} 收到新消息，但当前请求已发起过一次规划器打断，"
                 f"本次不重复打断; 消息编号={message.message_id} "
                 f"连续打断次数={consecutive_count}/"
-                f"{planner_interrupt_max_count}"
+                f"{limit_label}"
             )
             return
 
@@ -999,7 +1002,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 f"{self.log_prefix} 收到新消息，但已达到规划器连续打断上限，"
                 f"将等待当前请求自然完成; 消息编号={message.message_id} "
                 f"连续打断次数={consecutive_count}/"
-                f"{planner_interrupt_max_count}"
+                f"{limit_label}"
             )
             return
 
@@ -1008,7 +1011,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             f"消息编号={message.message_id} 缓存条数={len(self.message_cache)} "
             f"时间戳={time.time():.3f} "
             f"连续打断次数={consecutive_count}/"
-            f"{planner_interrupt_max_count}"
+            f"{limit_label}"
         )
 
     def _get_effective_reply_frequency(self) -> float:
@@ -1903,6 +1906,9 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             self._wait_timeout_task = asyncio.create_task(
                 self._schedule_wait_timeout(seconds=seconds, tool_call_id=tool_call_id)
             )
+        if global_config.experimental.planner_message_steering and self._has_pending_messages():
+            # 工具执行期间收到的消息也能唤醒刚进入的 wait，避免漏掉已有新输入。
+            self._schedule_message_turn()
 
     def _cancel_wait_timeout_task(self) -> None:
         """取消当前 wait 对应的超时任务。"""
@@ -1942,6 +1948,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         started_at = self._pending_wait_started_at
         requested_seconds = self._pending_wait_seconds
         elapsed_seconds = max(0.0, time.time() - started_at) if started_at is not None else 0.0
+        self._cancel_wait_timeout_task()
         self._pending_wait_tool_call_id = None
         self._pending_wait_logical_turn_id = None
         self._pending_wait_started_at = None
@@ -1960,13 +1967,24 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             return set()
         return {self._pending_wait_tool_call_id}
 
-    async def _trigger_trimmed_history_learning(self, context_messages: Sequence[LLMContextMessage]) -> None:
+    async def _trigger_trimmed_history_learning(
+        self,
+        context_messages: Sequence[LLMContextMessage],
+        *,
+        on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    ) -> None:
         """提交对 Maisaka 裁切历史的后台学习任务。"""
 
+        async def report_skip(reason: str) -> None:
+            if on_progress is not None:
+                await on_progress({"status": "skipped", "detail": reason, "learners": []})
+
         if not context_messages:
+            await report_skip("没有可用于学习的裁切消息")
             return
         if self._trimmed_history_learning_task is not None and not self._trimmed_history_learning_task.done():
             logger.info(f"{self.log_prefix} 裁切历史学习仍在后台运行，跳过新的学习批次")
+            await report_skip("上一批学习仍在运行，本次未提交新批次")
             return
 
         enable_expression_learning = self._enable_expression_learning
@@ -1978,6 +1996,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             and not enable_high_frequency_learning
         ):
             logger.debug(f"{self.log_prefix} 表达学习、黑话学习和高频词学习均未启用，跳过裁切历史学习")
+            await report_skip("表达与黑话学习未启用")
             return
 
         pending_context_count = len(context_messages)
@@ -1995,6 +2014,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 self._jargon_learner.min_messages_for_extraction,
             ),
         ):
+            await report_skip("未达到学习的消息数量或间隔条件")
             return
 
         self._last_expression_extraction_time = time.time()
@@ -2012,6 +2032,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
                 enable_expression_learning=enable_expression_learning,
                 enable_jargon_learning=enable_jargon_learning,
                 enable_high_frequency_learning=enable_high_frequency_learning,
+                on_progress=on_progress,
             )
         )
         self._trimmed_history_learning_task.add_done_callback(self._handle_trimmed_history_learning_done)
@@ -2023,49 +2044,64 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         enable_expression_learning: bool,
         enable_jargon_learning: bool,
         enable_high_frequency_learning: bool,
+        on_progress: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ) -> None:
-        """在后台并行执行表达、黑话与高频词学习。"""
+        """并行执行学习，按批次回传进度与实际处理内容。"""
 
-        async def run_expression_learning() -> bool:
+        learners: List[Dict[str, Any]] = [
+            {"name": name, "status": "running" if enabled else "disabled", "contents": [], "detail": ""}
+            for name, enabled in (
+                ("表达学习", enable_expression_learning),
+                ("黑话学习", enable_jargon_learning),
+                ("高频词学习", enable_high_frequency_learning),
+            )
+        ]
+
+        async def publish(status: str) -> None:
+            if on_progress is not None:
+                # 每次发送完整快照，回放时同一张裁切卡片可恢复到最后状态。
+                await on_progress({"status": status, "detail": "", "learners": [dict(item) for item in learners]})
+
+        async def run_learning(item: Dict[str, Any]) -> bool:
+            contents: List[str] = []
             try:
-                return await self._expression_learner.learn_from_context_messages(context_messages)
-            except Exception:
-                logger.exception(f"{self.log_prefix} 裁切历史表达学习异常")
-                return False
+                if item["name"] == "表达学习":
+                    changed = await self._expression_learner.learn_from_context_messages(
+                        context_messages, learned_contents=contents
+                    )
+                    item["detail"] = f"写入 {len(contents)} 条表达" if changed else "无新增成果或未满足学习条件"
+                elif item["name"] == "黑话学习":
+                    changed = await self._jargon_learner.learn_from_context_messages(
+                        context_messages, self._jargon_miner, learned_contents=contents
+                    )
+                    item["detail"] = f"处理 {len(contents)} 个黑话候选" if contents else "无候选或未满足学习条件"
+                else:
+                    updated_count = await asyncio.to_thread(
+                        update_high_frequency_terms_from_context_messages,
+                        context_messages,
+                        learned_contents=contents,
+                    )
+                    changed = updated_count > 0
+                    item["detail"] = f"更新 {updated_count} 个词条"
+                item.update(status="completed", contents=contents)
+            except asyncio.CancelledError:
+                item.update(status="cancelled", contents=contents, detail="学习已取消")
+                raise
+            except Exception as exc:
+                logger.exception(f"{self.log_prefix} 裁切历史{item['name']}异常")
+                item.update(status="failed", contents=contents, detail=str(exc))
+                changed = False
+            finally:
+                await publish("running")
+            return changed
 
-        async def run_jargon_learning() -> bool:
-            try:
-                return await self._jargon_learner.learn_from_context_messages(
-                    context_messages,
-                    self._jargon_miner,
-                )
-            except Exception:
-                logger.exception(f"{self.log_prefix} 裁切历史黑话学习异常")
-                return False
-
-        async def run_high_frequency_learning() -> bool:
-            try:
-                updated_count = update_high_frequency_terms_from_context_messages(context_messages)
-            except Exception:
-                logger.exception(f"{self.log_prefix} 裁切历史高频词学习异常")
-                return False
-            if updated_count <= 0:
-                logger.debug(f"{self.log_prefix} 裁切历史高频词学习未产生词条")
-                return False
-            logger.info(f"{self.log_prefix} 裁切历史高频词学习完成: 更新词条数={updated_count}")
-            return True
-
-        learner_tasks: list[asyncio.Task[bool]] = []
-        if enable_expression_learning:
-            learner_tasks.append(asyncio.create_task(run_expression_learning()))
-        if enable_jargon_learning:
-            learner_tasks.append(asyncio.create_task(run_jargon_learning()))
-        if enable_high_frequency_learning:
-            learner_tasks.append(asyncio.create_task(run_high_frequency_learning()))
-        if not learner_tasks:
-            return
-
-        results = await asyncio.gather(*learner_tasks)
+        await publish("running")
+        try:
+            results = await asyncio.gather(*(run_learning(item) for item in learners if item["status"] == "running"))
+        except asyncio.CancelledError:
+            await publish("cancelled")
+            raise
+        await publish("failed" if any(item["status"] == "failed" for item in learners) else "completed")
         if any(results):
             logger.info(f"{self.log_prefix} 裁切历史学习成功")
         else:

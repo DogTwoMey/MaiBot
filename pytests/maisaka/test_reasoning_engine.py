@@ -330,7 +330,9 @@ async def test_handle_tool_calls_pauses_after_successful_reply() -> None:
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
     engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
-    engine._append_tool_display_results = AsyncMock()
+    engine._append_tool_display_results = AsyncMock(
+        side_effect=lambda **kwargs: kwargs["tool_monitor_results"].append({})
+    )
 
     paused, tool_name, _, _ = await engine._handle_tool_calls(
         [ToolCall(call_id="call-reply-1", func_name="reply", args={})],
@@ -379,7 +381,9 @@ async def test_handle_tool_calls_sends_only_first_reply_in_same_batch() -> None:
     engine._record_tool_execution_effects = lambda *args, **kwargs: _async_none()
     engine._emit_planner_progress = AsyncMock()
     engine._append_tool_execution_result = lambda *args, **kwargs: None
-    engine._append_tool_display_results = AsyncMock()
+    engine._append_tool_display_results = AsyncMock(
+        side_effect=lambda **kwargs: kwargs["tool_monitor_results"].append({})
+    )
 
     paused, tool_name, _, _ = await engine._handle_tool_calls(
         [
@@ -408,11 +412,15 @@ def test_tool_stop_request_is_serialized_for_monitor() -> None:
                 "tool_name": "test_tool",
                 "success": True,
                 "stop_after_execution": True,
+                "started_at": 100.25,
+                "ended_at": 102.75,
             }
         ]
     )
 
     assert tools[0]["stop_after_execution"] is True
+    assert tools[0]["started_at"] == 100.25
+    assert tools[0]["ended_at"] == 102.75
 
 
 def test_cache_tokens_and_context_sections_are_serialized_for_monitor() -> None:

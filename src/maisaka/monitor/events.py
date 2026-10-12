@@ -236,6 +236,9 @@ def _serialize_tool_results(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             "summary": str(tool.get("summary", "")),
         }
         detail = tool.get("detail")
+        for key in ("started_at", "ended_at"):
+            if key in tool:
+                serialized_tool[key] = float(tool[key])
         if tool.get("images"):
             serialized_tool["images"] = _normalize_payload_value(tool["images"])
         if isinstance(detail, dict):
@@ -452,6 +455,30 @@ async def emit_stage_removed(
     })
 
 
+async def emit_flow_step(
+    *,
+    session_id: str,
+    run_id: str,
+    step: str,
+    title: str,
+    detail: str,
+    cycle_id: Optional[int] = None,
+    trim: Optional[Dict[str, Any]] = None,
+) -> None:
+    """广播可回放的思考流程节点，可携带裁切及后台学习进度。"""
+
+    await _broadcast("flow.step", {
+        "session_id": session_id,
+        "run_id": run_id,
+        "cycle_id": cycle_id,
+        "step": step,
+        "title": title,
+        "detail": detail,
+        "timestamp": time.time(),
+        **({"trim": trim} if trim is not None else {}),
+    })
+
+
 async def emit_llm_retry(
     *,
     session_id: str,
@@ -606,6 +633,8 @@ async def emit_planner_snapshot(
     planner_total_tokens: Optional[int],
     planner_duration_ms: Optional[float],
     planner_prompt_html_uri: Optional[str] = None,
+    planner_started_at: Optional[float] = None,
+    planner_ended_at: Optional[float] = None,
     planner_model_name: Optional[str] = None,
     planner_prompt_cache_hit_tokens: Optional[int] = None,
     planner_prompt_cache_miss_tokens: Optional[int] = None,
@@ -624,6 +653,8 @@ async def emit_planner_snapshot(
         "session_id": session_id,
         "cycle_id": cycle_id,
         "run_id": run_id,
+        "planner_started_at": planner_started_at,
+        "planner_ended_at": planner_ended_at,
         "timestamp": time.time(),
         "request": _serialize_request_block(
             planner_request_messages,

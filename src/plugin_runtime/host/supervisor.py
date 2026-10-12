@@ -70,7 +70,7 @@ from src.plugin_runtime.protocol.envelope import (
 from src.plugin_runtime.protocol.codec import MsgPackCodec
 from src.plugin_runtime.protocol.errors import ErrorCode, RPCError
 from src.plugin_runtime.transport.factory import create_transport_server
-from src.plugin_runtime.webui_schema import WebUIExtension
+from src.plugin_runtime.webui_schema import WebUIExtension, replace_webui_documents
 from src.services.bot_account_service import (
     BOT_ACCOUNT_SOURCE_READY,
     AdapterAccountIdentity,
@@ -298,6 +298,11 @@ class PluginRunnerSupervisor:
 
         return sorted(self._registered_plugins.keys())
 
+    def get_plugin_config_error(self, plugin_id: str) -> str:
+        """返回已加载插件的配置错误；非空时业务组件未注册。"""
+        registration = self._registered_plugins.get(plugin_id)
+        return registration.config_error if registration is not None else ""
+
     def get_loaded_plugin_ids_by_type(self, plugin_type: str) -> List[str]:
         """返回指定 Manifest 类型的已加载插件 ID。"""
 
@@ -305,7 +310,8 @@ class PluginRunnerSupervisor:
         return sorted(
             plugin_id
             for plugin_id, registration in self._registered_plugins.items()
-            if str(registration.plugin_type or "extension").strip().lower() == normalized_type
+            if not registration.config_error
+            and str(registration.plugin_type or "extension").strip().lower() == normalized_type
         )
 
     def get_loaded_plugin_versions(self) -> Dict[str, str]:
@@ -314,7 +320,11 @@ class PluginRunnerSupervisor:
         Returns:
             Dict[str, str]: 已注册插件版本映射，键为插件 ID，值为插件版本。
         """
-        return {plugin_id: registration.plugin_version for plugin_id, registration in self._registered_plugins.items()}
+        return {
+            plugin_id: registration.plugin_version
+            for plugin_id, registration in self._registered_plugins.items()
+            if not registration.config_error
+        }
 
     def _notify_status_changed(self) -> None:
         if self._status_changed_callback is not None:
@@ -1257,6 +1267,25 @@ class PluginRunnerSupervisor:
                 "removed_registration": removed_registration,
             }
         )
+
+    async def reload_webui_documents(self, plugin_id: str) -> None:
+        """刷新页面文档，保持已注册 API 绑定和插件实例不变。"""
+        registration = self._registered_plugins.get(plugin_id)
+        if registration is None or registration.webui is None:
+            raise ValueError("插件 WebUI 已下线")
+        response = await self._rpc_server.send_request(
+            "plugin.webui.reload_documents", plugin_id=plugin_id, timeout_ms=10000,
+        )
+        if response.error:
+            raise ValueError(response.error.get("message", "页面文件读取失败"))
+        if self._registered_plugins.get(plugin_id) is not registration:
+            raise ValueError("插件已发生重载，请重试")
+        original = registration.webui
+        # Runner 返回值仍是不可信输入；重新校验完整快照后一次性替换。
+        updated = await asyncio.to_thread(replace_webui_documents, original, response.payload)
+        if self._registered_plugins.get(plugin_id) is not registration or registration.webui is not original:
+            raise ValueError("插件页面已发生重载，请重试")
+        registration.webui = updated
 
     def get_webui_extensions(self) -> Dict[str, WebUIExtension]:
         """读取当前已注册插件的 WebUI 声明；卸载和重载沿用注册表生命周期。"""

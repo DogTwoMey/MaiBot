@@ -1319,7 +1319,7 @@ describe('useModelConfig 提供商编辑与级联删除', () => {
     unmount()
   })
 
-  it('重命名仍被模型引用的提供商时中止保存并打开级联确认', async () => {
+  it('重命名提供商时同步迁移模型引用并保留任务分配', async () => {
     const { result, unmount } = await renderLoadedHook()
 
     await act(async () => {
@@ -1332,15 +1332,15 @@ describe('useModelConfig 提供商编辑与级联删除', () => {
       )
     })
 
-    expect(updateModelConfigMock).not.toHaveBeenCalled()
+    expect(updateModelConfigMock).toHaveBeenCalledTimes(1)
+    const saved = updateModelConfigMock.mock.calls[0][0]
+    expect(saved.api_providers).toEqual([expect.objectContaining({ name: 'renamed-main' }), expect.objectContaining({ name: 'spare' })])
+    expect(saved.models).toEqual([expect.objectContaining({ name: 'chat', api_provider: 'renamed-main' })])
+    expect(saved.model_task_config).toEqual({ replyer: { model_list: ['chat'] }, embedding: { model_list: ['chat'] } })
+    expect(result.current.models).toEqual([expect.objectContaining({ name: 'chat', api_provider: 'renamed-main' })])
     expect(result.current.providerDialogOpen).toBe(false)
     expect(result.current.editingProvider).toBeNull()
-    expect(result.current.deleteConfirmState.isOpen).toBe(true)
-    expect(result.current.deleteConfirmState.context).toBe('manual')
-    expect(result.current.deleteConfirmState.providersToDelete).toEqual(['main'])
-    expect(result.current.deleteConfirmState.affectedModels.map((item) => item.name)).toEqual([
-      'chat',
-    ])
+    expect(result.current.deleteConfirmState.isOpen).toBe(false)
     unmount()
   })
 
