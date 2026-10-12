@@ -20,14 +20,17 @@ Requires: Python 3.11+ (tomllib) and psutil.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+from urllib.request import ProxyHandler, Request, build_opener
+
 import argparse
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
-from typing import Any
 
 if sys.platform != "win32":
     print("[launcher] WARNING: this launcher targets Windows. Non-Windows behavior is limited.",
@@ -404,6 +407,7 @@ def _resolve_argv(cfg: dict[str, Any], section: str, default: list[str]) -> list
 def start_bot(cfg: dict[str, Any], hidden: bool) -> int:
     cwd = resolve(cfg, "bot_root")
     argv = _resolve_argv(cfg, "bot", ["uv", "run", "python", "bot.py"])
+    ensure_snowluma_account(cfg)
     return spawn(cfg, "bot", argv, cwd, hidden)
 
 
@@ -416,6 +420,83 @@ def start_snowluma(cfg: dict[str, Any], hidden: bool) -> int:
     if cfg.get("snowluma", {}).get("elevate", False) and not is_admin():
         return spawn_elevated_windows(str(node), subprocess.list2cmdline([str(entrypoint)]), str(cwd), hidden)
     return spawn(cfg, "snowluma", [str(node), str(entrypoint)], cwd, hidden)
+
+
+def find_snowluma_pid(cfg: dict[str, Any]) -> int | None:
+    cwd = resolve(cfg, "snowluma")
+    node = os.path.normcase(str(cwd / "node.exe"))
+    entrypoint = os.path.normcase(str(cwd / "index.mjs"))
+    for process in psutil.process_iter(["exe", "cmdline"]):
+        try:
+            if (
+                process.info["exe"]
+                and os.path.normcase(process.info["exe"]) == node
+                and any(os.path.normcase(arg) == entrypoint for arg in process.info["cmdline"] or [])
+                and is_component_running(process.pid)
+            ):
+                return process.pid
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return None
+
+
+def ensure_snowluma_account(cfg: dict[str, Any]) -> None:
+    section = cfg.get("snowluma", {})
+    credentials_file = section.get("credentials_file")
+    if not credentials_file:
+        return
+    with open(REPO_ROOT / credentials_file, encoding="utf-8") as file:
+        password = json.load(file)["password"]
+    with open(resolve(cfg, "bot_root") / "config" / "bot_config.toml", "rb") as file:
+        account = str(tomllib.load(file)["bot"]["qq_account"])
+    port = int(section.get("ready_port", 5099))
+    timeout = float(section.get("ready_timeout", 20))
+    if not 0 < port < 65536 or timeout <= 0:
+        raise SystemExit("[launcher] SnowLuma account recovery requires a valid ready_port and positive ready_timeout")
+    opener = build_opener(ProxyHandler({}))
+
+    def request(path: str, body: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        payload = json.dumps(body).encode("utf-8") if body is not None else None
+        req = Request(f"http://127.0.0.1:{port}{path}", data=payload, headers=headers)
+        with opener.open(req, timeout=timeout) as response:
+            return json.load(response)
+
+    session = request("/api/login", {"password": password})
+    if not session.get("success") or not session.get("token"):
+        raise SystemExit("[launcher] SnowLuma WebUI login failed; check credentials and second-factor requirements")
+    token = session["token"]
+    deadline = time.monotonic() + timeout
+    attempted: set[int] = set()
+    try:
+        while True:
+            for process in request("/api/processes", token=token)["list"]:
+                pid = process["pid"]
+                uin = str(process["uin"])
+                if uin in ("", "0"):
+                    info = request(f"/api/processes/{pid}/probe-login", token=token)["info"]
+                    uin = str(info["uin"]) if info else "0"
+                if uin != account:
+                    continue
+                if process["status"] == "online" and process["connected"] and process["loggedIn"]:
+                    print(f"[launcher] snowluma: QQ {account} online (pid={pid})")
+                    return
+                if pid not in attempted:
+                    print(f"[launcher] snowluma: loading QQ {account} (pid={pid})...")
+                    result = request(f"/api/processes/{pid}/load", {}, token)
+                    if not result.get("success"):
+                        raise SystemExit(f"[launcher] SnowLuma failed to load QQ {account}; check its server log")
+                    attempted.add(pid)
+            if time.monotonic() >= deadline:
+                raise SystemExit(f"[launcher] QQ {account} not online after {timeout:g}s; keep desktop QQ logged in")
+            time.sleep(0.5)
+    finally:
+        try:
+            request("/api/logout", {}, token)
+        except OSError as error:
+            print(f"[launcher] WARN: SnowLuma WebUI logout failed: {error}")
 
 
 STARTERS = {
@@ -433,9 +514,12 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
     to_start = [t for t in dict.fromkeys([*order, *targets]) if t in targets]
     rc = 0
     for name in to_start:
-        existing = read_pid(cfg, name)
+        existing = find_snowluma_pid(cfg) if name == "snowluma" else read_pid(cfg, name)
         if is_component_running(existing):
             print(f"[launcher] {name} already running (pid={existing})")
+            if name == "snowluma":
+                write_pid(cfg, name, existing)
+                ensure_snowluma_account(cfg)
             continue
         clear_pid(cfg, name)
         hidden = name in hidden_set
@@ -453,12 +537,16 @@ def cmd_start(cfg: dict[str, Any], targets: list[str], hidden_set: set[str]) -> 
             # is fine but child QQ.exe may keep running after cmd exits. Acceptable tradeoff.
             if not probe_port(port, timeout, pid=pid):
                 if not is_alive(pid):
-                    print(f"[launcher]   ERR: {name} process exited during startup — continuing")
+                    print(f"[launcher]   ERR: {name} process exited during startup")
                 else:
-                    print(f"[launcher]   WARN: {name} port {port} not ready within {timeout:.0f}s — continuing")
+                    print(f"[launcher]   WARN: {name} port {port} not ready within {timeout:.0f}s")
                 rc = max(rc, 1)
             else:
                 print(f"[launcher]   {name} ready ({time.monotonic()-t0:.1f}s)")
+        if name == "snowluma":
+            if rc:
+                return rc
+            ensure_snowluma_account(cfg)
     return rc
 
 

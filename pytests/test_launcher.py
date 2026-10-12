@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from io import BytesIO
+from itertools import count
 from types import SimpleNamespace
+from urllib.parse import urlsplit
+
+import json
 
 import psutil
+import pytest
 
 from scripts import launcher
 
@@ -100,3 +106,125 @@ def test_spawn_enables_utf8_for_child_process(monkeypatch) -> None:
     assert isinstance(child_env, dict)
     assert child_env["PYTHONUTF8"] == "1"
     assert child_env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_start_existing_snowluma_restores_account_before_bot(monkeypatch) -> None:
+    cfg = {"startup": {"order": ["snowluma", "bot"]}}
+    calls = []
+    monkeypatch.setattr(launcher, "read_pid", lambda cfg, name: 1234 if name == "snowluma" else None)
+    monkeypatch.setattr(launcher, "is_component_running", lambda pid: pid == 1234)
+    monkeypatch.setattr(launcher, "find_snowluma_pid", lambda cfg: 1234)
+    monkeypatch.setattr(launcher, "ensure_snowluma_account", lambda cfg: calls.append("account"))
+    monkeypatch.setattr(launcher, "clear_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "write_pid", lambda *args: None)
+    monkeypatch.setitem(launcher.STARTERS, "snowluma", lambda *args: calls.append("snowluma") or 1234)
+    monkeypatch.setitem(launcher.STARTERS, "bot", lambda *args: calls.append("bot") or 5678)
+
+    assert launcher.cmd_start(cfg, launcher.parse_targets(["all"], cfg), set()) == 0
+    assert calls == ["account", "bot"]
+
+
+@pytest.mark.parametrize("mode", ["available", "online", "missing", "load-failed", "login-failed"])
+def test_snowluma_account_recovery(monkeypatch, tmp_path, mode) -> None:
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "bot_config.toml").write_text('[bot]\nqq_account = "123456"\n', encoding="utf-8")
+    credentials = tmp_path / "credentials.json"
+    credentials.write_text('{"password":"test-password"}', encoding="utf-8")
+    cfg = {
+        "paths": {"bot_root": str(tmp_path)},
+        "snowluma": {"credentials_file": str(credentials), "ready_timeout": 1},
+    }
+    loaded = mode == "online"
+    calls = []
+
+    def respond(req, timeout):
+        nonlocal loaded
+        assert timeout == 1
+        path = urlsplit(req.full_url).path
+        calls.append(path)
+        if path == "/api/login":
+            assert json.loads(req.data) == {"password": "test-password"}
+            reply = {"success": mode != "login-failed", "token": "test-token"}
+        else:
+            assert req.get_header("Authorization") == "Bearer test-token"
+            if path == "/api/processes":
+                reply = {"list": [
+                    {"pid": 11, "uin": "654321", "status": "online", "connected": True, "loggedIn": True},
+                    {"pid": 22, "uin": "123456" if loaded else "0", "status": "online" if loaded else "available",
+                     "connected": loaded, "loggedIn": loaded},
+                ]}
+            elif path == "/api/processes/22/probe-login":
+                reply = {"info": None if mode == "missing" else {"uin": "123456"}}
+            elif path == "/api/processes/22/load":
+                loaded = True
+                reply = {"success": mode != "load-failed"}
+            else:
+                assert path == "/api/logout"
+                reply = {"success": True}
+        return BytesIO(json.dumps(reply).encode())
+
+    ticks = count()
+    monkeypatch.setattr(launcher, "build_opener", lambda *args: SimpleNamespace(open=respond))
+    monkeypatch.setattr(launcher.time, "monotonic", lambda: next(ticks) / 10)
+    monkeypatch.setattr(launcher.time, "sleep", lambda seconds: None)
+    if mode in ("missing", "load-failed", "login-failed"):
+        with pytest.raises(SystemExit, match="not online|failed to load|login failed"):
+            launcher.ensure_snowluma_account(cfg)
+    else:
+        launcher.ensure_snowluma_account(cfg)
+        launcher.ensure_snowluma_account(cfg)
+        assert calls.count("/api/processes/22/load") == (1 if mode == "available" else 0)
+    assert "/api/processes/11/load" not in calls
+    if mode != "login-failed":
+        assert calls[-1] == "/api/logout"
+
+
+def test_find_snowluma_matches_distribution_and_entrypoint(monkeypatch, tmp_path) -> None:
+    node = str(tmp_path / "node.exe")
+    processes = [
+        SimpleNamespace(pid=1, info={"exe": node, "cmdline": [node, "unrelated.mjs"]}),
+        SimpleNamespace(pid=2, info={"exe": node, "cmdline": [node, str(tmp_path / "index.mjs")]}),
+    ]
+    monkeypatch.setattr(launcher.psutil, "process_iter", lambda attrs: processes)
+    monkeypatch.setattr(launcher, "is_component_running", lambda pid: True)
+    assert launcher.find_snowluma_pid({"paths": {"snowluma": str(tmp_path)}}) == 2
+
+
+@pytest.mark.parametrize("ready", [True, False])
+def test_start_missing_snowluma_gates_bot(monkeypatch, ready) -> None:
+    cfg = {"startup": {"order": ["snowluma", "bot"]}, "snowluma": {"ready_port": 5099, "ready_timeout": 1}}
+    calls = []
+    monkeypatch.setattr(launcher, "read_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "find_snowluma_pid", lambda cfg: None)
+    monkeypatch.setattr(launcher, "is_component_running", lambda pid: False)
+    monkeypatch.setattr(launcher, "is_alive", lambda pid: True)
+    monkeypatch.setattr(launcher, "clear_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "write_pid", lambda *args: None)
+    monkeypatch.setattr(launcher, "probe_port", lambda *args, **kwargs: ready)
+    monkeypatch.setattr(launcher, "ensure_snowluma_account", lambda cfg: calls.append("account"))
+    monkeypatch.setitem(launcher.STARTERS, "snowluma", lambda *args: calls.append("snowluma") or 1234)
+    monkeypatch.setitem(launcher.STARTERS, "bot", lambda *args: calls.append("bot") or 5678)
+
+    assert launcher.cmd_start(cfg, ["snowluma", "bot"], set()) == (0 if ready else 1)
+    assert calls == (["snowluma", "account", "bot"] if ready else ["snowluma"])
+
+
+@pytest.mark.parametrize("online", [True, False])
+def test_bot_only_start_requires_configured_snowluma_account(monkeypatch, tmp_path, online) -> None:
+    cfg = {"paths": {"bot_root": str(tmp_path)}, "bot": {"argv": ["python", "bot.py"]}}
+    calls = []
+
+    def ensure_account(cfg):
+        calls.append("account")
+        if not online:
+            raise SystemExit("QQ not online")
+
+    monkeypatch.setattr(launcher, "ensure_snowluma_account", ensure_account)
+    monkeypatch.setattr(launcher, "spawn", lambda *args: calls.append("bot") or 5678)
+    if online:
+        assert launcher.start_bot(cfg, hidden=True) == 5678
+        assert calls == ["account", "bot"]
+    else:
+        with pytest.raises(SystemExit, match="QQ not online"):
+            launcher.start_bot(cfg, hidden=True)
+        assert calls == ["account"]

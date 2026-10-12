@@ -29,6 +29,10 @@ ready_timeout = 0
 title         = "NapCatQQ"
 
 [snowluma]
+# Optional local JSON file with a "password" field for WebUI login.
+# When set, starting bot also loads bot_config.toml's QQ account and waits until online.
+# Keep this file outside Git; the existing SnowLuma service is reused.
+credentials_file = ""
 elevate       = false
 ready_port    = 5099
 ready_timeout = 20
