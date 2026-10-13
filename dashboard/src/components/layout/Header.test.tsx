@@ -238,11 +238,9 @@ function makeProps(
 ): Parameters<typeof Header>[0] {
   return {
     sidebarOpen: true,
-    mobileMenuOpen: false,
     searchOpen: false,
     actualTheme: 'dark',
     onSidebarToggle: vi.fn(),
-    onMobileMenuToggle: vi.fn(),
     onSearchOpenChange: vi.fn(),
     onThemeChange: vi.fn(),
     onTopbarToggle: vi.fn(),
@@ -274,7 +272,6 @@ describe('Header', () => {
     expect(screen.getByRole('tab', { name: 'third' })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'second' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'pluginWebUI.more' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).not.toHaveClass('hidden')
   })
   beforeEach(() => {
     mocks.pathname = '/'
@@ -306,7 +303,7 @@ describe('Header', () => {
     expect(document.querySelector('[data-dashboard-header="true"]')).toHaveClass('bg-background')
     expect(document.querySelector('[data-dashboard-header="true"]')).not.toHaveClass('bg-card/80')
 
-    fireEvent.click(screen.getByRole('button', { name: 'a11y.closeMenu' }))
+    expect(screen.queryByRole('button', { name: 'a11y.closeMenu' })).not.toBeInTheDocument()
     const sidebarModeButton = screen.getByRole('button', {
       name: 'header.switchSidebarToHover',
     })
@@ -322,7 +319,6 @@ describe('Header', () => {
     fireEvent.click(screen.getByRole('button', { name: 'header.logout' }))
     fireEvent.click(screen.getByRole('tab', { name: 'workspace.logs' }))
 
-    expect(props.onMobileMenuToggle).toHaveBeenCalledOnce()
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
     expect(props.onTopbarToggle).toHaveBeenCalledOnce()
     expect(props.onSearchOpenChange).toHaveBeenCalledWith(true)
@@ -412,14 +408,11 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: 'header.moreActions' })).toBeInTheDocument()
   })
 
-  it('日志工作区保留移动菜单、隐藏侧栏切换，日志槽位可见', () => {
+  it('日志工作区隐藏侧栏切换，日志槽位可见；手机导航交给底部标签栏，顶栏不再有菜单按钮', () => {
     const props = makeProps({ workspaceMode: 'logs', sidebarOpen: true })
     render(<Header {...props} />)
 
-    // 日志工作区在移动端也保留麦麦导航，菜单按钮与其它页面一致，只在大屏隐藏
-    const mobileMenuButton = screen.getByRole('button', { name: 'a11y.closeMenu' })
-    expect(mobileMenuButton).not.toHaveClass('hidden')
-    expect(mobileMenuButton).toHaveClass('lg:hidden')
+    expect(screen.queryByRole('button', { name: 'a11y.closeMenu' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'header.switchSidebarToHover' })).toHaveClass(
       'lg:hidden'
     )

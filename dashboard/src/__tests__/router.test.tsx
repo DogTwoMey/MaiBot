@@ -55,6 +55,7 @@ vi.mock('@/routes/resource/knowledge-graph/index.tsx', () => ({ KnowledgeGraphPa
 vi.mock('@/routes/resource/knowledge-base', () => ({ KnowledgeBasePage: StubPage }))
 vi.mock('@/routes/monitor/index.tsx', () => ({ PlannerMonitorPage: StubPage }))
 vi.mock('@/routes/chat/index', () => ({ ChatPage: StubPage }))
+vi.mock('@/routes/manage', () => ({ ManagePage: StubPage }))
 vi.mock('@/routes/chat-management', () => ({ ChatManagementPage: StubPage }))
 vi.mock('@/routes/chat/embed', () => ({ ChatEmbedPage: StubPage }))
 vi.mock('@/routes/plugins/embed', () => ({ PluginMarketplaceEmbedPage: StubPage }))
@@ -106,6 +107,7 @@ const expectedPaths = [
   '/planner-monitor',
   '/chat-management',
   '/chat',
+  '/manage',
   '/settings',
   '/config/pack-market',
   '/config/pack-market/$packId',
