@@ -312,15 +312,15 @@ describe('MobileChatList', () => {
     return props
   }
 
-  it('千禧风格把两组会话上下排列并提供搜索', async () => {
+  it('与麦麦的会话和聊天流在同一个列表里，并可按名称搜索', async () => {
     const user = userEvent.setup()
     renderList({}, 'millennium')
 
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /小明的私聊/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /测试观察群/ })).toBeInTheDocument()
-    await user.type(screen.getByRole('searchbox'), '观察')
-    expect(screen.queryByRole('button', { name: /小明的私聊/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /测试观察群/ })).toBeInTheDocument()
+    await user.type(screen.getByRole('searchbox'), '不存在')
+    expect(screen.queryByRole('button', { name: /测试观察群/ })).not.toBeInTheDocument()
   })
 
   it('点按本地会话进入对话，只有非默认会话可以关闭', async () => {
@@ -335,12 +335,10 @@ describe('MobileChatList', () => {
     expect(screen.getAllByRole('button', { name: 'chat.mobile.close' })).toHaveLength(1)
   })
 
-  it('分段切换到麦麦的聊天流后可以进入观察或打开设置', async () => {
+  it('点按聊天流进入观察，左滑操作可以打开设置', async () => {
     const user = userEvent.setup()
     const props = renderList()
 
-    expect(screen.queryByRole('button', { name: /测试观察群/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: 'chat.sidebar.observedChats' }))
     await user.click(screen.getByRole('button', { name: /测试观察群/ }))
     expect(props.onOpenObserved).toHaveBeenCalledWith('observed-a')
 
@@ -348,11 +346,9 @@ describe('MobileChatList', () => {
     expect(props.onOpenObservedSettings).toHaveBeenCalledWith('observed-a')
   })
 
-  it('聊天流加载失败时显示错误提示', async () => {
-    const user = userEvent.setup()
+  it('聊天流加载失败时显示错误提示', () => {
     renderList({ observedSessions: new Map(), observedSessionsError: true })
 
-    await user.click(screen.getByRole('tab', { name: 'chat.sidebar.observedChats' }))
     expect(screen.getByText('chat.sidebar.loadObservedChatsFailed')).toBeInTheDocument()
   })
 })

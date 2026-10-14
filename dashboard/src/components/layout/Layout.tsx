@@ -89,8 +89,10 @@ export function Layout({ children }: LayoutProps) {
   // 麦麦聊天已并入麦麦设置侧边栏，/chat 属于设置工作区
   const workspaceMode: WorkspaceMode = isLogsPath ? 'logs' : workspaceForPath(pathname)
   const isSettingsWorkspace = workspaceMode !== 'logs'
-  const showBackToTop =
+  // 聊天与规划监控自己管理滚动区域，其余设置页按内容撑高、由 main 滚动
+  const isScrollablePage =
     isSettingsWorkspace && pathname !== '/chat' && pathname !== '/planner-monitor'
+  const showBackToTop = isScrollablePage
 
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     loadStoredBoolean(SIDEBAR_OPEN_STORAGE_KEY, true)
@@ -98,6 +100,10 @@ export function Layout({ children }: LayoutProps) {
   const [skipSidebarResizeAnimation, setSkipSidebarResizeAnimation] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [mobileTabBarHidden, setMobileTabBarHidden] = useState(false)
+  const [mobileHeaderActionsElement, setMobileHeaderActionsElement] = useState<HTMLElement | null>(
+    null
+  )
+  const [mobileTitleOverride, setMobileTitleOverride] = useState<string | null>(null)
   const [topbarCollapsed, setTopbarCollapsed] = useState(() =>
     loadStoredBoolean(TOPBAR_COLLAPSED_STORAGE_KEY, false)
   )
@@ -351,8 +357,10 @@ export function Layout({ children }: LayoutProps) {
       menuSections,
       openSearch: () => setSearchOpen(true),
       setTabBarHidden: setMobileTabBarHidden,
+      headerActionsElement: mobileHeaderActionsElement,
+      setTitleOverride: setMobileTitleOverride,
     }),
-    [menuSections]
+    [menuSections, mobileHeaderActionsElement]
   )
   const handleSidebarFix = () => {
     // 悬浮展开已处于完整宽度；固定时跳过占位宽度过渡，避免已经展开的侧栏出现二次动画。
@@ -444,7 +452,6 @@ export function Layout({ children }: LayoutProps) {
             <Header
               extensions={workspaceExtensions}
               logSwitcherHidden={logSwitcherHidden}
-              mobileHidden={mobileTabBarHidden}
               sidebarUnderlay={sidebarUnderlay}
               sidebarOpen={effectiveSidebarOpen}
               searchOpen={searchOpen}
@@ -467,9 +474,8 @@ export function Layout({ children }: LayoutProps) {
                 'relative isolate min-h-0 flex-1 outline-none',
                 // 移动端给底部标签栏让出位置，高度由标签栏按实际占用写入
                 'max-lg:pb-[var(--mobile-dock-height,0px)]',
-                // 原版风格在手机上没有顶栏，页面内容自己避开状态栏
-                themeConfig.dashboardStyle !== 'millennium' &&
-                  'max-lg:pt-[env(safe-area-inset-top)]',
+                // 手机上没有顶栏，页面内容自己避开状态栏
+                'max-lg:pt-[env(safe-area-inset-top)]',
                 workspaceTransitionStage !== 'idle'
                   ? 'overflow-hidden'
                   : isSettingsWorkspace
@@ -486,7 +492,7 @@ export function Layout({ children }: LayoutProps) {
                   // 手机上页头与页面上下排列，页面占满剩余高度
                   'max-lg:flex max-lg:flex-col',
                   // 可滚动工作区在手机上按内容撑高，滚动容器底部的留白才不会被溢出内容越过
-                  isSettingsWorkspace && 'min-h-full max-lg:h-auto',
+                  isScrollablePage && 'min-h-full max-lg:h-auto',
                   targetWorkspaceWaiting && 'invisible'
                 )}
                 variants={{
@@ -500,7 +506,11 @@ export function Layout({ children }: LayoutProps) {
               >
                 <MobileNavContext.Provider value={mobileNavValue}>
                   <div className="shrink-0 lg:hidden">
-                    <MobileRouteHeader menuSections={menuSections} />
+                    <MobileRouteHeader
+                      menuSections={menuSections}
+                      actionsRef={setMobileHeaderActionsElement}
+                      titleOverride={mobileTitleOverride}
+                    />
                   </div>
                   {/*
                     桌面端用 display: contents 让页面直接按原结构布局。
@@ -510,7 +520,7 @@ export function Layout({ children }: LayoutProps) {
                   <div
                     className={cn(
                       'lg:contents',
-                      isSettingsWorkspace ? 'flex-[1_0_auto]' : 'min-h-0 flex-1'
+                      isScrollablePage ? 'flex-[1_0_auto]' : 'min-h-0 flex-1'
                     )}
                   >
                     {children}
@@ -521,7 +531,6 @@ export function Layout({ children }: LayoutProps) {
 
             {/* 移动端底部标签栏，取代侧栏和汉堡菜单 */}
             <MobileTabBar
-              millennium={themeConfig.dashboardStyle === 'millennium'}
               hidden={mobileTabBarHidden}
               onSearch={() => setSearchOpen(true)}
             />

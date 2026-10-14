@@ -213,6 +213,14 @@
     "logs": "日志"
   },
   "chat": {
+    "setupTrial": {
+      "title": "试试和麦麦聊天",
+      "description": "先发一句「你好」，确认麦麦能正常回复。",
+      "repliedTitle": "已收到麦麦的回复",
+      "repliedDescription": "如果回复和说话风格符合预期，就可以继续配置消息平台。",
+      "keepChatting": "继续聊聊",
+      "continue": "试聊正常，配置消息平台"
+    },
     "botNameFallback": "麦麦",
     "userFallback": "用户",
     "userNameFallback": "人类",
@@ -781,7 +789,7 @@
       "saveFailedTitle": "保存失败",
       "validationFailedTitle": "验证失败",
       "completeSuccessTitle": "配置完成",
-      "completeSuccessDescription": "{{appName}} 配置已保存并生效。",
+      "completeSuccessDescription": "{{appName}} 配置已保存。先在「聊聊」发一句「你好」，试试麦麦的回复和说话风格。",
       "completeFailedTitle": "配置失败",
       "skipFailedTitle": "跳过失败",
       "customTokenSuccessTitle": "密码已更新",
@@ -1597,7 +1605,7 @@
     },
     "mobile": {
       "title": "麦麦",
-      "openSettings": "我的与 WebUI 设置"
+      "openSettings": "WebUI 设置"
     }
   },
   "mobileNav": {
@@ -1605,18 +1613,22 @@
     "home": "首页",
     "chat": "聊天",
     "manage": "管理",
-    "observe": "观察",
     "me": "我的",
     "search": "搜索",
     "live": "麦麦实时",
     "botInitial": "麦",
-    "observeLive": "实时",
-    "observeLogs": "日志",
-    "observeReasoning": "推理过程",
     "backHome": "返回首页",
     "backManage": "返回管理"
   },
   "manage": {
-    "searchPlaceholder": "搜索页面或设置项"
+    "searchPlaceholder": "搜索页面或设置项",
+    "groups": {
+      "runtime": "运行记录"
+    }
+  },
+  "dynamicForm": {
+    "mobileTextEmpty": "未填写",
+    "mobileTextCancel": "取消",
+    "mobileTextDone": "完成"
   }
 }

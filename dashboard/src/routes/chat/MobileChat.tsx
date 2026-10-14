@@ -9,14 +9,14 @@ import {
   UserRound,
   UsersRound,
 } from 'lucide-react'
-import { useContext, useRef, useState } from 'react'
+import { motion } from 'motion/react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MOBILE_GLASS_CLASS } from '@/components/layout/mobile-glass'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useResolvedAvatarUrl } from '@/lib/avatar-url'
-import { ThemeProviderContext } from '@/lib/theme-context'
 import { cn } from '@/lib/utils'
 import type { SessionInfo, StageStatusInfo } from '@/routes/monitor/use-maisaka-monitor'
 import { StageStatusLabel } from '@/routes/monitor/StageStatusLabel'
@@ -27,6 +27,87 @@ import { getChatTabDisplayName } from './utils'
 /** 左滑露出的操作按钮宽度 */
 const SWIPE_ACTION_WIDTH = 76
 const SWIPE_OPEN_THRESHOLD = 40
+
+/** 顶栏随滚动隐藏前需要的最小滚动距离 */
+const FLOATING_HEADER_SCROLL_DELTA = 6
+/** 手指或滚轮操作后这段时间内的滚动才算用户滚动；自动跟随新消息不收起顶栏 */
+const FLOATING_HEADER_GESTURE_MS = 600
+
+interface MobileFloatingHeaderProps {
+  children: ReactNode
+}
+
+/**
+ * 对话页的悬浮顶栏：盖在内容上方，内容从它下面滚过。
+ * 向下浏览时上滑收起，向上回滚时滑回；高度写到父元素的 `--observe-header-h`，供内容留出顶部空间。
+ */
+export function MobileFloatingHeader({ children }: MobileFloatingHeaderProps) {
+  const headerRef = useRef<HTMLElement>(null)
+  const [hidden, setHidden] = useState(false)
+  const [height, setHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const header = headerRef.current
+    const container = header?.parentElement
+    if (!header || !container) return
+    const update = () => {
+      setHeight(header.offsetHeight)
+      container.style.setProperty('--observe-header-h', `${header.offsetHeight}px`)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const container = headerRef.current?.parentElement
+    if (!container) return
+    let lastGestureAt = 0
+    const lastScrollTops = new WeakMap<EventTarget, number>()
+    const markGesture = () => {
+      lastGestureAt = Date.now()
+    }
+    const handleScroll = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement) || headerRef.current?.contains(target)) return
+      const scrollTop = target.scrollTop
+      const previous = lastScrollTops.get(target) ?? scrollTop
+      lastScrollTops.set(target, scrollTop)
+      // 回到顶部附近始终显示
+      if (scrollTop <= 8) {
+        setHidden(false)
+        return
+      }
+      if (Date.now() - lastGestureAt > FLOATING_HEADER_GESTURE_MS) return
+      const delta = scrollTop - previous
+      if (delta > FLOATING_HEADER_SCROLL_DELTA) setHidden(true)
+      else if (delta < -FLOATING_HEADER_SCROLL_DELTA) setHidden(false)
+    }
+    container.addEventListener('touchmove', markGesture, { passive: true })
+    container.addEventListener('wheel', markGesture, { passive: true })
+    container.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    return () => {
+      container.removeEventListener('touchmove', markGesture)
+      container.removeEventListener('wheel', markGesture)
+      container.removeEventListener('scroll', handleScroll, { capture: true })
+    }
+  }, [])
+
+  return (
+    <motion.header
+      ref={headerRef}
+      data-mobile-floating-header="true"
+      data-hidden={hidden ? 'true' : 'false'}
+      initial={false}
+      animate={{ y: hidden ? -height : 0, opacity: hidden ? 0 : 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }}
+      className="pointer-events-none absolute inset-x-0 top-0 z-30 [&>*]:pointer-events-auto"
+    >
+      {children}
+    </motion.header>
+  )
+}
 
 /** 会话行的时间：今天显示时刻，昨天显示「昨天」，更早显示日期 */
 function formatRowTime(seconds: number | undefined, language: string): string {
@@ -256,8 +337,6 @@ interface MobileChatListProps {
   onClose: (tabId: string) => void
 }
 
-type ChatListSegment = 'local' | 'observed'
-
 /** 手机端会话列表：点按进入全屏对话页，左滑露出设置/关闭 */
 export function MobileChatList({
   tabs,
@@ -271,9 +350,6 @@ export function MobileChatList({
   onClose,
 }: MobileChatListProps) {
   const { t, i18n } = useTranslation()
-  const { themeConfig } = useContext(ThemeProviderContext)
-  const millennium = themeConfig.dashboardStyle === 'millennium'
-  const [segment, setSegment] = useState<ChatListSegment>('local')
   const [query, setQuery] = useState('')
   const language = i18n.resolvedLanguage ?? i18n.language
   const normalizedQuery = query.trim().toLowerCase()
@@ -289,102 +365,87 @@ export function MobileChatList({
       (session) => !normalizedQuery || session.sessionName.toLowerCase().includes(normalizedQuery)
     )
 
-  // 原版风格用分段控件二选一；千禧风格把两组上下排在各自的屏幕里
-  const showLocal = millennium || segment === 'local'
-  const showObserved = millennium || segment === 'observed'
-
   const localSection = (
+    // 与麦麦的会话固定在最上面
     <section data-mobile-chat-section="local" aria-label={t('chat.sidebar.myChats')}>
-      {millennium && <h2 data-mobile-chat-section-title="true">{t('chat.sidebar.myChats')}</h2>}
-      <div data-mobile-chat-screen="true">
-        {visibleTabs.map((tab) => {
-          const displayName = getChatTabDisplayName(tab, t('chat.botNameFallback'))
-          const lastMessage = tab.messages[tab.messages.length - 1]
-          return (
-            <SwipeRow
-              key={tab.id}
-              actions={
-                tab.id === 'webui-default'
-                  ? []
-                  : [
-                      {
-                        label: t('chat.mobile.close'),
-                        destructive: true,
-                        onClick: () => onClose(tab.id),
-                      },
-                    ]
-              }
-            >
-              <ChatRow
-                avatar={<TabAvatar tab={tab} />}
-                title={displayName}
-                badge={tab.type === 'virtual' ? t('chat.sidebar.virtualBadge') : undefined}
-                preview={lastMessage?.content || t('chat.sidebar.emptyPreview')}
-                time={formatRowTime(lastMessage?.timestamp, language)}
-                onOpen={() => onOpenTab(tab.id)}
-              />
-            </SwipeRow>
-          )
-        })}
-      </div>
+      {visibleTabs.map((tab) => {
+        const displayName = getChatTabDisplayName(tab, t('chat.botNameFallback'))
+        const lastMessage = tab.messages[tab.messages.length - 1]
+        return (
+          <SwipeRow
+            key={tab.id}
+            actions={
+              tab.id === 'webui-default'
+                ? []
+                : [
+                    {
+                      label: t('chat.mobile.close'),
+                      destructive: true,
+                      onClick: () => onClose(tab.id),
+                    },
+                  ]
+            }
+          >
+            <ChatRow
+              avatar={<TabAvatar tab={tab} />}
+              title={displayName}
+              badge={tab.type === 'virtual' ? t('chat.sidebar.virtualBadge') : undefined}
+              preview={lastMessage?.content || t('chat.sidebar.emptyPreview')}
+              time={formatRowTime(lastMessage?.timestamp, language)}
+              onOpen={() => onOpenTab(tab.id)}
+            />
+          </SwipeRow>
+        )
+      })}
     </section>
   )
 
   const observedSection = (
+    // 麦麦的聊天流接在后面，按最近活跃排序，行内标「观察」区分
     <section data-mobile-chat-section="observed" aria-label={t('chat.sidebar.observedChats')}>
-      {millennium && (
-        <h2 data-mobile-chat-section-title="true">
-          {t('chat.sidebar.observedChats')}
-          <span className="ml-auto">
-            {t('chat.sidebar.subtitle', { count: visibleObserved.length })}
-          </span>
-        </h2>
-      )}
-      <div data-mobile-chat-screen="true">
-        {observedSessionsError ? (
-          <p className="text-destructive px-5 py-4 text-sm">
-            {t('chat.sidebar.loadObservedChatsFailed')}
-          </p>
-        ) : visibleObserved.length === 0 ? (
-          <p className="text-muted-foreground px-5 py-4 text-sm">
-            {t('chat.sidebar.waitingObservedChats')}
-          </p>
-        ) : (
-          visibleObserved.map((session) => {
-            const status = observedStageStatuses.get(session.sessionId)
-            const latest = observedLatestMessages.get(session.sessionId)
-            const content = latest?.content || latest?.mediaText || t('chat.sidebar.emptyPreview')
-            const preview =
-              status && status.stage && status.stage !== '等待消息' ? (
-                <StageStatusLabel status={status} />
-              ) : session.isGroupChat && latest?.speakerName ? (
-                `${latest.speakerName}: ${content}`
-              ) : (
-                content
-              )
-            return (
-              <SwipeRow
-                key={session.sessionId}
-                actions={[
-                  {
-                    label: t('chat.mobile.settings'),
-                    onClick: () => onOpenObservedSettings(session.sessionId),
-                  },
-                ]}
-              >
-                <ChatRow
-                  avatar={<ObservedAvatar session={session} />}
-                  title={session.sessionName}
-                  badge={millennium ? t('chat.sidebar.observedBadge') : undefined}
-                  preview={preview}
-                  time={formatRowTime(session.lastActivity, language)}
-                  onOpen={() => onOpenObserved(session.sessionId)}
-                />
-              </SwipeRow>
+      {observedSessionsError ? (
+        <p className="text-destructive px-5 py-4 text-sm">
+          {t('chat.sidebar.loadObservedChatsFailed')}
+        </p>
+      ) : visibleObserved.length === 0 ? (
+        <p className="text-muted-foreground px-5 py-4 text-sm">
+          {t('chat.sidebar.waitingObservedChats')}
+        </p>
+      ) : (
+        visibleObserved.map((session) => {
+          const status = observedStageStatuses.get(session.sessionId)
+          const latest = observedLatestMessages.get(session.sessionId)
+          const content = latest?.content || latest?.mediaText || t('chat.sidebar.emptyPreview')
+          const preview =
+            status && status.stage && status.stage !== '等待消息' ? (
+              <StageStatusLabel status={status} />
+            ) : session.isGroupChat && latest?.speakerName ? (
+              `${latest.speakerName}: ${content}`
+            ) : (
+              content
             )
-          })
-        )}
-      </div>
+          return (
+            <SwipeRow
+              key={session.sessionId}
+              actions={[
+                {
+                  label: t('chat.mobile.settings'),
+                  onClick: () => onOpenObservedSettings(session.sessionId),
+                },
+              ]}
+            >
+              <ChatRow
+                avatar={<ObservedAvatar session={session} />}
+                title={session.sessionName}
+                badge={t('chat.sidebar.observedBadge')}
+                preview={preview}
+                time={formatRowTime(session.lastActivity, language)}
+                onOpen={() => onOpenObserved(session.sessionId)}
+              />
+            </SwipeRow>
+          )
+        })
+      )}
     </section>
   )
 
@@ -399,46 +460,26 @@ export function MobileChatList({
         </h1>
       </div>
       <div className="px-4">
-        {millennium ? (
-          <label data-mobile-chat-search="true" className="flex h-11 items-center gap-2 px-3">
-            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('chat.sidebar.searchPlaceholder')}
-              aria-label={t('chat.sidebar.searchPlaceholder')}
-              className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
-            />
-          </label>
-        ) : (
-          <div
-            role="tablist"
-            aria-label={t('chat.sidebar.conversations')}
-            data-mobile-segmented="true"
-            className="bg-muted grid grid-cols-2 rounded-[10px] p-0.5"
-          >
-            {(['local', 'observed'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={segment === value}
-                onClick={() => setSegment(value)}
-                className={cn(
-                  'h-[30px] rounded-lg text-sm',
-                  segment === value &&
-                    'bg-background font-semibold shadow-[0_1px_3px_rgb(0_0_0/0.12)]'
-                )}
-              >
-                {value === 'local' ? t('chat.sidebar.myChats') : t('chat.sidebar.observedChats')}
-              </button>
-            ))}
-          </div>
-        )}
+        <label
+          data-mobile-chat-search="true"
+          className="bg-muted flex h-10 items-center gap-2 rounded-xl px-3"
+        >
+          <Search className="text-muted-foreground h-4 w-4 shrink-0" aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('chat.sidebar.searchPlaceholder')}
+            aria-label={t('chat.sidebar.searchPlaceholder')}
+            className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+          />
+        </label>
       </div>
-      {showLocal && localSection}
-      {showObserved && observedSection}
+      {/* 与麦麦的会话和麦麦的聊天流放在同一个列表里 */}
+      <div data-mobile-chat-screen="true">
+        {localSection}
+        {observedSection}
+      </div>
     </div>
   )
 }

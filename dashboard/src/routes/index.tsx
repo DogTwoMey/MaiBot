@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { Link } from '@tanstack/react-router'
-import { AlertCircle, ArrowRight, ExternalLink, Pencil, RefreshCw } from 'lucide-react'
+import { AlertCircle, ArrowRight, ExternalLink, Pencil, RefreshCw, Settings } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { lazy, Suspense, useCallback, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +10,7 @@ import { RestartOverlay } from '@/components/restart-overlay'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { CHART_INITIAL_DIMENSION } from '@/components/ui/chart'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
@@ -261,7 +262,7 @@ function BotStatusFlipCard({
                 aria-label={t('home.botStatus.recentOnlineChart')}
                 className="mt-1 min-h-0 flex-1"
               >
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL_DIMENSION}>
                   <BarChart
                     data={recentOnlineData}
                     margin={{ top: 5, right: 0, bottom: 0, left: 0 }}
@@ -969,7 +970,6 @@ function IndexPageContent() {
           </Card>
         )}
         <MobilePageHeader
-          hideInMillennium
           eyebrow={new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, {
             month: 'long',
             day: 'numeric',
@@ -981,9 +981,9 @@ function IndexPageContent() {
               to="/settings"
               data-home-avatar-entry="true"
               aria-label={t('home.mobile.openSettings')}
-              className="bg-muted text-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold"
+              className="bg-muted text-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
             >
-              {t('mobileNav.botInitial')}
+              <Settings className="h-[22px] w-[22px]" strokeWidth={1.7} aria-hidden="true" />
             </Link>
           }
         />
