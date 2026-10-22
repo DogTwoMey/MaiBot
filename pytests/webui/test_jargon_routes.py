@@ -624,6 +624,7 @@ def test_get_chat_list_includes_chat_session_without_jargon(client: TestClient, 
             "platform": sample_chat_session.platform,
             "account_id": sample_chat_session.account_id,
             "is_group": True,
+            "jargon_count": 0,
         }
     ]
 

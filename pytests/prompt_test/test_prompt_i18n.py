@@ -233,6 +233,10 @@ def test_maisaka_main_prompts_render_shared_system_guidance(tmp_path: Path) -> N
     custom_prompts_root = tmp_path / "custom_prompts"
     prompt_context = {
         "bot_name": "麦麦",
+        "bot_alias_notice": "别名提示",
+        "bot_nickname_notice": "昵称提示",
+        "personality": "性格设定",
+        "subagent_rule": "子代理规则",
         "group_chat_attention_block": "聊天注意事项",
         "behavior_style": "行为风格",
         "identity": "身份设定",

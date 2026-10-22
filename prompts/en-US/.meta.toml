@@ -172,3 +172,8 @@ description = "Asks the model to remove unsupported content and rewrite the fina
 display_name = "WebUI AI Search Evidence Message"
 advanced = true
 description = "Wraps read-only tool results from AI search as evidence messages usable in requests without tools."
+
+[maisaka_replyer_document]
+display_name = "Article Writing"
+advanced = true
+description = "Writes a complete article or community post from supplied material and output requirements."

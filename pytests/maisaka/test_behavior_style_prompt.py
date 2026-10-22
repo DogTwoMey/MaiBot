@@ -78,3 +78,6 @@ def test_planner_personality_precedes_behavior_style(
         prompt = service._build_chat_system_prompt()
 
     assert prompt.index("核心人格测试标记") < prompt.index("行为风格测试标记")
+    if prompt_name == "maisaka_chat_focus":
+        assert prompt.count("核心人格测试标记") == 1
+        assert prompt.count("行为风格测试标记") == 1

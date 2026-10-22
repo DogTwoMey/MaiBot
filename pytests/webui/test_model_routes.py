@@ -294,6 +294,7 @@ async def test_test_model_capability_requires_tool_call_and_keeps_visual_flag(
         """
 [[models]]
 name = "vision-model"
+model_type = "llm"
 model_identifier = "vision-model-id"
 api_provider = "Fake"
 visual = true
@@ -343,13 +344,14 @@ async def test_test_model_capability_tests_embedding_task_model_via_embedding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    """嵌入任务中的模型应通过嵌入接口测试，而不是对话接口。"""
+    """文本嵌入类型模型应通过嵌入接口测试，而不是对话接口。"""
     model_routes = load_model_routes(monkeypatch)
     config_path = tmp_path / "model_config.toml"
     config_path.write_text(
         """
 [[models]]
 name = "embed-model"
+model_type = "embedding"
 model_identifier = "embed-model-id"
 api_provider = "Fake"
 
@@ -400,11 +402,11 @@ async def test_test_model_capability_tests_visual_embedding_via_images(
     model_identifier: str,
     image_task_config: str,
 ) -> None:
-    """模型标识或图片嵌入任务应让模型测试发送图片，而非走对话或文本嵌入。"""
+    """显式图片嵌入类型应发送图片，不依赖模型名称或任务分配。"""
     model_routes = load_model_routes(monkeypatch)
     (tmp_path / "model_config.toml").write_text(
         f'[[models]]\nname = "my-vector"\nmodel_identifier = "{model_identifier}"\n'
-        f'api_provider = "Fake"\n\n{image_task_config}',
+        f'api_provider = "Fake"\nmodel_type = "image_embedding"\n\n{image_task_config}',
         encoding="utf-8",
     )
     monkeypatch.setattr(model_routes, "CONFIG_DIR", str(tmp_path))
@@ -449,6 +451,7 @@ async def test_test_model_capability_keeps_chat_test_for_non_embedding_model(
         """
 [[models]]
 name = "chat-model"
+model_type = "llm"
 model_identifier = "chat-model-id"
 api_provider = "Fake"
 

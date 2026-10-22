@@ -51,7 +51,7 @@ def validator_versions(monkeypatch):
     monkeypatch.setattr(release_install, "ManifestValidator", validator)
 
 
-def test_recommendation_filters_host_sdk_protocol_prerelease_and_yanked():
+def test_recommendation_filters_host_protocol_prerelease_and_yanked_with_sdk_warning():
     host = manifest("5.0.0")
     host["host_application"]["min_version"] = "2.0.0"
     sdk = manifest("4.0.0")
@@ -63,9 +63,15 @@ def test_recommendation_filters_host_sdk_protocol_prerelease_and_yanked():
         release("4.0.0", manifest=sdk), release("3.0.0", manifest=old),
         release("7.0.0", prerelease=True), release("6.0.0", yanked=True),
     ))
-    assert result["recommended_version"] == "1.10.0"
+    assert result["recommended_version"] == "4.0.0"
+    sdk_release = next(item for item in result["versions"] if item["version"] == "4.0.0")
+    assert sdk_release["compatible"] is True
+    validator = ManifestValidator(host_version="1.3.0", sdk_version="2.8.1", log_compat_warnings=False)
+    validator.parse_manifest(sdk)
+    assert not validator.errors
+    assert any("SDK 版本" in warning for warning in validator.warnings)
     assert result["versions"][0]["prerelease"] is True
-    assert all(item["reasons"] for item in result["versions"] if item["version"] in {"3.0.0", "4.0.0", "5.0.0", "6.0.0"})
+    assert all(item["reasons"] for item in result["versions"] if item["version"] in {"3.0.0", "5.0.0", "6.0.0"})
 
 
 def test_no_compatible_release_and_sync_errors_are_explicit():

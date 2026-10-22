@@ -32,14 +32,17 @@ def test_mid_memory_resolves_configured_task_chain(monkeypatch, mid_models, fast
 
 
 @pytest.mark.parametrize("computer_models", [[], ["computer-model"]])
-def test_computer_uses_dedicated_task_or_complete_planner_config(monkeypatch, computer_models) -> None:
+def test_dedicated_task_retains_its_full_config(monkeypatch, computer_models) -> None:
     tasks = SimpleNamespace(
         computer=TaskConfig(model_list=computer_models, temperature=0.2, max_tokens=2048),
         planner=TaskConfig(model_list=["planner-model"], temperature=0.9, max_tokens=8192),
     )
     monkeypatch.setattr(utils_model.config_manager, "get_model_config", lambda: SimpleNamespace(model_task_config=tasks))
     orchestrator = LLMOrchestrator(task_name="computer")
-    assert orchestrator.model_for_task is (tasks.computer if computer_models else tasks.planner)
+    assert orchestrator.model_for_task is tasks.computer
+    assert orchestrator.model_for_task.model_list == computer_models
+    assert orchestrator.model_for_task.temperature == 0.2
+    assert orchestrator.model_for_task.max_tokens == 2048
     # 配置热更新后，沿用的客户端也必须重新解析任务归属。
     tasks.computer = TaskConfig(model_list=["new-computer-model"])
     assert orchestrator._refresh_task_config() is tasks.computer

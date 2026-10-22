@@ -1,3 +1,4 @@
+from datetime import datetime
 """Maisaka 推理引擎测试。"""
 
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ from src.llm_models.payload_content.context_item import (
     ProviderActivityItem,
 )
 from src.llm_models.payload_content.native_tool import NativeToolCallSummary
+from src.llm_models.payload_content.tool_option import ToolCall
 from src.maisaka.chat_loop_service import ChatResponse, MaisakaChatLoopService
 from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.context.usage import (
@@ -28,6 +30,7 @@ from src.maisaka.monitor.events import (
     _serialize_request_block,
     _serialize_tool_results,
 )
+from src.maisaka.mode_policy import is_idle_cycle_reason
 from src.maisaka.reasoning_engine import CycleRuntimeState, STOP_AFTER_EXECUTION_PAUSE_REASON, MaisakaReasoningEngine
 
 
@@ -249,7 +252,7 @@ def test_planner_reply_intent_without_tool_call_retries_once(planner_content: st
     assert len(runtime._chat_history) == 1
     hint = runtime._chat_history[0]
     assert isinstance(hint, ReferenceMessage)
-    assert hint.reference_type == ReferenceMessageType.PLANNER_TOOL_HINT
+    assert hint.reference_type == ReferenceMessageType.TOOL_HINT
     assert "结构化 reply 工具调用" in hint.content
 
 
@@ -615,3 +618,17 @@ async def test_chat_loop_keeps_reasoning_separate_from_content(monkeypatch) -> N
     assert isinstance(generation_attempts, tuple)
     assert generation_attempts[0].attempt_id == "planner-attempt-1"
     assert not hasattr(generation_attempts[0], "wire_response")
+
+
+def test_reply_retry_keeps_other_tool_hints() -> None:
+    existing_hint = ReferenceMessage(
+        content="子任务仍在运行", timestamp=datetime.now(),
+        reference_type=ReferenceMessageType.TOOL_HINT, display_prefix="[子代理任务]",
+    )
+    runtime = SimpleNamespace(_chat_history=[existing_hint], log_prefix="[测试]")
+    engine = MaisakaReasoningEngine(runtime)
+    engine._append_planner_reply_tool_retry_hint()
+    engine._append_planner_reply_tool_retry_hint()
+    assert len(runtime._chat_history) == 2
+    assert runtime._chat_history[0] is existing_hint
+    assert "结构化 reply 工具调用" in runtime._chat_history[1].content

@@ -88,15 +88,23 @@ async def test_no_tool_response_ends_without_retry(content: str) -> None:
     state = CycleRuntimeState()
 
     should_end = await engine._handle_planner_response_actions(
-        response=SimpleNamespace(content=content, raw_messages=[], tool_calls=None),
+        response=SimpleNamespace(content=content, raw_messages=[], tool_calls=None, output_items=[]),
         cycle_detail=SimpleNamespace(),
         state=state,
         planner_extra_lines=state.planner_extra_lines,
     )
 
+    if "调用 reply" in content:
+        assert not should_end
+        assert state.cycle_end.reason == "planner_missing_reply_tool_retry"
+        assert len(runtime._chat_history) == 1
+        runtime._enter_stop_state.assert_not_called()
+        should_end = await engine._handle_planner_response_actions(
+            response=SimpleNamespace(content=content, raw_messages=[], tool_calls=None, output_items=[]),
+            cycle_detail=SimpleNamespace(), state=state, planner_extra_lines=state.planner_extra_lines,
+        )
     assert should_end
     assert state.cycle_end.reason == "planner_no_tool_end"
-    assert state.planner_extra_lines == ["状态：已结束本轮思考"]
-    assert runtime._chat_history == []
+    assert state.planner_extra_lines[-1] == "状态：已结束本轮思考"
     runtime._end_planner_continuation.assert_called_once_with()
     runtime._enter_stop_state.assert_called_once_with()

@@ -28,7 +28,7 @@ from src.maisaka.builtin_tool import context as context_module
 from src.maisaka.builtin_tool import reply as reply_tool
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 from src.maisaka.context.emoji_candidates import EmojiCandidateMessage
-from src.maisaka.context.messages import SessionBackedMessage
+from src.maisaka.context.messages import InternalContextMessage, SessionBackedMessage
 
 
 @pytest.fixture
@@ -38,6 +38,9 @@ def reply_context(monkeypatch):
     user = SimpleNamespace(user_id="user-1", user_nickname="小明", user_cardname="")
     source = SimpleNamespace(
         message_id="msg-1",
+        timestamp=datetime.now(),
+        received_at=datetime.now(),
+        platform="qq",
         message_info=SimpleNamespace(user_info=user),
         raw_message=MessageSequence([
             TextComponent("图片"),
@@ -46,11 +49,15 @@ def reply_context(monkeypatch):
         ]),
     )
     runtime = SimpleNamespace(
-        _chat_history=[],
+        _chat_history=[SessionBackedMessage(
+            raw_message=source.raw_message, visible_text="图片", timestamp=source.timestamp,
+            message_id=source.message_id, original_message=source,
+        )],
         find_source_message_by_id=lambda message_id: source if message_id == "msg-1" else None,
         get_active_turn_trigger_message=lambda: source,
         session_id="session-1",
-        chat_stream=SimpleNamespace(platform="qq"),
+        chat_stream=SimpleNamespace(platform="qq", is_group_session=True, account_id="bot", scope="group"),
+        get_reply_quote_context=lambda target: None,
         log_prefix="test",
         _update_stage_status=lambda *args: None,
         record_planner_reply=lambda: None,
@@ -211,7 +218,7 @@ async def test_reply_keeps_async_split_and_quote_metadata_with_picture(reply_con
 
 @pytest.mark.asyncio
 async def test_picture_from_tool_media_history(reply_context):
-    reply_context.runtime._chat_history.append(SessionBackedMessage(
+    reply_context.runtime._chat_history.append(InternalContextMessage(
         raw_message=MessageSequence([ImageComponent(binary_hash="tool-image", binary_data=b"tool-result")]),
         visible_text="工具图片",
         timestamp=datetime.now(),

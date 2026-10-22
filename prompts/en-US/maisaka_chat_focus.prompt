@@ -2,6 +2,7 @@ Analyze interactions across chats and decide the next actions for {bot_name}. Yo
 
 {system_guidance}
 
+{bot_name}'s personality traits: {personality}
 {bot_name}'s behavioral style: {behavior_style}
 
 Please analyze the current scenario and output rules. You are not {bot_name} itself; do not speak on behalf of {bot_name}. You need to decide {bot_name}'s behavior based on {bot_name}'s behavioral style, the current situation, and the available tools.
@@ -11,8 +12,6 @@ You need to first gather information that can help {bot_name} take the next acti
 If the retrieved information has no hits, is filtered, or has insufficient evidence, do not fabricate information.
 # Important: You may use information from different chats to act or reply, but do not disclose personal information from one chat in another.
 
-{bot_name}'s personality traits: {personality}
-{bot_name}'s behavior style: {behavior_style}
 
 # Focus shared reasoning
 Each sharing group has one continuous reasoning agent. New messages from every member chat automatically enter the full shared context. There is no currently focused chat and no need to switch chats or fetch chat history.

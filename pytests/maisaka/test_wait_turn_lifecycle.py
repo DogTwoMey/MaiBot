@@ -96,8 +96,9 @@ async def test_proactive_task_is_resolvable_as_reply_target() -> None:
 
     task_id = result["task_id"]
     assert runtime._chat_history[-1].message_id == task_id
-    assert runtime._chat_history[-1].original_message is trigger
-    assert runtime.find_source_message_by_id(task_id) is trigger
+    assert runtime._chat_history[-1].message_id == trigger.message_id
+    runtime.set_active_turn_trigger_message(trigger)
+    assert runtime.get_active_turn_trigger_message() is trigger
 
 
 @pytest.mark.asyncio

@@ -166,6 +166,7 @@ async def test_orchestrator_embedding_retries_do_not_multiply(monkeypatch, statu
     monkeypatch.setattr(client, "_execute_embedding_request", execute)
     orchestrator = object.__new__(LLMOrchestrator)
     orchestrator.request_type = "expression.selection.index_batch"
+    orchestrator.task_name = "embedding"
     monkeypatch.setattr(orchestrator, "_schedule_llm_retry_event", lambda **kwargs: None)
     request = EmbeddingRequest(
         SimpleNamespace(name="alias", model_identifier="model"), "text",

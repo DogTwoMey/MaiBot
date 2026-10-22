@@ -14,7 +14,7 @@ from src.plugin_market.cache import MarketCache
 def isolated_sources(tmp_path, monkeypatch):
     monkeypatch.setattr(market, "market_cache", MarketCache())
     monkeypatch.setattr(market, "SETTINGS_FILE", tmp_path / "sources.json")
-    monkeypatch.setattr(git, "_validate_custom_outbound_url", lambda value: value)
+    monkeypatch.setattr(git, "_validate_custom_outbound_url", lambda value, source_name: value)
     monkeypatch.setattr("src.common.network_security.validate_public_url", lambda value, **kw: value)
 
 

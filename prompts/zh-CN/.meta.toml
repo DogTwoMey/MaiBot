@@ -167,3 +167,8 @@ description = "用于在 AI 搜索回答未通过证据校验时，要求模型�
 display_name = "WebUI AI 搜索证据消息"
 advanced = true
 description = "用于把 AI 搜索中只读工具的返回结果包装成无工具请求可用的证据消息。"
+
+[maisaka_replyer_document]
+display_name = "文章写作"
+advanced = true
+description = "按给定材料和输出格式撰写完整文章或社区帖子。"

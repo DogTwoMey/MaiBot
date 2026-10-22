@@ -19,16 +19,19 @@ async def test_content_inspection_rejection_falls_back_to_another_provider(monke
             name="qwen3.7-plus",
             model_identifier="qwen3.7-plus",
             api_provider="BaiLian",
+            model_type="llm",
         ),
         "qwen3.7-flash": ModelInfo(
             name="qwen3.7-flash",
             model_identifier="qwen3.7-flash",
             api_provider="BaiLian",
+            model_type="llm",
         ),
         "deepseek-v4-flash": ModelInfo(
             name="deepseek-v4-flash",
             model_identifier="deepseek-v4-flash",
             api_provider="DeepSeek",
+            model_type="llm",
         ),
     }
     providers = {
@@ -44,7 +47,7 @@ async def test_content_inspection_rejection_falls_back_to_another_provider(monke
     selected_models: list[str] = []
     exclusion_history: list[set[str]] = []
 
-    def fake_select_model(*, exclude_models=None, model_name=None):
+    async def fake_select_model(*, exclude_models=None, model_name=None):
         excluded = set(exclude_models or set())
         exclusion_history.append(excluded)
         selected_name = next(name for name in model_names if name not in excluded)

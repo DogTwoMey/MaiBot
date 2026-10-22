@@ -96,22 +96,15 @@ def test_message_debounce_fields_are_exposed_to_webui():
     schema = ConfigSchemaGenerator.generate_schema(ChatConfig)
     fields = {field["name"]: field for field in _get_reply_timing_schema(schema)["fields"]}
 
-    quiet_window = fields["message_debounce_seconds"]
-    max_wait = fields["message_debounce_max_seconds"]
+    mode = fields["message_debounce_mode"]
 
-    assert quiet_window["type"] == "number"
-    assert quiet_window.get("x-widget") == "input"
-    assert quiet_window.get("x-icon") == "timer"
-    assert quiet_window.get("advanced") is True
-    assert quiet_window["minValue"] == 0
-    assert quiet_window["maxValue"] == 30
+    assert mode["type"] == "select"
+    assert mode["default"] == "natural"
+    assert mode.get("x-widget") == "discrete-slider"
+    assert mode["options"] == ["off", "fast", "natural", "steady"]
+    assert set(mode["x-option-labels"]) == set(mode["options"])
+    assert set(mode["x-option-descriptions"]) == set(mode["options"])
 
-    assert max_wait["type"] == "number"
-    assert max_wait.get("x-widget") == "input"
-    assert max_wait.get("x-icon") == "timer-reset"
-    assert max_wait.get("advanced") is True
-    assert max_wait["minValue"] == 0
-    assert max_wait["maxValue"] == 120
 
 
 def test_field_without_extra_metadata():

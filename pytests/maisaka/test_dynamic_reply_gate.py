@@ -184,6 +184,7 @@ def _build_message(message_id: str, text: str, *, is_mentioned: bool = False, is
     return SimpleNamespace(
         message_id=message_id,
         timestamp=datetime.now(),
+        received_at=datetime.now(),
         platform="test-platform",
         message_info=SimpleNamespace(user_info=SimpleNamespace(user_id="external-user")),
         processed_plain_text=text,
@@ -197,8 +198,8 @@ def test_turn_gate_counts_each_message_once_and_reads_history() -> None:
 
     now = datetime.now()
     history = [
-        SimpleNamespace(count_in_context=True, timestamp=now - timedelta(seconds=40), source="user"),
-        SimpleNamespace(count_in_context=True, timestamp=now - timedelta(seconds=20), source="guided_reply"),
+        SimpleNamespace(count_in_context=True, timestamp=now - timedelta(seconds=40), received_at=now - timedelta(seconds=40), source="user"),
+        SimpleNamespace(count_in_context=True, timestamp=now - timedelta(seconds=20), received_at=now - timedelta(seconds=20), source="guided_reply"),
     ]
     gate = DynamicReplyTurnGate(_build_runtime(is_group=True, history=history))
     first_message = _build_message("m1", "这个怎么配置？")

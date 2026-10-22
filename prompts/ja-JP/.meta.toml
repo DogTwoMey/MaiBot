@@ -172,3 +172,8 @@ description = "AI 検索の回答が根拠検証に失敗した場合に、根�
 display_name = "WebUI AI 検索の根拠メッセージ"
 advanced = true
 description = "AI 検索の読み取り専用ツールの結果を、ツールなしのリクエストで使える根拠メッセージに変換します。"
+
+[maisaka_replyer_document]
+display_name = "記事執筆"
+advanced = true
+description = "提供された資料と出力形式に従って記事やコミュニティ投稿を執筆します。"

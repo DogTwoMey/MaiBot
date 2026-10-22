@@ -408,7 +408,9 @@ class MaisakaReasoningEngine:
         """判断是否为 Planner 无工具重试提示。"""
 
         return (
-            isinstance(message, ReferenceMessage) and message.reference_type == ReferenceMessageType.PLANNER_TOOL_HINT
+            isinstance(message, ReferenceMessage)
+            and message.reference_type == ReferenceMessageType.TOOL_HINT
+            and message.display_prefix == PLANNER_REPLY_TOOL_RETRY_HINT_PREFIX
         )
 
     def _clear_planner_no_tool_hints(self) -> None:
@@ -444,7 +446,7 @@ class MaisakaReasoningEngine:
                     "不要只在分析正文中描述、模拟或宣称调用。若重新判断后无需回复，可以只输出分析并结束本轮。"
                 ),
                 timestamp=datetime.now(),
-                reference_type=ReferenceMessageType.PLANNER_TOOL_HINT,
+                reference_type=ReferenceMessageType.TOOL_HINT,
                 remaining_uses_value=None,
                 display_prefix=PLANNER_REPLY_TOOL_RETRY_HINT_PREFIX,
             )
