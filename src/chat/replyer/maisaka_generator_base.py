@@ -57,7 +57,6 @@ from src.maisaka.context.messages import (
 )
 from src.maisaka.context.planner_messages import extract_quote_ids_from_message_sequence
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
-from src.maisaka.memory.mid_term import is_mid_term_memory_message
 from src.maisaka.prompt_sections import build_system_guidance_prompt
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.maisaka.visual.deferred_images import defer_context_image_encoding
@@ -207,6 +206,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
 
         target_lines = [
             f"你想要回复的消息是 {sender_name} 发送的 msg_id为 {target_message_id} 的消息，你这次要回复的就是这条目标消息，不要把其他历史消息当成当前回复对象。",
+            f"- 发言账号：platform={reply_message.platform}, user_id={user_info.user_id}",
         ]
         if quote_ids:
             target_lines.append(f"- quote={','.join(to_display_message_id(quote_id) for quote_id in quote_ids)}")

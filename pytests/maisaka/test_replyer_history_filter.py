@@ -1,4 +1,5 @@
 from datetime import datetime
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -31,6 +32,7 @@ def _build_mixed_history() -> List[LLMContextMessage]:
     ]):
         sequence = MessageSequence([TextComponent(text)])
         original = SessionMessage(message_id=str(index), timestamp=timestamp, platform="test")
+        original.message_info = SimpleNamespace(user_info=SimpleNamespace(user_id=f"user-{index}"))
         history.append(message_type(
             raw_message=sequence,
             visible_text=text,

@@ -430,6 +430,7 @@ def _build_item_from_sequence(
     tool_call_id: Optional[str] = None,
     tool_name: Optional[str] = None,
     meta: ContextItemMeta | None = None,
+    sender_identity: str = "",
 ) -> Optional[ContextItem]:
     """根据消息片段构造统一 Context Item。"""
     builder = ContextItemBuilder().set_role(role)
@@ -439,6 +440,9 @@ def _build_item_from_sequence(
         builder.add_tool_call(tool_call_id)
     if role == RoleType.Tool and tool_name:
         builder.set_tool_name(tool_name)
+
+    if sender_identity:
+        builder.add_text_content(sender_identity)
 
     has_content = False
     for component in message_sequence.components:
@@ -629,6 +633,24 @@ class SessionBackedMessage(ContentContextMessage):
             raise ValueError("真实 IM 上下文必须具有原始消息和消息编号")
 
     @property
+    def sender_identity(self) -> str:
+        user_info = self.original_message.message_info.user_info
+        return f"【发言账号：platform={self.original_message.platform}, user_id={user_info.user_id}】\n"
+
+    def to_context_item(
+        self, enable_visual_message: bool = True, *, limit_emoji_size: bool = False
+    ) -> ContextItem | None:
+        return _build_item_from_sequence(
+            RoleType.User,
+            self.raw_message,
+            self.processed_plain_text,
+            enable_visual_message=enable_visual_message,
+            limit_emoji_size=limit_emoji_size,
+            meta=ContextItemMeta.create(item_id=self.context_item_id, timestamp=self.timestamp),
+            sender_identity=self.sender_identity,
+        )
+
+    @property
     def received_at(self) -> Optional[datetime]:
         return self.original_message.received_at
 
@@ -688,6 +710,7 @@ class ComplexSessionMessage(SessionBackedMessage):
             message_sequence,
             self.prompt_text,
             meta=ContextItemMeta.create(item_id=self.context_item_id, timestamp=self.timestamp),
+            sender_identity=self.sender_identity,
         )
 
     @classmethod

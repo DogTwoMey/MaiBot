@@ -417,9 +417,10 @@ class RetroReplyPromptMixin:
             if references:
                 return f"你现在想补充说明你刚刚自己的发言内容：你{reference_text} 说：{target_content}"
             return f"你现在想补充说明你刚刚自己的发言内容：{target_content}"
+        sender_identity = f"发言账号：platform={reply_message.platform}, user_id={user_info.user_id}"
         if references:
-            return f"现在{sender_name}{reference_text} 说：{target_content} 引起了你的注意"
-        return f"现在{sender_name}说的：{target_content} 引起了你的注意"
+            return f"现在{sender_name}{reference_text} 说：{target_content} 引起了你的注意\n{sender_identity}"
+        return f"现在{sender_name}说的：{target_content} 引起了你的注意\n{sender_identity}"
 
     def _build_retro_dialogue_block(self, chat_history: List[LLMContextMessage]) -> str:
         """把聊天历史渲染成旧版那样的可读文本块。"""
