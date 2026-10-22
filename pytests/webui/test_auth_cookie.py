@@ -13,6 +13,36 @@ from src.webui.core import auth as auth_module
 from src.webui.dependencies import require_auth
 
 
+def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
+    from src.webui.routers.plugin import support, webui_extensions
+
+    async def run_inline(coroutine):
+        return await coroutine
+
+    async def empty_result(*args):
+        return {"success": True, "extensions": []}
+
+    monkeypatch.setattr(webui_extensions, "run_on_main_loop", run_inline)
+    monkeypatch.setattr(webui_extensions, "_list_extensions", empty_result)
+    monkeypatch.setattr(webui_extensions, "_invoke", empty_result)
+    app = FastAPI()
+    app.include_router(webui_extensions.router)
+    other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
+    with patch.object(support, "get_token_manager") as manager:
+        manager.return_value.verify_token.side_effect = lambda token: token == "test-token"
+        for cookie_name, expected in (
+            (auth_module.COOKIE_NAME, 200),
+            (auth_module.build_auth_cookie_name(other_port), 401),
+            ("maibot_session", 401),
+            (None, 401),
+        ):
+            with TestClient(app) as client:
+                if cookie_name:
+                    client.cookies.set(cookie_name, "test-token")
+                assert client.get("/runtime/webui").status_code == expected
+                assert client.post("/runtime/webui/test/page/queries/summary", json={}).status_code == expected
+
+
 def test_auth_cookie_name_is_isolated_by_webui_port() -> None:
     assert auth_module.build_auth_cookie_name(8001) == "maibot_session_8001"
     assert auth_module.build_auth_cookie_name(8101) == "maibot_session_8101"
@@ -86,36 +116,39 @@ def test_create_app_registers_dashboard_api_routes() -> None:
 
 
 def test_plugin_release_list_uses_current_instance_cookie(monkeypatch) -> None:
-    from src.webui.routers.plugin import releases, support
+    from src.webui.routers.plugin import marketplace
 
-    async def load_empty_index():
-        return releases.PluginReleaseIndex(schema_version=1, plugins=[])
+    async def load_empty_catalog(*args):
+        return {"success": True, "plugins": [], "releases": []}
 
-    monkeypatch.setattr(releases, "load_release_index", load_empty_index)
+    monkeypatch.setattr(marketplace.service, "get_detail", load_empty_catalog)
     app = FastAPI()
-    app.include_router(releases.router)
+    app.include_router(marketplace.router)
     other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
-    with patch.object(support, "get_token_manager") as manager:
-        manager.return_value.verify_token.side_effect = lambda token: token == "test-token"
+    with patch.object(auth_module, "is_token_valid", side_effect=lambda token: token == "test-token"):
         for cookie_name, expected in (
             (auth_module.COOKIE_NAME, 200),
             (auth_module.build_auth_cookie_name(other_port), 401),
             ("maibot_session", 401),
+            (None, 401),
         ):
             client = TestClient(app)
-            client.cookies.set(cookie_name, "test-token")
-            assert client.get("/releases").status_code == expected
+            if cookie_name:
+                client.cookies.set(cookie_name, "test-token")
+            assert client.get("/marketplace/test.plugin").status_code == expected
 
 
 def test_plugin_install_and_market_routes_use_current_instance_cookie() -> None:
-    from src.webui.routers.plugin import catalog, marketplace, zip_install
+    from src.webui.routers.plugin import management, marketplace, zip_install
 
     app = FastAPI()
-    for router in (catalog.router, marketplace.router, zip_install.router):
+    for router in (management.router, marketplace.router, zip_install.router):
         app.include_router(router)
     paths = app.openapi()["paths"]
     for path, method in (
-        ("/mirrors/reset", "post"),
+        ("/install", "post"),
+        ("/update", "post"),
+        ("/uninstall", "post"),
         ("/marketplace/source", "get"),
         ("/marketplace/source", "put"),
         ("/marketplace", "get"),
