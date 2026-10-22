@@ -267,7 +267,7 @@ class MainSystem:
                 self._register_message_handlers()
                 if self.app is None or self.server is None:
                     raise RuntimeError("消息服务未初始化")
-                tasks.extend([self.app.run(), self.server.run()])
+                tasks.append(self.app.run())
             else:
                 logger.info("maim_message 已关闭，跳过旧版 WS 和新版 API 服务启动")
             if global_config.debug.enable_console_input:
