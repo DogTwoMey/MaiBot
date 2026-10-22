@@ -51,6 +51,7 @@ async def test_default_generation_uses_explicit_utils_task(captured_requests: Li
     assert result["success"] is True
     assert captured_requests[0].task_name == "utils"
     assert captured_requests[0].model_name is None
+    assert captured_requests[0].response_format is None
 
 
 @pytest.mark.asyncio
@@ -166,3 +167,36 @@ async def test_generate_with_tools_uses_same_route(captured_requests: List[Any])
     assert captured_requests[0].task_name == "planner"
     assert captured_requests[0].model_name == "glm-5.2"
     assert captured_requests[0].tool_options == [tool]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["_cap_llm_generate", "_cap_llm_generate_with_tools"])
+async def test_json_response_format_reaches_service(method: str, captured_requests: List[Any]) -> None:
+    manager = RuntimeCoreCapabilityMixin()
+    result = await getattr(manager, method)(
+        "demo.plugin", "llm.generate", {"prompt": "Return JSON", "response_format": {"type": "json_object"}}
+    )
+    assert result["success"] is True
+    assert captured_requests[0].response_format is not None
+    assert captured_requests[0].response_format.format_type.value == "json_object"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["json_object", {}, {"type": "unknown"}, {"type": "json_schema"}, {"type": "json_object", "json_schema": {}}])
+async def test_invalid_response_format_is_rejected(value: Any, captured_requests: List[Any]) -> None:
+    result = await RuntimeCoreCapabilityMixin()._cap_llm_generate(
+        "demo.plugin", "llm.generate", {"prompt": "Return JSON", "response_format": value}
+    )
+    assert result["success"] is False
+    assert not captured_requests
+
+
+@pytest.mark.asyncio
+async def test_json_schema_reaches_service(captured_requests: List[Any]) -> None:
+    schema = {"name": "result", "schema": {"type": "object"}, "strict": True}
+    result = await RuntimeCoreCapabilityMixin()._cap_llm_generate(
+        "demo.plugin", "llm.generate",
+        {"prompt": "Return JSON", "response_format": {"type": "json_schema", "json_schema": schema}},
+    )
+    assert result["success"] is True
+    assert captured_requests[0].response_format.schema == schema

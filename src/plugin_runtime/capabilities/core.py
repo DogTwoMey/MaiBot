@@ -6,10 +6,22 @@ import base64
 
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.llm_models.payload_content.resp_format import RespFormat, RespFormatType
 
 logger = get_logger("plugin_runtime.integration")
 
 _DEFAULT_PLUGIN_LLM_TASK = "utils"
+
+
+def _resolve_response_format(value: Any) -> RespFormat | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or "type" not in value or value.keys() - {"type", "json_schema"}:
+        raise ValueError("response_format 必须包含有效type且仅允许type/json_schema字段")
+    format_type = RespFormatType(value["type"])
+    if "json_schema" in value and format_type != RespFormatType.JSON_SCHEMA:
+        raise ValueError("json_schema 仅可用于json_schema响应格式")
+    return RespFormat(format_type=format_type, schema=value.get("json_schema"))
 
 
 def _resolve_llm_capability_route(
@@ -753,6 +765,7 @@ class RuntimeCoreCapabilityMixin:
                     model_name=model_name,
                     temperature=args.get("temperature"),
                     max_tokens=args.get("max_tokens"),
+                    response_format=_resolve_response_format(args.get("response_format")),
                 )
             )
             return result.to_capability_payload()
@@ -791,6 +804,7 @@ class RuntimeCoreCapabilityMixin:
                     tool_options=tool_options,
                     temperature=args.get("temperature"),
                     max_tokens=args.get("max_tokens"),
+                    response_format=_resolve_response_format(args.get("response_format")),
                 )
             )
             return result.to_capability_payload()
