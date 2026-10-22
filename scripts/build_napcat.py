@@ -182,6 +182,8 @@ def main() -> int:
     if not args.no_install:
         run([pnpm, "install"], cwd=source)
 
+    run([pnpm, "run", "build:webui"], cwd=source)
+
     if args.build_cmd:
         build_cmd = args.build_cmd.split()
     elif args.dev:
@@ -189,6 +191,10 @@ def main() -> int:
     else:
         build_cmd = [pnpm, "run", "build:shell"]
     run(build_cmd, cwd=source)
+
+    webui_index = source / "packages" / "napcat-shell" / "dist" / "static" / "index.html"
+    if not webui_index.is_file():
+        raise SystemExit(f"[build_napcat] WebUI build artifact missing: {webui_index}")
 
     backup = output.parent / (output.name + ".preserved")
     moved = backup_preserved(output, backup)
