@@ -197,6 +197,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         self._message_turn_scheduler = MessageTurnScheduler(self)
         self._idle_backoff = IdleBackoffController(self)
         self._forced_turn_enabled = False
+        self._forced_reply_continuation_active = False
         self._forced_turn_message_id = ""
         self._forced_turn_reason = ""
         self._planner_continuation_active = False
@@ -1074,7 +1075,11 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
 
     def _is_reply_frequency_silent(self) -> bool:
         """判断当前会话是否处于回复频率为 0 的静默接收模式。"""
-        return self._get_effective_reply_frequency() <= 0.0 and not self._has_forced_turn_trigger()
+        return (
+            self._get_effective_reply_frequency() <= 0.0
+            and not self._has_forced_turn_trigger()
+            and not self._forced_reply_continuation_active
+        )
 
 
     def _get_pending_message_count(self) -> int:
@@ -1238,6 +1243,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         if not self._forced_turn_enabled:
             return None
 
+        self._forced_reply_continuation_active = True
         trigger_reason = self._forced_turn_reason or "@/提及消息"
         trigger_message_id = self._forced_turn_message_id or "unknown"
         reason = f"检测到新的{trigger_reason}（消息编号={trigger_message_id}），本轮直接进入 Planner。"
@@ -1681,6 +1687,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
     def _enter_stop_state(self) -> None:
         """切换到停止状态。"""
         self._agent_state = self._STATE_STOP
+        self._forced_reply_continuation_active = False
         self._reset_consecutive_wait_count("stop_state")
         self._clear_wait_state()
 

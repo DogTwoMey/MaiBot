@@ -9,6 +9,7 @@ from src.maisaka.runtime import MaisakaHeartFlowChatting
 @pytest.mark.parametrize("frequency,forced,silent", [(0, False, True), (0, True, False), (0.1, False, False)])
 def test_forced_turn_bypasses_zero_frequency(frequency, forced, silent):
     runtime = object.__new__(MaisakaHeartFlowChatting)
+    runtime._forced_reply_continuation_active = False
     runtime._get_effective_reply_frequency = lambda: frequency
     runtime._forced_turn_enabled = forced
     assert runtime._is_reply_frequency_silent() is silent
@@ -20,6 +21,7 @@ def test_forced_turn_bypasses_zero_frequency(frequency, forced, silent):
 @pytest.mark.parametrize("arrives_during_debounce", [False, True])
 async def test_turn_rechecks_silence_after_debounce(arrives_during_debounce):
     runtime = object.__new__(MaisakaHeartFlowChatting)
+    runtime._forced_reply_continuation_active = False
     runtime._get_effective_reply_frequency = lambda: 0.0
     runtime._forced_turn_enabled = False
     runtime._agent_state = runtime._STATE_STOP
