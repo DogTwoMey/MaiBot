@@ -134,7 +134,7 @@ class ImageManager:
 
         try:
             if record := self._get_image_record(hash_str):
-                if record.vlm_processed and record.description:
+                if record.vlm_processed and record.description and not image_bytes:
                     return record.description
         except Exception as e:
             logger.error(f"查询图片描述时发生错误: {e}")
@@ -142,6 +142,8 @@ class ImageManager:
         if not image_bytes:
             logger.warning("图片哈希值未找到，且未提供图片字节数据，返回无描述")
             return ""
+        if saved_image.vlm_processed and saved_image.description:
+            return saved_image.description
         if not _is_vlm_task_configured():
             logger.info("未配置 VLM 模型，跳过图片识别")
             return ""
