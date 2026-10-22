@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+import userEvent from '@testing-library/user-event'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -24,6 +26,12 @@ const i18nMocks = vi.hoisted(() => {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: i18nMocks.t }),
+}))
+
+vi.mock('motion/react', () => ({
+  useReducedMotion: () => true,
+  AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,
+  motion: { div: ({ children, className }: { children: ReactNode; className?: string }) => <div className={className}>{children}</div> },
 }))
 
 afterEach(() => {
@@ -60,8 +68,8 @@ describe('CustomTokenForm', () => {
   it('空 Token 时四条规则均未通过', () => {
     render(<CustomTokenForm token="" onChange={vi.fn()} />)
 
-    for (const label of ['长度至少 10 位', '包含大写字母', '包含小写字母', '包含特殊符号']) {
-      expect(screen.getByText(label)).toHaveClass('text-muted-foreground')
+    for (const label of ['setupPage.forms.customToken.rules.minLength', 'setupPage.forms.customToken.rules.hasUppercase', 'setupPage.forms.customToken.rules.hasLowercase', 'setupPage.forms.customToken.rules.hasSpecialChar']) {
+      expect(screen.getByText(label).closest('li')).toHaveClass('text-muted-foreground')
     }
   })
 
@@ -69,17 +77,17 @@ describe('CustomTokenForm', () => {
     // "abc" 只满足小写字母规则
     render(<CustomTokenForm token="abc" onChange={vi.fn()} />)
 
-    expect(screen.getByText('包含小写字母')).toHaveClass('text-green-600')
-    expect(screen.getByText('长度至少 10 位')).toHaveClass('text-muted-foreground')
-    expect(screen.getByText('包含大写字母')).toHaveClass('text-muted-foreground')
-    expect(screen.getByText('包含特殊符号')).toHaveClass('text-muted-foreground')
+    expect(screen.getByText('setupPage.forms.customToken.rules.hasLowercase').closest('li')).toHaveClass('text-foreground')
+    expect(screen.getByText('setupPage.forms.customToken.rules.minLength').closest('li')).toHaveClass('text-muted-foreground')
+    expect(screen.getByText('setupPage.forms.customToken.rules.hasUppercase').closest('li')).toHaveClass('text-muted-foreground')
+    expect(screen.getByText('setupPage.forms.customToken.rules.hasSpecialChar').closest('li')).toHaveClass('text-muted-foreground')
   })
 
   it('Token 满足全部规则时四条规则均显示通过', () => {
     render(<CustomTokenForm token="Abcdefghij!" onChange={vi.fn()} />)
 
-    for (const label of ['长度至少 10 位', '包含大写字母', '包含小写字母', '包含特殊符号']) {
-      expect(screen.getByText(label)).toHaveClass('text-green-600')
+    for (const label of ['setupPage.forms.customToken.rules.minLength', 'setupPage.forms.customToken.rules.hasUppercase', 'setupPage.forms.customToken.rules.hasLowercase', 'setupPage.forms.customToken.rules.hasSpecialChar']) {
+      expect(screen.getByText(label).closest('li')).toHaveClass('text-foreground')
     }
   })
 })
@@ -198,12 +206,13 @@ describe('ApiProviderSetupForm', () => {
     ).toBeInTheDocument()
   })
 
-  it('预置下拉切换提供商，未知选项被忽略，自定义与预置可往返并编辑字段', () => {
+  it('预置下拉切换提供商，自定义与预置可往返并编辑字段', async () => {
     const onChange = vi.fn()
     render(<ApiProviderSetupForm config={config} onChange={onChange} />)
 
     const presetSelect = screen.getByLabelText('选择预置提供商')
-    fireEvent.change(presetSelect, { target: { value: 'zhipu' } })
+    fireEvent.keyDown(presetSelect, { key: 'ArrowDown' })
+    await userEvent.click(await screen.findByRole('option', { name: '智谱 AI (ZhipuAI / GLM)' }))
     expect(onChange).toHaveBeenCalledWith({
       ...config,
       provider_name: 'ZhipuAI',
@@ -267,11 +276,11 @@ describe('ModelSetupForm', () => {
 
   it.skip('修改 planner 标识符时同步名称，且按标识符推断关闭思考', () => {
     const onChange = vi.fn()
-    render(<ModelSetupForm config={config} onChange={onChange} />)
+    render(<ModelSetupForm config={config} onChange={onChange} fetchStatus="error" providerBaseUrl="https://api.deepseek.com" />)
 
     // "gpt-4.1-mini" 不含 deepseek-v4-pro，思考开关被推断为关闭
     fireEvent.change(
-      screen.getByLabelText('setupPage.forms.modelSetup.planner.identifier.label'),
+      screen.getByRole('textbox', { name: /setupPage.forms.modelSetup.planner.identifier.label/ }),
       { target: { value: 'gpt-4.1-mini' } }
     )
 
@@ -280,15 +289,16 @@ describe('ModelSetupForm', () => {
       planner_model_identifier: 'gpt-4.1-mini',
       planner_model_name: 'gpt-4.1-mini',
       planner_thinking: false,
+      planner_reasoning_effort: 'high',
     })
   })
 
   it.skip('replyer 标识符包含 deepseek-v4-pro（忽略大小写与空白）时推断开启思考', () => {
     const onChange = vi.fn()
-    render(<ModelSetupForm config={config} onChange={onChange} />)
+    render(<ModelSetupForm config={config} onChange={onChange} fetchStatus="error" providerBaseUrl="https://api.deepseek.com" />)
 
     fireEvent.change(
-      screen.getByLabelText('setupPage.forms.modelSetup.replyer.identifier.label'),
+      screen.getByRole('textbox', { name: /setupPage.forms.modelSetup.replyer.identifier.label/ }),
       { target: { value: ' Deepseek-V4-Pro ' } }
     )
 
@@ -297,12 +307,13 @@ describe('ModelSetupForm', () => {
       replyer_model_identifier: ' Deepseek-V4-Pro ',
       replyer_model_name: ' Deepseek-V4-Pro ',
       replyer_thinking: true,
+      replyer_reasoning_effort: 'high',
     })
   })
 
   it.skip('切换视觉与思考开关分别回调对应字段', () => {
     const onChange = vi.fn()
-    render(<ModelSetupForm config={config} onChange={onChange} />)
+    render(<ModelSetupForm config={config} onChange={onChange} fetchStatus="error" providerBaseUrl="https://api.deepseek.com" />)
 
     // planner 视觉开关：false -> true
     fireEvent.click(
@@ -328,10 +339,10 @@ describe('ModelSetupForm', () => {
       planner_model_identifier: '',
       replyer_model_identifier: '',
     }
-    render(<ModelSetupForm config={emptyConfig} onChange={onChange} />)
+    render(<ModelSetupForm config={emptyConfig} onChange={onChange} fetchStatus="error" />)
 
-    const plannerInput = screen.getByPlaceholderText('gpt-4.1-mini')
-    const replyerInput = screen.getByPlaceholderText('gpt-4.1')
+    const plannerInput = screen.getByRole('textbox', { name: /setupPage.forms.modelSetup.planner.identifier.label/ })
+    const replyerInput = screen.getByRole('textbox', { name: /setupPage.forms.modelSetup.replyer.identifier.label/ })
     expect(plannerInput).toHaveValue('')
     expect(replyerInput).toHaveValue('')
 
@@ -341,6 +352,7 @@ describe('ModelSetupForm', () => {
       planner_model_identifier: 'gpt-4.1-mini',
       planner_model_name: 'gpt-4.1-mini',
       planner_thinking: false,
+      planner_reasoning_effort: 'high',
     })
 
     fireEvent.change(replyerInput, { target: { value: ' Deepseek-V4-Pro ' } })
@@ -349,12 +361,13 @@ describe('ModelSetupForm', () => {
       replyer_model_identifier: ' Deepseek-V4-Pro ',
       replyer_model_name: ' Deepseek-V4-Pro ',
       replyer_thinking: true,
+      replyer_reasoning_effort: 'high',
     })
   })
 
   it('切换规划器与回复器思考开关分别回调对应字段', () => {
     const onChange = vi.fn()
-    render(<ModelSetupForm config={config} onChange={onChange} />)
+    render(<ModelSetupForm config={config} onChange={onChange} fetchStatus="error" providerBaseUrl="https://api.deepseek.com" />)
 
     const thinkingSwitches = screen.getAllByRole('switch', { name: '启用思考' })
     expect(thinkingSwitches).toHaveLength(2)

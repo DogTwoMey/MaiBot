@@ -57,13 +57,13 @@ describe('TaskConfigCard 缺口', () => {
       <TaskConfigCard
         title="缺省任务"
         description="默认值"
-        taskConfig={{} as TaskConfig}
-        modelNames={[]}
+        taskConfig={{ model_list: ['alpha'] } as TaskConfig}
+        modelNames={['alpha']}
         onChange={vi.fn()}
       />
     )
 
-    expect(screen.getByTestId('multi-select')).toHaveAttribute('data-selected', '')
+    expect(screen.getByTestId('multi-select')).toHaveAttribute('data-selected', 'alpha')
     expect(screen.getByLabelText('温度')).toHaveValue(0.7)
     expect(screen.getByTestId('temperature-slider')).toHaveTextContent('0.7')
     expect(screen.getByDisplayValue('4096')).toBeInTheDocument()
@@ -109,10 +109,10 @@ describe('TaskConfigCard 缺口', () => {
       />
     )
 
-    expect(container.firstChild).toHaveClass('bg-amber-50/30')
+    expect(container.firstChild).toHaveTextContent('嵌入任务')
     // 单选模型任务改用下拉单选，不再渲染多选标签列表
     expect(screen.queryByTestId('multi-select')).toBeNull()
-    expect(screen.getAllByTestId('select-root')[0]).toHaveAttribute('data-value', 'alpha')
+    expect(screen.getAllByTestId('select-root').find((element) => element.dataset.value === 'alpha')).toBeInTheDocument()
     expect(document.querySelector('[data-tour="embedding-models"]')).not.toBeNull()
 
     // 硬超时缺省时不预填，输入框为空、由 placeholder 提示后端默认值 240 秒

@@ -1238,14 +1238,15 @@ describe('ReasoningProcessPage 深链与嵌入', () => {
     expect(screen.queryByRole('button', { name: '返回观察' })).not.toBeInTheDocument()
   })
 
-  it('嵌入模式把刷新放入顶栏，浏览时在侧栏提供会话筛选', async () => {
+  it('嵌入模式保留内联刷新，浏览时在侧栏提供会话筛选', async () => {
     const onToolbarContentVisibleChange = vi.fn()
     const user = userEvent.setup()
     renderPage({ onToolbarContentVisibleChange }, { toolbar: true })
 
     const topbar = document.getElementById('rp-topbar')
     await waitFor(() => {
-      expect(topbar && within(topbar).getByRole('button', { name: '刷新' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: '刷新' })).toBeInTheDocument()
+      expect(topbar && within(topbar).queryByRole('button', { name: '刷新' })).toBeNull()
     })
     expect(onToolbarContentVisibleChange).toHaveBeenCalledWith(false)
 

@@ -52,6 +52,7 @@ vi.mock('@/routes/person', () => ({ PersonManagementPage: StubPage }))
 vi.mock('@/routes/resource/jargon/index.tsx', () => ({ JargonManagementPage: StubPage }))
 vi.mock('@/routes/resource/knowledge-graph/index.tsx', () => ({ KnowledgeGraphPage: StubPage }))
 vi.mock('@/routes/resource/knowledge-base', () => ({ KnowledgeBasePage: StubPage }))
+vi.mock('@/routes/agent/index.tsx', () => ({ AgentPage: StubPage }))
 vi.mock('@/routes/monitor/index.tsx', () => ({ PlannerMonitorPage: StubPage }))
 vi.mock('@/routes/chat/index', () => ({ ChatPage: StubPage }))
 vi.mock('@/routes/manage', () => ({ ManagePage: StubPage }))
@@ -104,6 +105,7 @@ const expectedPaths = [
   '/logs',
   '/reasoning-process',
   '/planner-monitor',
+  '/agent',
   '/chat-management',
   '/chat',
   '/manage',

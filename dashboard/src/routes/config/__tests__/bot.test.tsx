@@ -228,6 +228,16 @@ function createDeferred<T>() {
 
 /** 页面挂载时应注册的字段 hook 路径与类型（replace 为缺省） */
 const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = [
+  ['agent.connection', 'wrapper'],
+  ['agent.desktop_manifest', 'wrapper'],
+  ['agent.acp_args', 'wrapper'],
+  ['agent.acp_command', 'wrapper'],
+  ['agent.acp_cwd', 'wrapper'],
+  ['agent.acp_env', 'wrapper'],
+  ['agent.acp_model', 'wrapper'],
+  ['agent.acp_timeout', 'wrapper'],
+  ['agent.computer_tools', 'wrapper'],
+
   ['bot.platform', 'hidden'],
   ['bot.alias_names', 'replace'],
   ['bot.qq_account', 'hidden'],

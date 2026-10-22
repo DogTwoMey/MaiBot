@@ -952,7 +952,7 @@ describe('useMemoryCorrection', () => {
     await waitFor(() => expect(configured.result.current.candidateLimit).toBe('8'))
     act(() => {
       configured.result.current.setRequestText('改')
-      configured.result.current.setPersonId('p1')
+      configured.result.current.setPersonLookupMode('id'); configured.result.current.setPersonId('p1')
       configured.result.current.setScope('memory')
       configured.result.current.setCandidateLimit('   ')
     })
@@ -976,7 +976,7 @@ describe('useMemoryCorrection', () => {
     await waitFor(() => expect(unconfigured.result.current.candidateLimit).toBe(''))
     act(() => {
       unconfigured.result.current.setRequestText('改')
-      unconfigured.result.current.setPersonId('p1')
+      unconfigured.result.current.setPersonLookupMode('id'); unconfigured.result.current.setPersonId('p1')
     })
     await act(async () => {
       await unconfigured.result.current.submitPreview()
@@ -1056,7 +1056,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(result, 'plan-1')
     act(() => {
       result.current.setRequestText('改成杭州')
-      result.current.setPersonId('person-1')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('person-1')
     })
     await act(async () => {
       await result.current.submitPreview()
@@ -1093,7 +1093,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(first.result, 'plan-1')
     act(() => {
       first.result.current.setRequestText('改')
-      first.result.current.setPersonId('p')
+      first.result.current.setPersonLookupMode('id'); first.result.current.setPersonId('p')
     })
     await act(async () => {
       await first.result.current.submitPreview()
@@ -1113,7 +1113,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(second.result, 'plan-1')
     act(() => {
       second.result.current.setRequestText('改')
-      second.result.current.setPersonId('p')
+      second.result.current.setPersonLookupMode('id'); second.result.current.setPersonId('p')
     })
     await act(async () => {
       await second.result.current.submitPreview()
@@ -1134,7 +1134,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(result, 'plan-1')
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()
@@ -1157,7 +1157,7 @@ describe('useMemoryCorrection', () => {
     vi.mocked(memoryApi.getMemoryCorrectionPlan).mockRejectedValue(new Error('同步超时'))
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()

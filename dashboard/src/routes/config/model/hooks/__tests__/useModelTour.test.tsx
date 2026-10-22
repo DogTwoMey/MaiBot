@@ -193,7 +193,7 @@ describe('useModelTour', () => {
     // jsdom 中元素包围盒全为 0，点击坐标 (0,0) 会被判定为命中目标
     vi.useFakeTimers()
     const view = setup(runningState(2))
-    addTourElement('add-provider-button')
+    addTourElement('add-llm-provider-item')
     const outside = document.createElement('div')
     document.body.appendChild(outside)
 

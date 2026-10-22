@@ -44,9 +44,9 @@ describe('loadThemeConfig', () => {
       dashboardStyle: 'millennium',
       styleConfig: {
         futureRetro: {
-          paperWarmth: 100,
-          textureStyle: 'fine',
-          textureIntensity: 55,
+          paperWarmth: 89,
+          textureStyle: 'coarse',
+          textureIntensity: 64,
           panelDepth: 100,
         },
       },

@@ -222,10 +222,12 @@ describe('loadModelSetupConfig', () => {
       planner_model_name: 'planner-model',
       planner_model_identifier: 'deepseek-v4',
       planner_visual: true,
+      planner_reasoning_effort: 'high',
       planner_thinking: true,
       replyer_model_name: 'replyer-model',
       replyer_model_identifier: 'glm-5',
       replyer_visual: false,
+      replyer_reasoning_effort: 'high',
       replyer_thinking: true,
     })
   })
@@ -268,10 +270,12 @@ describe('loadModelSetupConfig', () => {
       planner_model_name: '',
       planner_model_identifier: '',
       planner_visual: false,
+      planner_reasoning_effort: 'high',
       planner_thinking: false,
       replyer_model_name: '',
       replyer_model_identifier: '',
       replyer_visual: false,
+      replyer_reasoning_effort: 'high',
       replyer_thinking: false,
     })
   })
@@ -434,13 +438,14 @@ describe('saveModelSetupConfig', () => {
   }
 
   it('空配置下新建 planner/replyer 模型并同步任务模型列表', async () => {
-    getMock.mockResolvedValue({ config: {} })
+    getMock.mockResolvedValue({ config: { api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }] } })
     postMock.mockResolvedValue({ success: true })
 
     await saveModelSetupConfig(setupConfig, ' DeepSeek ')
 
     expect(postMock).toHaveBeenCalledWith('/api/webui/config/model', {
       body: {
+        api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }],
         models: [
           {
             price_in: 0,
@@ -482,6 +487,7 @@ describe('saveModelSetupConfig', () => {
   it('已有同名模型时保留价格等既有字段并清理旧的 enable_thinking', async () => {
     getMock.mockResolvedValue({
       config: {
+        api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }],
         models: [
           {
             model_identifier: 'deepseek-v4-old',

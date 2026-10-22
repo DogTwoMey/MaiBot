@@ -75,13 +75,16 @@ vi.mock('../model/components', async (importActual) => {
       onChange,
       hideTemperature,
       hideMaxTokens,
+      modelContent,
     }: {
       taskConfig: { model_list?: string[] }
       onChange: (f: string, v: string[]) => void
       hideTemperature?: boolean
       hideMaxTokens?: boolean
+      modelContent?: React.ReactNode
     }) => (
       <div data-testid="task-config-card">
+        {modelContent}
         <span data-testid="task-models">{JSON.stringify(taskConfig.model_list ?? [])}</span>
         {hideTemperature ? <span>温度已隐藏</span> : null}
         {hideMaxTokens ? <span>最大 Token 已隐藏</span> : null}
@@ -247,6 +250,11 @@ function stubMatchMedia(matchesMinWidthLg: boolean) {
   return () => {
     window.matchMedia = original
   }
+}
+
+async function selectVersionAction(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole('button', { name: '模型配置副本' }))
+  await user.click(screen.getByRole('menuitem', { name }))
 }
 
 function getModelIdentifierCombobox(container: HTMLElement) {
@@ -993,14 +1001,14 @@ describe('ModelConfigPage 特征化', () => {
     vi.mocked(configApi.getModelConfigVersions).mockResolvedValue(versions as never)
 
     await renderModelPage()
-    await user.click(screen.getByRole('button', { name: '保存当前配置副本' }))
+    await selectVersionAction(user, '保存当前配置副本')
     const createDialog = await screen.findByRole('dialog', { name: '保存模型配置副本' })
     await user.type(within(createDialog).getByLabelText('副本名称'), '备份-A')
     await user.click(within(createDialog).getByRole('button', { name: '保存副本' }))
     await waitFor(() => expect(configApi.createModelConfigVersion).toHaveBeenCalledWith('备份-A'))
     expect(screen.queryByRole('dialog', { name: '保存模型配置副本' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '管理配置副本' }))
+    await selectVersionAction(user, '管理配置副本')
     const manageDialog = await screen.findByRole('dialog', { name: '模型配置副本' })
     expect(within(manageDialog).getByText('夜间副本')).toBeInTheDocument()
     expect(within(manageDialog).getByText('无时间副本')).toBeInTheDocument()
@@ -1041,7 +1049,7 @@ describe('ModelConfigPage 特征化', () => {
   it('管理副本在没有任何未启用副本时展示空态', async () => {
     const user = userEvent.setup()
     await renderModelPage()
-    await user.click(screen.getByRole('button', { name: '管理配置副本' }))
+    await selectVersionAction(user, '管理配置副本')
     expect(await screen.findByText('暂无未启用副本')).toBeInTheDocument()
   })
 
@@ -1149,7 +1157,7 @@ describe('ModelConfigPage 特征化', () => {
     expect(screen.queryByText('模型类别')).not.toBeInTheDocument()
     expect(screen.queryByTestId('task-config-card')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('combobox', { name: '模型配置副本' })).toHaveTextContent('默认配置')
+    expect(screen.getByRole('button', { name: '模型配置副本' })).toHaveTextContent('默认配置')
   })
 
   it('空 embedding 首次分配不弹警告，Esc 关闭警告会放弃变更', async () => {
@@ -1167,7 +1175,7 @@ describe('ModelConfigPage 特征化', () => {
 
     await renderModelPage()
     await user.click(screen.getByRole('tab', { name: '功能分配' }))
-    await user.click(await screen.findByRole('button', { name: /^embedding/ }))
+    await user.click(await screen.findByRole('button', { name: /^嵌入模型/ }))
     await waitFor(() => expect(screen.getByTestId('task-models')).toHaveTextContent('[]'))
     await user.click(await screen.findByText('change-embedding'))
 
@@ -1187,9 +1195,9 @@ describe('ModelConfigPage 特征化', () => {
     vi.mocked(configApi.switchModelConfigVersion).mockRejectedValue(new Error('副本损坏'))
 
     await renderModelPage()
-    await user.click(screen.getByRole('combobox', { name: '模型配置副本' }))
-    expect(screen.getByRole('option', { name: /损坏副本/ })).toHaveAttribute('data-disabled')
-    await user.click(screen.getByRole('option', { name: /夜间副本/ }))
+    await user.click(screen.getByRole('button', { name: '模型配置副本' }))
+    expect(screen.getByRole('menuitemradio', { name: /损坏副本/ })).toHaveAttribute('data-disabled')
+    await user.click(screen.getByRole('menuitemradio', { name: /夜间副本/ }))
 
     await waitFor(() => expect(configApi.switchModelConfigVersion).toHaveBeenCalledWith('v1'))
     expect(toastMock).toHaveBeenCalledWith(
@@ -1354,12 +1362,12 @@ describe('ModelConfigPage 特征化', () => {
     vi.mocked(configApi.createModelConfigVersion).mockRejectedValue(new Error('磁盘满'))
 
     await renderModelPage()
-    await user.click(screen.getByRole('button', { name: '保存当前配置副本' }))
+    await selectVersionAction(user, '保存当前配置副本')
     const createDialog = await screen.findByRole('dialog', { name: '保存模型配置副本' })
     await user.click(within(createDialog).getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('dialog', { name: '保存模型配置副本' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '保存当前配置副本' }))
+    await selectVersionAction(user, '保存当前配置副本')
     const retryCreate = await screen.findByRole('dialog', { name: '保存模型配置副本' })
     await user.type(within(retryCreate).getByLabelText('副本名称'), '失败副本')
     await user.click(within(retryCreate).getByRole('button', { name: '保存副本' }))
@@ -1372,7 +1380,7 @@ describe('ModelConfigPage 特征化', () => {
       expect(screen.queryByRole('dialog', { name: '保存模型配置副本' })).not.toBeInTheDocument()
     )
 
-    await user.click(screen.getByRole('button', { name: '管理配置副本' }))
+    await selectVersionAction(user, '管理配置副本')
     const manageDialog = await screen.findByRole('dialog', { name: '模型配置副本' })
     await user.click(within(manageDialog).getByRole('button', { name: '删除副本 夜间副本' }))
     expect(await screen.findByText('删除模型配置副本')).toBeInTheDocument()
@@ -1389,7 +1397,7 @@ describe('ModelConfigPage 特征化', () => {
     vi.mocked(configApi.switchModelConfigVersion).mockImplementation(() => switchJob.promise as never)
 
     await renderModelPage()
-    await user.click(screen.getByRole('button', { name: '管理配置副本' }))
+    await selectVersionAction(user, '管理配置副本')
     const manageDialog = await screen.findByRole('dialog', { name: '模型配置副本' })
     const switchButtons = within(manageDialog).getAllByRole('button', { name: '切换' })
     await user.click(switchButtons.find((button) => !(button as HTMLButtonElement).disabled)!)
@@ -1633,12 +1641,12 @@ describe('ModelConfigPage 特征化', () => {
     expect(screen.getAllByText('未配置模型').length).toBeGreaterThan(0)
     expect(screen.getAllByText('未配置').length).toBeGreaterThan(0)
 
-    await user.click(screen.getByRole('button', { name: '高级设置' }))
+    await user.click(screen.getByRole('switch', { name: '高级' }))
     const voiceButton = await screen.findByRole('button', { name: /voice/ })
     expect(within(voiceButton).getByText('高级')).toBeInTheDocument()
     await user.click(voiceButton)
     expect(await screen.findByText('最大 Token 已隐藏')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '高级设置' }))
+    await user.click(screen.getByRole('switch', { name: '高级' }))
     await waitFor(() => expect(screen.queryByRole('button', { name: /voice/ })).not.toBeInTheDocument())
   })
 

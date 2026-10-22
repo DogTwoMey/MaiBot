@@ -383,7 +383,7 @@ describe('useMemoryCorrection 失败路径', () => {
     await waitForSelectedPlan(result, 'plan-1')
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()
@@ -406,7 +406,7 @@ describe('useMemoryCorrection 失败路径', () => {
     vi.mocked(memoryApi.getMemoryCorrectionPlan).mockRejectedValue(new Error('同步超时'))
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()

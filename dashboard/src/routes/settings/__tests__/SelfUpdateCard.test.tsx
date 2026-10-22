@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   getSelfUpdateStatus: vi.fn(),
   checkSelfUpdate: vi.fn(),
   applySelfUpdate: vi.fn(),
+  getSelfUpdateCustomPrefix: vi.fn(() => ''),
+  SELF_UPDATE_STATUS_EVENT: 'maibot-self-update-status',
 }))
 const triggerRestart = vi.hoisted(() => vi.fn())
 const toast = vi.hoisted(() => vi.fn())

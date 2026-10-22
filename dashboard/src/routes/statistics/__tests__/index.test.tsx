@@ -472,7 +472,7 @@ describe('StatisticsPage', () => {
     expect(screen.getByText('1.5万')).toBeInTheDocument()
     expect(screen.getByText('1万')).toBeInTheDocument()
     expect(screen.getAllByText('N/A').length).toBeGreaterThan(0)
-    expect(screen.getByText('broken-model')).toBeInTheDocument()
+    expect(screen.getAllByText('broken-model')).toHaveLength(2)
     expect(screen.getAllByText('0.0s').length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('tab', { name: 'statisticsPage.breakdowns.chats' }))

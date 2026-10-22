@@ -104,6 +104,7 @@ vi.mock('@tanstack/react-virtual', () => ({
     return {
       getTotalSize: () => count * estimateSize(),
       getVirtualItems: buildItems,
+      getVirtualItemForOffset: (offset: number) => buildItems().find((item) => item.end > offset),
       get measurementsCache() {
         return buildItems()
       },
@@ -349,7 +350,7 @@ function findTimelineViewport(container: HTMLElement, markerText: string): HTMLD
 
 /** 定位“回到底部”按钮内的箭头图标（autoScroll 开启时带 text-primary 高亮） */
 function getBackToBottomIcon(): SVGElement {
-  const icon = screen.getByRole('button', { name: '回到底部' }).querySelector('svg')
+  const icon = screen.getByRole('button', { name: '底部' }).querySelector('svg')
   if (!icon) throw new Error('未找到回到底部按钮图标')
   return icon
 }
@@ -434,6 +435,10 @@ describe('思考流程节点', () => {
         session_id: 's1', run_id: 'r1', cycle_id: 1, step: 'cycle.started',
         title: '开始第 1/8 轮思考', detail: '准备参考信息并整理本轮上下文。', timestamp: nowSec(),
       }),
+      makeEntry('flow.step', {
+        session_id: 's1', run_id: 'r1', cycle_id: 1, step: 'focus.context.compacted',
+        title: '焦点上下文已整理', detail: '准备参考信息并整理本轮上下文。', timestamp: nowSec(),
+      }),
       makeEntry('llm.retry', {
         session_id: 's1', task_name: 'planner', request_type: 'planner', model_name: '测试模型',
         attempt: 2, max_attempts: 3, reason: '请求超时', retry_interval: 5, timestamp: nowSec(),
@@ -444,7 +449,8 @@ describe('思考流程节点', () => {
       }),
     ] })
     render(<MaisakaMonitor />)
-    expect(screen.getByText('开始第 1/8 轮思考')).toBeInTheDocument()
+    expect(screen.queryByText('开始第 1/8 轮思考')).not.toBeInTheDocument()
+    expect(screen.getByText('焦点上下文已整理')).toBeInTheDocument()
     expect(screen.queryByText('第 1/8 轮 · 请求模型')).not.toBeInTheDocument()
     expect(screen.getByTitle('准备参考信息并整理本轮上下文。')).toBeInTheDocument()
     expect(screen.getByText('模型请求重试 2/3 · 测试模型 · planner')).toBeInTheDocument()
@@ -499,7 +505,7 @@ describe('会话侧边栏', () => {
       ['s-old', makeStatus({ sessionId: 's-old', stage: '等待消息', agentState: 'wait' })],
     ])
     setupMonitorState({ sessions, stageStatuses })
-    const { container } = render(<MaisakaMonitor />)
+    render(<MaisakaMonitor />)
 
     // 插入顺序为 old→new，但渲染按 lastActivity 倒序：new 在前
     const buttons = screen
@@ -513,8 +519,8 @@ describe('会话侧边栏', () => {
     expect(screen.getByText('2分钟前')).toBeInTheDocument()
     expect(screen.getByText('回复中')).toBeInTheDocument()
     expect(screen.getByText('空闲')).toBeInTheDocument()
-    // 等待消息状态的会话头像角标为蓝色圆点
-    expect(container.querySelector('.bg-blue-500')).not.toBeNull()
+    expect(getSessionButton('老群(1)').querySelector('.bg-emerald-500')).not.toBeNull()
+    expect(getSessionButton('新群(2)').querySelector('.bg-muted-foreground')).not.toBeNull()
   })
 
   it('点击会话按钮回调 setSelectedSession', async () => {
@@ -678,7 +684,7 @@ describe('阶段状态栏与工具条', () => {
     await flushAutoScroll()
     virtualizerMocks.scrollToIndex.mockClear()
 
-    await user.click(screen.getByRole('button', { name: '回到底部' }))
+    await user.click(screen.getByRole('button', { name: '底部' }))
     expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(2, {
       align: 'end',
       behavior: 'smooth',
@@ -710,7 +716,7 @@ describe('阶段状态栏与工具条', () => {
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
 
     virtualizerMocks.scrollToIndex.mockClear()
-    await user.click(screen.getByRole('button', { name: '回到底部' }))
+    await user.click(screen.getByRole('button', { name: '底部' }))
     expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(1, {
       align: 'end',
       behavior: 'smooth',
@@ -817,7 +823,7 @@ describe('阶段状态栏与工具条', () => {
 
     await flushAutoScroll()
     scrollToSpy.mockClear()
-    await user.click(screen.getByRole('button', { name: '回到底部' }))
+    await user.click(screen.getByRole('button', { name: '底部' }))
 
     expect(virtualizerMocks.scrollToIndex).not.toHaveBeenCalled()
     expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
@@ -840,11 +846,11 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 300 })
     virtualizerMocks.scrollToIndex.mockClear()
 
-    await user.click(screen.getByRole('button', { name: '查找上条' }))
+    await user.click(screen.getByRole('button', { name: '上条' }))
 
     expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(1, {
       align: 'center',
-      behavior: 'smooth',
+      behavior: 'auto',
     })
     expect(toastMocks.toast).not.toHaveBeenCalled()
   })
@@ -863,7 +869,7 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 300 })
     virtualizerMocks.scrollToIndex.mockClear()
 
-    await user.click(screen.getByRole('button', { name: '查找上条' }))
+    await user.click(screen.getByRole('button', { name: '上条' }))
 
     expect(virtualizerMocks.scrollToIndex).not.toHaveBeenCalled()
     expect(toastMocks.toast).toHaveBeenCalledWith(
@@ -871,7 +877,7 @@ describe('阶段状态栏与工具条', () => {
     )
   })
 
-  it('查找上条平滑滚动起始帧不重新开启自动跟随', async () => {
+  it('查找上条跳转保护期间不重新开启自动跟随', async () => {
     const user = userEvent.setup()
     // 6 条各 140px：底部位于 scrollTop 640，首行落在 index 4，上方最近一条麦麦消息在 index 1
     const timeline = [
@@ -893,23 +899,24 @@ describe('阶段状态栏与工具条', () => {
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).toHaveClass('text-primary'))
 
-    await user.click(screen.getByRole('button', { name: '查找上条' }))
+    await user.click(screen.getByRole('button', { name: '上条' }))
     expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(1, {
       align: 'center',
-      behavior: 'smooth',
+      behavior: 'auto',
     })
     expect(getBackToBottomIcon()).not.toHaveClass('text-primary')
 
-    // 平滑滚动起始帧：距底部 20px，仍处于阈值内，不应被当成“用户回到底部”而重新跟随
+    // NOTE: 跳转保护期间，处于底部阈值内也不能重新跟随。
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 620 })
     fireEvent.scroll(viewport)
     expect(getBackToBottomIcon()).not.toHaveClass('text-primary')
 
-    // 离开阈值后解锁，再滚回底部可以正常恢复自动跟随
+    // NOTE: 高亮保护结束后，滚回底部可以恢复自动跟随。
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 300 })
     fireEvent.scroll(viewport)
     expect(getBackToBottomIcon()).not.toHaveClass('text-primary')
 
+    await new Promise((resolve) => setTimeout(resolve, 1800))
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 640 })
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).toHaveClass('text-primary'))
@@ -984,7 +991,7 @@ describe('时间线事件卡片', () => {
 
     expect(virtualizerMocks.scrollToIndex).toHaveBeenCalledWith(0, {
       align: 'center',
-      behavior: 'smooth',
+      behavior: 'auto',
     })
     expect(document.querySelector('[data-maisaka-message-id="m-9"]')).toHaveAttribute(
       'data-jump-highlighted',
@@ -1167,7 +1174,7 @@ describe('时间线事件卡片', () => {
     expect(screen.getByText('现在不适合回复')).toBeInTheDocument()
   })
 
-  it('规划器思考卡片展示耗时、tokens 与工具调用来源徽章', () => {
+  it('规划器思考卡片展示耗时、tokens 与各工具调用徽章', () => {
     setupMonitorState({
       timeline: [
         makeEntry(
@@ -1190,10 +1197,9 @@ describe('时间线事件卡片', () => {
     expect(screen.getByText('100+28 tokens')).toBeInTheDocument()
     expect(screen.getByText('需要先查一下资料')).toBeInTheDocument()
     expect(screen.getByText('send_message')).toBeInTheDocument()
-    // 来源标签：reasoning/response 映射为固定文案，其余回退 source_label
-    expect(screen.getByText('推理中调用')).toBeInTheDocument()
-    expect(screen.getByText('正文调用')).toBeInTheDocument()
-    expect(screen.getByText('自定义来源')).toBeInTheDocument()
+    expect(screen.getByText('web_search')).toBeInTheDocument()
+    expect(screen.getByText('noop')).toBeInTheDocument()
+    expect(screen.getByText('send_message').closest('[data-dashboard-badge="true"]')).toBeInTheDocument()
   })
 
   it('planner.finalized 渲染 Planner 卡片、请求徽章与工具执行结果', () => {
@@ -1232,9 +1238,9 @@ describe('时间线事件卡片', () => {
 
     expect(screen.getByText('Planner')).toBeInTheDocument()
     expect(screen.getByText('决定回复用户')).toBeInTheDocument()
-    expect(screen.getByText('1.50s')).toBeInTheDocument()
+    expect(screen.getByText('1.50s · 15 tok')).toBeInTheDocument()
     expect(screen.getByText('上下文 3 条 / 可用工具 7')).toBeInTheDocument()
-    expect(screen.getByText('10+5 tokens')).toBeInTheDocument()
+    expect(screen.getByTitle('Planner 输入 10 + 输出 5 tokens')).toBeInTheDocument()
 
     // 工具执行结果卡片
     expect(screen.getByText('send_message、web_search')).toBeInTheDocument()
@@ -1427,7 +1433,7 @@ describe('时间线事件卡片', () => {
           makeFinalized({
             planner: makePlannerBlock({
               content: '',
-              tool_calls: [{ id: 'a', name: 'search_web', source: 'response' }],
+              tool_calls: [{ id: 'a', name: 'search_web', source: 'response', arguments: { query: '最新消息' } }],
             }),
             tools: [],
           })
@@ -1440,7 +1446,8 @@ describe('时间线事件卡片', () => {
     expect(screen.getByText('search_web')).toBeInTheDocument()
     // 回退条目默认视为执行成功且无耗时，成功状态不额外显示
     expect(screen.queryByText('执行成功')).not.toBeInTheDocument()
-    expect(screen.getByText('正文调用')).toBeInTheDocument()
+    expect(screen.getByText('query')).toBeInTheDocument()
+    expect(screen.getByText('最新消息')).toBeInTheDocument()
     expect(screen.getByText('未返回结果摘要。')).toBeInTheDocument()
   })
 

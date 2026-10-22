@@ -110,6 +110,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  document.getElementById('log-viewer-topbar-tabs')?.remove()
   cleanup()
   vi.useRealTimers()
   window.localStorage.clear()
@@ -542,20 +543,23 @@ describe('LogViewerPage 页签与提示', () => {
   })
 
   it('切换到推理过程页签挂载推理页并卸载终端面板，可再切回', async () => {
+    const topbarRoot = document.createElement('div')
+    topbarRoot.id = 'log-viewer-topbar-tabs'
+    document.body.appendChild(topbarRoot)
     const user = userEvent.setup()
 
     render(<LogViewerPage />)
     expect(screen.getByText('暂无日志数据')).toBeInTheDocument()
     expect(screen.queryByTestId('reasoning-process-stub')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('tab', { name: '推理过程' }))
+    await user.click(await screen.findByRole('tab', { name: '推理过程' }))
     const reasoningStub = screen.getByTestId('reasoning-process-stub')
     // 主文件把工具栏容器等编排参数透传给推理页
     expect(reasoningStub).toHaveAttribute('data-embedded', 'true')
     expect(reasoningStub).toHaveAttribute('data-toolbar-visible', 'true')
     expect(reasoningStub).toHaveAttribute('data-toolbar-container', 'log-terminal-toolbar')
     // 顶栏操作位随页签挂进顶栏；这里没有顶栏容器，所以不会把操作位交给推理页
-    expect(reasoningStub).not.toHaveAttribute('data-topbar-actions')
+    expect(reasoningStub).toHaveAttribute('data-topbar-actions', 'reasoning-topbar-actions')
     expect(screen.queryByText('暂无日志数据')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: '终端' }))
@@ -572,10 +576,13 @@ describe('LogViewerPage 页签与提示', () => {
   })
 
   it('详细统计与终端和推理过程并列，并记住离开前选中的页签', async () => {
+    const topbarRoot = document.createElement('div')
+    topbarRoot.id = 'log-viewer-topbar-tabs'
+    document.body.appendChild(topbarRoot)
     const user = userEvent.setup()
     render(<LogViewerPage />)
 
-    await user.click(screen.getByRole('tab', { name: '详细统计' }))
+    await user.click(await screen.findByRole('tab', { name: '详细统计' }))
     expect(await screen.findByTestId('statistics-page-stub')).toBeInTheDocument()
     expect(window.localStorage.getItem(ACTIVE_TAB_KEY)).toBe('statistics')
 

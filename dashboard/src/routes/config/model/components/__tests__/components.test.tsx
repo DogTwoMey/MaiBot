@@ -6,6 +6,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { DataPagination } from '@/components/ui/data-pagination'
+
 import { ModelCardList } from '../ModelCardList'
 import { ModelTable } from '../ModelTable'
 import { TaskConfigCard } from '../TaskConfigCard'
@@ -353,3 +355,42 @@ describe('TaskConfigCard', () => {
   })
 })
 
+describe('DataPagination', () => {
+  it('空数据展示零页且禁用翻页操作', () => {
+    render(<DataPagination total={0} page={1} pageSize={10} onPageChange={vi.fn()} />)
+    expect(screen.getByText('0 条 · 第 0/0 页')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '第 1 页' })).toBeDisabled()
+  })
+
+  it('展示当前页并支持首尾、前后页和回车跳转', async () => {
+    const user = userEvent.setup()
+    const onPageChange = vi.fn()
+    render(<DataPagination total={125} page={2} pageSize={10} onPageChange={onPageChange} />)
+    expect(screen.getByText('125 条 · 第 2/13 页')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '第 2 页' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: '第 1 页' }))
+    await user.click(screen.getByRole('button', { name: '上一页' }))
+    await user.click(screen.getByRole('button', { name: '下一页' }))
+    await user.click(screen.getByRole('button', { name: '第 13 页' }))
+    await user.click(screen.getByRole('button', { name: '跳转到指定页' }))
+    const input = screen.getByRole('spinbutton')
+    await user.clear(input)
+    await user.type(input, '2{Enter}')
+    expect(onPageChange.mock.calls.map(([page]) => page)).toEqual([1, 1, 3, 13, 2])
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
+  })
+
+  it('每页条数变更回调提供数字，首尾页禁用越界翻页', async () => {
+    const user = userEvent.setup()
+    const onPageSizeChange = vi.fn()
+    const props = { total: 25, pageSize: 10, onPageChange: vi.fn(), onPageSizeChange }
+    const { rerender } = render(<DataPagination {...props} page={1} />)
+    expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '切换选项' }))
+    expect(onPageSizeChange).toHaveBeenCalledWith(20)
+    rerender(<DataPagination {...props} page={3} />)
+    expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled()
+  })
+})
