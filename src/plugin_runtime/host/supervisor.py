@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -9,6 +10,7 @@ import os
 import sys
 import time
 
+from src.common.paths import get_instance_root
 from src.common.logger import get_logger
 from src.common.shutdown import is_shutdown_requested
 from src.config.config import global_config
@@ -91,7 +93,7 @@ from .rpc_server import RPCServer
 if TYPE_CHECKING:
     from src.chat.message_receive.message import SessionMessage
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROJECT_ROOT = get_instance_root()
 _RUNNER_DEBUG_FILE_PATH = _PROJECT_ROOT / "logs" / "plugin_runtime_debug" / "runner_rpc_debug.jsonl"
 _ADAPTER_PLUGIN_TYPE = "adapter"
 _RUNTIME_GROUP_LOGGER_NAMES: Dict[str, str] = {
@@ -1740,6 +1742,7 @@ class PluginRunnerSupervisor:
             Envelope: 注入结果响应。
         """
 
+        received_at = datetime.now()
         try:
             payload = RouteMessagePayload.model_validate(envelope.payload)
         except Exception as exc:
@@ -1790,6 +1793,7 @@ class PluginRunnerSupervisor:
             payload.message["account_id"] = route_key.account_id
             payload.message["scope"] = route_key.scope
             session_message = self._message_gateway.build_session_message(payload.message)
+            session_message.received_at = received_at
             self._attach_inbound_route_metadata(session_message, route_key, payload.route_metadata)
         except Exception as exc:
             return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, str(exc))
@@ -1803,6 +1807,7 @@ class PluginRunnerSupervisor:
                 external_message_id=payload.external_message_id or str(payload.message.get("message_id") or "") or None,
                 dedupe_key=payload.dedupe_key or None,
                 session_message=session_message,
+                received_at=received_at,
                 payload=payload.message,
                 metadata={
                     "plugin_id": envelope.plugin_id,
@@ -1887,6 +1892,8 @@ class PluginRunnerSupervisor:
             env["PYTHONPATH"] = local_sdk_pythonpath
             self._logger.info(f"Runner 将优先使用本地插件 SDK: {env.get(ENV_LOCAL_PLUGIN_SDK_PATH)}")
 
+        spawn_started_at = time.monotonic()
+        self._logger.info("开始拉起 Runner 子进程")
         self._runner_process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -1902,7 +1909,10 @@ class PluginRunnerSupervisor:
                 name="PluginRunnerSupervisor.stderr",
             )
 
-        self._logger.debug(f"Runner 已拉起，pid={self._runner_process.pid}")
+        self._logger.info(
+            f"Runner 已拉起，pid={self._runner_process.pid} "
+            f"耗时={time.monotonic() - spawn_started_at:.3f}s returncode={self._runner_process.returncode}"
+        )
 
     async def _drain_runner_stderr(self, stream: asyncio.StreamReader) -> None:
         """持续排空 Runner 的 stderr。
@@ -1987,12 +1997,20 @@ class PluginRunnerSupervisor:
                     with contextlib.suppress(Exception):
                         await asyncio.wait_for(process.wait(), timeout=kill_timeout_sec)
 
+        self._logger.info(f"Runner 退出: pid={process.pid} returncode={process.returncode} reason={reason}")
         self._runner_process = None
 
         if self._stderr_drain_task is not None:
-            self._stderr_drain_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._stderr_drain_task
+            if process.returncode is not None:
+                # 已退出进程的 stderr 可能仍有缓冲；立即 cancel 会丢失最关键的异常堆栈。
+                try:
+                    await asyncio.wait_for(self._stderr_drain_task, timeout=1.0)
+                except asyncio.TimeoutError:
+                    self._logger.warning("Runner 已退出，但等待 stderr 排空超时")
+            else:
+                self._stderr_drain_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._stderr_drain_task
             self._stderr_drain_task = None
 
         for plugin_id in list(self._message_gateway_states.keys()):

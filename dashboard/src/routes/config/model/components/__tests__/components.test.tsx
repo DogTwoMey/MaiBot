@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ModelCardList } from '../ModelCardList'
 import { ModelTable } from '../ModelTable'
-import { Pagination } from '../Pagination'
 import { TaskConfigCard } from '../TaskConfigCard'
 
 vi.mock('@/components/ui/checkbox', () => ({
@@ -354,77 +353,3 @@ describe('TaskConfigCard', () => {
   })
 })
 
-describe('Pagination', () => {
-  it('无数据时不渲染分页模块', () => {
-    const { container } = render(
-      <Pagination
-        page={1}
-        pageSize={10}
-        totalItems={0}
-        jumpToPage=""
-        onPageChange={vi.fn()}
-        onPageSizeChange={vi.fn()}
-        onJumpToPageChange={vi.fn()}
-        onJumpToPage={vi.fn()}
-      />
-    )
-    expect(container).toBeEmptyDOMElement()
-  })
-
-  it('显示范围并执行翻页、输入和回车跳转', async () => {
-    const user = userEvent.setup()
-    const onPageChange = vi.fn()
-    const onJumpToPageChange = vi.fn()
-    const onJumpToPage = vi.fn()
-    render(
-      <Pagination
-        page={2}
-        pageSize={10}
-        totalItems={25}
-        jumpToPage="3"
-        onPageChange={onPageChange}
-        onPageSizeChange={vi.fn()}
-        onJumpToPageChange={onJumpToPageChange}
-        onJumpToPage={onJumpToPage}
-      />
-    )
-
-    expect(screen.getByText('11 到 20 条，共 25 条')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '第一页' }))
-    await user.click(screen.getByRole('button', { name: '上一页' }))
-    await user.click(screen.getByRole('button', { name: '下一页' }))
-    await user.click(screen.getByRole('button', { name: '最后一页' }))
-    expect(onPageChange.mock.calls.map(([page]) => page)).toEqual([1, 1, 3, 3])
-
-    const input = screen.getByRole('spinbutton')
-    await user.clear(input)
-    await user.type(input, '2{Enter}')
-    expect(onJumpToPageChange).toHaveBeenCalled()
-    expect(onJumpToPage).toHaveBeenCalledOnce()
-  })
-
-  it('修改每页数量时重置页码并清空选择', async () => {
-    const user = userEvent.setup()
-    const onPageChange = vi.fn()
-    const onPageSizeChange = vi.fn()
-    const onSelectionClear = vi.fn()
-    render(
-      <Pagination
-        page={2}
-        pageSize={10}
-        totalItems={25}
-        jumpToPage=""
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-        onJumpToPageChange={vi.fn()}
-        onJumpToPage={vi.fn()}
-        onSelectionClear={onSelectionClear}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: '切换选项' }))
-    expect(onPageSizeChange).toHaveBeenCalledWith(20)
-    expect(onPageChange).toHaveBeenCalledWith(1)
-    expect(onSelectionClear).toHaveBeenCalledOnce()
-  })
-})

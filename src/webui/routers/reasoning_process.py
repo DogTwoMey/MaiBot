@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlmodel import Session, col, select
 
+from src.common.paths import get_instance_root
 from src.common.data_models.llm_service_data_models import LLMServiceRequest
 from src.common.database.database import get_db_session
 from src.common.database.database_model import ChatSession, Messages
@@ -25,11 +26,13 @@ from src.common.operation_timing import timed_operation
 from src.config.config import config_manager
 from src.llm_models.payload_content.context_item import CONTEXT_ITEM_SCHEMA_VERSION, ContextItem
 from src.llm_models.payload_content.context_protocol import ContextProtocolMode, validate_context_items
-from src.llm_models.request_snapshot import (
+from src.llm_models.payload_content.context_snapshot import (
     deserialize_context_item_snapshot,
+    serialize_context_item_snapshot,
+)
+from src.llm_models.request_snapshot import (
     read_request_snapshot,
     serialize_generation_attempt,
-    serialize_context_item_snapshot,
 )
 from src.maisaka.display.prompt_preview_logger import PromptPreviewLogger
 from src.services.llm_service import generate as generate_llm_response
@@ -40,7 +43,7 @@ from src.webui.routers.avatar import build_webui_avatar_url
 
 router = APIRouter(prefix="/reasoning-process", tags=["reasoning-process"], dependencies=[Depends(require_auth)])
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = get_instance_root()
 PROMPT_LOG_ROOT = (PROJECT_ROOT / "logs" / "maisaka_prompt").resolve()
 REPLAY_IMAGE_ROOTS = (
     (PROJECT_ROOT / "data" / "images").resolve(),

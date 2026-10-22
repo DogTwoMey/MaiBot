@@ -11,7 +11,7 @@ import json
 import re
 
 from json_repair import repair_json
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AsyncStream
+from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AsyncStream, DefaultAsyncHttpxClient
 from openai._types import FileTypes, Omit, omit
 from openai.types.chat import (
     ChatCompletion,
@@ -32,6 +32,7 @@ from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from PIL import Image as PILImage
 
 from src.common.logger import get_logger
+from src.common.http_client import get_shared_ssl_context
 from src.config.model_configs import APIProvider, ReasoningParseMode, ToolArgumentParseMode
 from src.llm_models.exceptions import (
     EmptyResponseException,
@@ -1516,6 +1517,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         # 此时若没有自定义 Authorization 头覆盖占位密钥，每次请求都要显式省略它
         self._omit_sdk_authorization = not client_config.api_key and _AUTHORIZATION_HEADER not in default_headers
         self.client = AsyncOpenAI(
+            http_client=DefaultAsyncHttpxClient(verify=get_shared_ssl_context()),
             api_key=client_config.api_key or _SDK_AUTH_PLACEHOLDER_API_KEY,
             organization=api_provider.organization,
             project=api_provider.project,
@@ -1527,6 +1529,11 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             default_headers=default_headers or None,
             default_query=client_config.default_query or None,
         )
+
+    def prepare_sync_resources(self) -> None:
+        """在客户端初始化阶段加载 SDK 资源，避免首次请求在事件循环中同步导入。"""
+        # SDK 将这些资源定义为 cached_property；这里只构造资源，不发起请求。
+        _ = self.client.chat.completions, self.client.embeddings, self.client.audio.transcriptions, self.client.responses
 
     def _build_request_headers(self, extra_headers: Dict[str, str]) -> Dict[str, str | Omit] | None:
         """构造单次请求的附加请求头。

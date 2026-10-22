@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -838,7 +838,7 @@ wheels = [
 
 [[package]]
 name = "maibot"
-version = "1.3.7"
+version = "1.3.14"
 source = { editable = "." }
 dependencies = [
     { name = "ahocorasick-rs" },
@@ -846,10 +846,12 @@ dependencies = [
     { name = "babel" },
     { name = "certifi" },
     { name = "colorama" },
+    { name = "cryptography" },
     { name = "faiss-cpu" },
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "httpx", extra = ["socks"] },
+    { name = "idna" },
     { name = "jieba" },
     { name = "json-repair" },
     { name = "jsonschema" },
@@ -860,13 +862,17 @@ dependencies = [
     { name = "msgpack" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "packaging" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "prompt-toolkit" },
     { name = "psutil" },
     { name = "pyarrow" },
+    { name = "pyasn1" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "pypinyin" },
     { name = "python-multipart" },
     { name = "rapidfuzz" },
@@ -874,9 +880,11 @@ dependencies = [
     { name = "scipy" },
     { name = "sqlalchemy" },
     { name = "sqlmodel" },
+    { name = "starlette" },
     { name = "structlog" },
     { name = "tomlkit" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
     { name = "uvicorn" },
     { name = "watchfiles" },
 ]
@@ -896,27 +904,33 @@ requires-dist = [
     { name = "babel", specifier = ">=2.17.0" },
     { name = "certifi" },
     { name = "colorama", specifier = ">=0.4.6" },
+    { name = "cryptography", specifier = ">=50.0.0" },
     { name = "faiss-cpu", specifier = ">=1.11.0" },
     { name = "fastapi", specifier = ">=0.116.0" },
     { name = "google-genai", specifier = ">=1.39.1" },
     { name = "httpx", extras = ["socks"] },
+    { name = "idna", specifier = ">=3.15" },
     { name = "jieba", specifier = ">=0.42.1" },
     { name = "json-repair", specifier = ">=0.60.1,<0.61" },
     { name = "jsonschema", specifier = ">=4.26.0,<5" },
-    { name = "maibot-dashboard", specifier = "==1.9.1.dev20261013522" },
-    { name = "maibot-plugin-sdk", specifier = ">=2.12.0" },
+    { name = "maibot-dashboard", specifier = "==1.9.8.dev20261021550" },
+    { name = "maibot-plugin-sdk", specifier = ">=2.16.0" },
     { name = "maim-message", specifier = "==0.6.8" },
     { name = "mcp", specifier = ">=1.28.1,<2" },
     { name = "msgpack", specifier = ">=1.2.1" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "openai", specifier = ">=1.95.0" },
+    { name = "packaging", specifier = ">=24" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pillow", specifier = ">=12.3.0" },
-    { name = "playwright", specifier = ">=1.54.0" },
+    { name = "playwright", specifier = "==1.58.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.52" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pyarrow", specifier = ">=20.0.0" },
+    { name = "pyasn1", specifier = ">=0.6.4" },
     { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "pyjwt", specifier = ">=2.13.0" },
     { name = "pypinyin", specifier = ">=0.54.0" },
     { name = "python-multipart", specifier = ">=0.0.31" },
     { name = "rapidfuzz" },
@@ -924,9 +938,11 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.7.0" },
     { name = "sqlalchemy", specifier = ">=2.0.40" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
+    { name = "starlette", specifier = ">=1.3.1,<1.4" },
     { name = "structlog", specifier = ">=25.4.0" },
     { name = "tomlkit", specifier = ">=0.13.3" },
     { name = "typing-extensions" },
+    { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uvicorn", specifier = ">=0.35.0" },
     { name = "watchfiles", specifier = ">=1.1.1" },
 ]
@@ -941,24 +957,24 @@ dev = [
 
 [[package]]
 name = "maibot-dashboard"
-version = "1.9.1.dev20261013522"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/28/ad/a98e2ccdee76045925c3cb0fb89441be722de65e953cf73f3ca21fa78823/maibot_dashboard-1.9.1.dev20261013522.tar.gz", hash = "sha256:b7dda9571c69dd4c64faeb1b77e123ff761f0dac7555f481f0bed105149df6ca", size = 3064640, upload-time = "2026-10-13T11:04:43.727Z" }
+version = "1.9.8.dev20261021550"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/bc/38/360c51f5bdf47b0f15ac4ee815660a6b7ba98ce1eda93ad4ac2e6554a2a4/maibot_dashboard-1.9.8.dev20261021550.tar.gz", hash = "sha256:07c19b930ce831262dc1a0800a25d019351d500d8117aadf7416d4dc9c939d01" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/29/8075b1d7ae64385faa3a15e76c965dee6592380945d9680daf9e48f618f0/maibot_dashboard-1.9.1.dev20261013522-py3-none-any.whl", hash = "sha256:13139d3e8141cb19f49eea71c1b24f7aa956258de0065d7551bf893ebe16e8b8", size = 3149123, upload-time = "2026-10-13T11:04:41.785Z" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/0d/9b/7943c195a8ca5ea14679d0c9ed5c0acb2073e8f6c9c27a2055697014fe8c/maibot_dashboard-1.9.8.dev20261021550-py3-none-any.whl", hash = "sha256:2047ec8d54374e1db40f0547aacec61bfbee5bcb4fbd257f5164296119237582" },
 ]
 
 [[package]]
 name = "maibot-plugin-sdk"
-version = "2.12.0"
+version = "2.16.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "msgpack" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/02/36/734f9063233a428b21d95bc2cee20c607a191937e201bcb528e885837203/maibot_plugin_sdk-2.12.0.tar.gz", hash = "sha256:d7701de8c056045fff6c8deeeff96584457422c1a6755602d2fd3801bf8fb0d9" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/71/37/0be48562cdeeb11eece9ef63a3889c1d15afb8decb027dfb583f6a98d6fa/maibot_plugin_sdk-2.16.0.tar.gz", hash = "sha256:bd229ebf2aa1f9d7fbd4b5e71e4b4d837bd391adc8721140eb9e6e752d15dc2b" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/30/71/9f0fe4198f81513a90854603adbdaae7ebb2edf93ddcc304679276048f51/maibot_plugin_sdk-2.12.0-py3-none-any.whl", hash = "sha256:d6b401e47b866c9af626831273b0357b5c693d8a724371d5f38a876cd1661011" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/e8/b3/53bf090a1f3b03b70c4be9cb18748ee0e8df545c2856906094cbc6e2f9e6/maibot_plugin_sdk-2.16.0-py3-none-any.whl", hash = "sha256:30ed1c320fc9fc23a382b00b7309faddc9e5df317a4e3a5da3da46e3c065ddf6" },
 ]
 
 [[package]]
@@ -992,7 +1008,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.30.0"
+version = "1.29.1"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1010,9 +1026,9 @@ dependencies = [
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/ba/93/0142dc84a666daf8ad51a34268f34c12fd6fda4f3810c4be2504eecc8212/mcp-1.30.0.tar.gz", hash = "sha256:445414625fce5c295faa505bb11bacece661ab6f4028d57c935db57820b7a3e4" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/b5/48/0bb26fdfe7ac16875f534a101ce2405eae192bdef37e7451f2f4507c13ec/mcp-1.29.1.tar.gz", hash = "sha256:1967ba4c315f7a375146209949f45950d18b0efd2f913d7cf3400bc723ee5f04" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/f5/f4/e58bc33317c92a0203664daaf00bf6f41166cc0149e5d6870a03f7cd004a/mcp-1.30.0-py3-none-any.whl", hash = "sha256:666edb5009503e1047c9d60346a756f94b261f05cc2625f23d41c728ffc484d0" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/0b/04/d6b4fb82eefe9e81807aabca1ac98f460ae0883974b83a997aaa20c52545/mcp-1.29.1-py3-none-any.whl", hash = "sha256:b6310eeb59153300c4ab8b9aec4c52f4819a2d6a8e429eb43d908bed7c783648" },
 ]
 
 [[package]]
@@ -1761,11 +1777,11 @@ wheels = [
 
 [[package]]
 name = "pyjwt"
-version = "2.14.0"
+version = "2.13.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/af/c3/8a3b59c25070cc61dc517fbdfa5dc0904670c96f605cc69759dc09166b99/pyjwt-2.14.0.tar.gz", hash = "sha256:77283c83fb56ecf566a886c757a714bc83668e38156de2cce8263302f42e0b86" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/3b/81/58d0ac84e1ef3a3843791d6954d94c0b33d526c75eeb1efbce9d0a4c4077/pyjwt-2.13.0.tar.gz", hash = "sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/9c/97/672cb32ce0dfea44b740cb7b4f97038463b9cf7c0ead1aacf595572851d6/pyjwt-2.14.0-py3-none-any.whl", hash = "sha256:ad0cef71c756a56e74863c2919cf0985f72decbcfcb550ee2f422e7c62b5eedc" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a3/5e/ecf12fdb62546d64385c158514e9b2b671f7832108ef2ecd2020ce0af2d1/pyjwt-2.13.0-py3-none-any.whl", hash = "sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728" },
 ]
 
 [package.optional-dependencies]

@@ -14,7 +14,7 @@ from src.common.data_models.message_component_data_model import (
 from src.llm_models.payload_content.context_item import CONTEXT_ITEM_SCHEMA_VERSION, ContextItem
 from src.llm_models.payload_content.context_protocol import ContextProtocolMode, validate_context_items
 from src.llm_models.payload_content.tool_option import ToolCall, ToolDefinitionInput, normalize_tool_options
-from src.llm_models.request_snapshot import (
+from src.llm_models.payload_content.context_snapshot import (
     deserialize_context_item_snapshot,
     serialize_context_item_snapshot,
 )

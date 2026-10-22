@@ -55,6 +55,7 @@ def _build_model(
     extra_params: dict[str, Any] | None = None,
 ) -> ModelInfo:
     return ModelInfo(
+        model_type="llm",
         name="responses-model",
         model_identifier="gpt-test",
         api_provider="responses-test",
@@ -420,6 +421,7 @@ def test_cross_model_projection_omits_nonportable_reasoning() -> None:
     )
     switched_request = ResponseRequest(
         model_info=ModelInfo(
+        model_type="llm",
             name="other-model",
             model_identifier="gpt-other",
             api_provider="responses-test",

@@ -43,11 +43,10 @@ vi.mock('@/routes/logs', () => ({
   ReasoningLogViewerPage: StubPage,
   StatisticsLogViewerPage: StubPage,
 }))
-vi.mock('@/routes/reply-effects', () => ({ ReplyEffectsPage: StubPage }))
 vi.mock('@/routes/config/bot', () => ({ BotConfigPage: StubPage }))
 vi.mock('@/routes/config/model', () => ({ ModelConfigPage: StubPage }))
 vi.mock('@/routes/config/prompts', () => ({ PromptManagementPage: StubPage }))
-vi.mock('@/routes/resource/emoji/index.tsx', () => ({ EmojiManagementPage: StubPage }))
+vi.mock('@/routes/resource/learning', () => ({ LearningPage: StubPage }))
 vi.mock('@/routes/resource/expression/index.tsx', () => ({ ExpressionManagementPage: StubPage }))
 vi.mock('@/routes/person', () => ({ PersonManagementPage: StubPage }))
 vi.mock('@/routes/resource/jargon/index.tsx', () => ({ JargonManagementPage: StubPage }))
@@ -83,11 +82,11 @@ const expectedPaths = [
   '/plugin-mirrors/embed',
   '/',
   '/statistics',
-  '/reply-effects',
   '/config/bot',
   '/config/model',
   '/config/prompts',
   '/resource/emoji',
+  '/resource/learning',
   '/resource/expression',
   '/resource/jargon',
   '/resource/person',
@@ -190,7 +189,15 @@ describe('router 路由表', () => {
       { options: { component?: unknown } } | undefined
     >
     for (const path of expectedPaths.filter(
-      (path) => !['/mcp-settings', '/settings', '/extensions'].includes(path)
+      (path) =>
+        ![
+          '/mcp-settings',
+          '/settings',
+          '/extensions',
+          '/resource/emoji',
+          '/resource/expression',
+          '/resource/jargon',
+        ].includes(path)
     )) {
       const route = routesByPath[path]
       expect(route, `routesByPath 缺少 ${path}`).toBeDefined()
@@ -345,7 +352,15 @@ describe('router 路由表', () => {
   it('所有懒加载页面工厂均可 preload 到桩组件', async () => {
     const routesByPath = getRoutesByPath()
     for (const path of expectedPaths.filter(
-      (path) => !['/mcp-settings', '/settings', '/extensions'].includes(path)
+      (path) =>
+        ![
+          '/mcp-settings',
+          '/settings',
+          '/extensions',
+          '/resource/emoji',
+          '/resource/expression',
+          '/resource/jargon',
+        ].includes(path)
     )) {
       const component = routesByPath[path]?.options.component as LazyRouteComponent | undefined
       expect(typeof component, `${path} 缺少组件`).toBe('function')

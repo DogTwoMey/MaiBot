@@ -14,7 +14,6 @@ from src.llm_models.payload_content.context_item import (
     ProviderActivityItem,
 )
 from src.llm_models.payload_content.native_tool import NativeToolCallSummary
-from src.llm_models.payload_content.tool_option import ToolCall
 from src.maisaka.chat_loop_service import ChatResponse, MaisakaChatLoopService
 from src.maisaka.context.messages import ReferenceMessage, ReferenceMessageType
 from src.maisaka.context.usage import (
@@ -24,7 +23,6 @@ from src.maisaka.context.usage import (
     ContextSectionUsage,
 )
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
-from src.maisaka.mode_policy import is_idle_cycle_reason
 from src.maisaka.monitor.events import (
     _serialize_planner_block,
     _serialize_request_block,

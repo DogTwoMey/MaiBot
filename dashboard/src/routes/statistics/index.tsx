@@ -170,7 +170,7 @@ interface MetricItemProps {
 
 function MetricItem({ label, value, detail }: MetricItemProps) {
   return (
-    <div className="group bg-card hover:border-primary/60 relative min-h-28 min-w-0 overflow-hidden rounded-lg border px-4 py-4 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-md">
+    <Card className="group hover:border-primary/60 relative min-h-28 min-w-0 overflow-hidden px-4 py-4 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5">
       <div className="bg-primary/75 absolute inset-x-0 top-0 h-0.5" />
       <div className="text-muted-foreground truncate text-xs font-medium tracking-wide">
         {label}
@@ -179,7 +179,7 @@ function MetricItem({ label, value, detail }: MetricItemProps) {
         {value}
       </div>
       {detail && <div className="text-muted-foreground mt-2 truncate text-[11px]">{detail}</div>}
-    </div>
+    </Card>
   )
 }
 
@@ -275,7 +275,48 @@ function BreakdownTable({ rows, locale }: { rows: DetailedStatisticsBreakdown[];
   }
 
   return (
-    <div className="overflow-hidden rounded-md border">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {rows.map((row) => {
+          const metrics = [
+            { key: 'requests', value: formatNumber(row.request_count, locale), primary: true },
+            { key: 'totalTokens', value: formatNumber(row.total_tokens, locale), primary: true },
+            { key: 'cost', value: formatCurrency(row.total_cost, locale), primary: true },
+            { key: 'inputTokens', value: formatNumber(row.input_tokens, locale) },
+            { key: 'outputTokens', value: formatNumber(row.output_tokens, locale) },
+            { key: 'cacheHitTokens', value: formatNumber(row.cache_hit_tokens, locale) },
+            { key: 'cacheMissTokens', value: formatNumber(row.cache_miss_tokens, locale) },
+            { key: 'cacheHitRate', value: formatPercent(row.cache_hit_rate) },
+            { key: 'avgTime', value: `${row.avg_time_cost.toFixed(1)}s` },
+            { key: 'stdTime', value: `${row.std_time_cost.toFixed(1)}s` },
+            { key: 'callsPerReply', value: formatOptionalNumber(row.avg_calls_per_reply, locale) },
+            { key: 'tokensPerReply', value: formatOptionalNumber(row.avg_tokens_per_reply, locale) },
+            { key: 'tokensPerCall', value: formatOptionalNumber(row.avg_tokens_per_call, locale) },
+          ]
+          const renderMetrics = (primary: boolean) => (
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+              {metrics.filter((metric) => Boolean(metric.primary) === primary).map((metric) => (
+                <div key={metric.key} className="min-w-0">
+                  <dt className="text-muted-foreground text-xs">{t(`statisticsPage.table.${metric.key}`)}</dt>
+                  <dd className="mt-1 break-words font-medium tabular-nums">{metric.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )
+          return (
+            <div key={row.name} className="min-w-0 rounded-md border p-3">
+              <details>
+                <summary className="cursor-pointer break-words text-sm font-semibold [overflow-wrap:anywhere]">
+                  {row.name}
+                </summary>
+                <div className="mt-3 border-t border-dashed pt-3">{renderMetrics(false)}</div>
+              </details>
+              <div className="mt-3">{renderMetrics(true)}</div>
+            </div>
+          )
+        })}
+      </div>
+    <div className="hidden overflow-hidden rounded-md border sm:block">
       <Table className="min-w-[1520px]">
         <TableHeader className="bg-muted/60">
           <TableRow>
@@ -328,6 +369,7 @@ function BreakdownTable({ rows, locale }: { rows: DetailedStatisticsBreakdown[];
         </TableBody>
       </Table>
     </div>
+    </>
   )
 }
 
@@ -342,13 +384,13 @@ function ChatTable({ period, locale }: { period: DetailedStatisticsPeriod; local
         <TableHeader className="bg-muted/60">
           <TableRow>
             <TableHead>{t('statisticsPage.table.chat')}</TableHead>
-            <TableHead className="w-44 text-right">{t('statisticsPage.table.messages')}</TableHead>
+            <TableHead className="whitespace-nowrap text-right sm:w-44">{t('statisticsPage.table.messages')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {period.chats.map((chat) => (
             <TableRow key={chat.name}>
-              <TableCell className="font-medium">{chat.name}</TableCell>
+              <TableCell className="break-words font-medium [overflow-wrap:anywhere]">{chat.name}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatNumber(chat.message_count, locale)}
               </TableCell>
@@ -378,7 +420,10 @@ function DetailTables({ period, locale }: { period: DetailedStatisticsPeriod; lo
       </CardHeader>
       <CardContent className="pt-4 sm:pt-4">
         <Tabs defaultValue="models">
-          <TabsList className="border-border/70 bg-muted/40 mb-4 h-auto w-full justify-start overflow-x-auto rounded-md border p-1">
+          <TabsList
+            className="border-border/70 bg-muted/40 mb-4 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-md border px-1 py-2 [&>button]:shrink-0"
+            style={{ touchAction: 'pan-x pan-y' }}
+          >
             <TabsTrigger value="models">{t('statisticsPage.breakdowns.models')}</TabsTrigger>
             <TabsTrigger value="taskGroups">{t('statisticsPage.breakdowns.taskGroups')}</TabsTrigger>
             <TabsTrigger value="modules">{t('statisticsPage.breakdowns.modules')}</TabsTrigger>
@@ -446,19 +491,19 @@ function DistributionChart({
 
   return (
     <Card className="min-w-0 overflow-hidden shadow-sm">
-      <CardHeader className="border-b pb-3">
-        <CardTitle className="truncate text-sm" title={title}>
+      <CardHeader className="border-b pb-3 max-sm:!px-2 max-sm:!py-2">
+        <CardTitle className="text-sm max-sm:!text-xs max-sm:break-words sm:truncate" title={title}>
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-4 sm:pt-4">
+      <CardContent className="pt-4 max-sm:!p-2 sm:pt-4">
         {data.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <ChartContainer
               config={config}
-              className="aspect-auto h-[300px] w-full min-w-0 sm:h-[340px] sm:flex-1"
+              className="aspect-auto h-[150px] w-full min-w-0 sm:h-[340px] sm:flex-1"
             >
               <PieChart>
                 {/* 关闭 recharts 默认的位移过渡，改用提示框内容淡入 */}
@@ -481,7 +526,7 @@ function DistributionChart({
                 </Pie>
               </PieChart>
             </ChartContainer>
-            <div className="grid max-h-40 shrink-0 grid-cols-1 content-start gap-1 overflow-y-auto sm:max-h-[340px] sm:w-44 lg:w-52">
+            <div className="grid max-h-28 shrink-0 grid-cols-1 content-start gap-1 overflow-y-auto sm:max-h-[340px] sm:w-44 lg:w-52">
               {chartData.map((item) => {
                 const hidden = hiddenNames.has(item.name)
                 return (
@@ -490,7 +535,7 @@ function DistributionChart({
                     type="button"
                     aria-pressed={!hidden}
                     className={cn(
-                      'hover:bg-muted flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors',
+                      'hover:bg-muted grid min-w-0 grid-cols-[10px_minmax(0,1fr)] items-center gap-x-1 gap-y-0.5 rounded-md px-1 py-1 text-left text-xs transition-colors sm:flex sm:gap-2 sm:px-2',
                       hidden && 'text-muted-foreground line-through opacity-60'
                     )}
                     onClick={() => toggleName(item.name)}
@@ -501,7 +546,7 @@ function DistributionChart({
                       style={{ backgroundColor: item.fill }}
                     />
                     <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                    <span className="shrink-0 tabular-nums">{formatValue(item.value)}</span>
+                    <span className="col-start-2 shrink-0 tabular-nums">{formatValue(item.value)}</span>
                   </button>
                 )
               })}
@@ -521,26 +566,61 @@ function DistributionGrid({
   locale: string
 }) {
   const { t } = useTranslation()
+  const [metric, setMetric] = useState<'costs' | 'tokens'>('costs')
+  const valueKind = metric === 'costs' ? 'currency' : 'count'
   const charts = [
-    [t('statisticsPage.distributions.ownerCosts'), period.distributions.owner_costs, 'currency'],
-    [t('statisticsPage.distributions.modelCosts'), period.distributions.model_costs, 'currency'],
-    [t('statisticsPage.distributions.moduleCosts'), period.distributions.module_costs, 'currency'],
     [
-      t('statisticsPage.distributions.requestTypeCosts'),
-      period.distributions.request_type_costs,
-      'currency',
+      t(`statisticsPage.distributions.${metric === 'costs' ? 'ownerCosts' : 'ownerTokens'}`),
+      period.distributions[`owner_${metric}`],
+      valueKind,
+    ],
+    [
+      t(`statisticsPage.distributions.${metric === 'costs' ? 'modelCosts' : 'modelTokens'}`),
+      period.distributions[`model_${metric}`],
+      valueKind,
+    ],
+    [
+      t(`statisticsPage.distributions.${metric === 'costs' ? 'moduleCosts' : 'moduleTokens'}`),
+      period.distributions[`module_${metric}`],
+      valueKind,
+    ],
+    [
+      t(`statisticsPage.distributions.${metric === 'costs' ? 'requestTypeCosts' : 'requestTypeTokens'}`),
+      period.distributions[`request_type_${metric}`],
+      valueKind,
     ],
     [t('statisticsPage.distributions.chatMessages'), period.distributions.chat_messages, 'count'],
-    [t('statisticsPage.distributions.chatCosts'), period.distributions.chat_costs, 'currency'],
+    [
+      t(`statisticsPage.distributions.${metric === 'costs' ? 'chatCosts' : 'chatTokens'}`),
+      period.distributions[`chat_${metric}`],
+      valueKind,
+    ],
   ] as const
 
   return (
     <section className="space-y-4">
-      <div className="border-border flex items-center gap-3 border-b pb-3">
+      <div className="border-border flex flex-wrap items-center gap-3 border-b pb-3">
         <span className="bg-primary h-6 w-1 rounded-full" aria-hidden="true" />
         <h2 className="text-lg font-semibold">{t('statisticsPage.sections.distributions')}</h2>
+        <div
+          className="ml-auto flex gap-1"
+          role="group"
+          aria-label={t('statisticsPage.distributions.metric')}
+        >
+          {(['costs', 'tokens'] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={metric === value ? 'secondary' : 'ghost'}
+              aria-pressed={metric === value}
+              onClick={() => setMetric(value)}
+            >
+              {t(`statisticsPage.distributions.${value}`)}
+            </Button>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 sm:gap-4 xl:grid-cols-2">
         {charts.map(([title, data, valueKind]) => (
           <DistributionChart
             key={title}

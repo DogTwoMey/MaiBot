@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
@@ -12,7 +13,8 @@ import pytest
 from src.config.file_watcher import FileWatcher
 from src.plugin_runtime import integration
 from src.plugin_runtime.runner.manifest_validator import ManifestValidator
-from src.webui.routers.plugin import management, release_install, releases, support
+from src.webui.routers.plugin import management, release_install, support
+from src.plugin_market import releases as release_models, service as releases
 
 
 def manifest(version: str = "1.0.0") -> Dict[str, Any]:
@@ -42,10 +44,10 @@ def entry(*versions: releases.PluginRelease, **overrides: Any) -> releases.Plugi
 
 @pytest.fixture(autouse=True)
 def validator_versions(monkeypatch):
-    monkeypatch.setattr(releases, "use_github_market_data", lambda: True)
+    monkeypatch.setattr(releases, "load_source_settings", lambda: SimpleNamespace(information_source="github"))
     def validator(**kwargs):
         return ManifestValidator(host_version="1.3.0", sdk_version="2.8.1", **kwargs)
-    monkeypatch.setattr(releases, "ManifestValidator", validator)
+    monkeypatch.setattr(release_models, "ManifestValidator", validator)
     monkeypatch.setattr(release_install, "ManifestValidator", validator)
 
 
@@ -73,12 +75,12 @@ def test_no_compatible_release_and_sync_errors_are_explicit():
 
 
 def test_preview_requires_explicit_selection(monkeypatch):
-    async def load():
+    async def load(*args):
         return releases.PluginReleaseIndex(schema_version=1, plugins=[entry(release(prerelease=True))])
     monkeypatch.setattr(releases, "load_release_index", load)
     with pytest.raises(HTTPException, match="没有可安装"):
-        asyncio.run(releases.resolve_release("example.demo", "latest"))
-    _, chosen = asyncio.run(releases.resolve_release("legacy.demo", "1.0.0"))
+        asyncio.run(management.resolve_release("example.demo", "latest"))
+    _, chosen = asyncio.run(management.resolve_release("legacy.demo", "1.0.0"))
     assert chosen is not None and chosen.prerelease
 
 
@@ -102,7 +104,7 @@ def local_install(tmp_path, monkeypatch):
     git("tag", "v1.0.0")
     chosen = release(commit=git("rev-parse", "HEAD"))
     catalog_entry = entry(chosen)
-    async def load():
+    async def load(*args):
         return releases.PluginReleaseIndex(schema_version=1, plugins=[catalog_entry])
     class Mirror:
         async def clone_repository(self, **kwargs):

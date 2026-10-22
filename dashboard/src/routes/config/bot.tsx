@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { parse as parseToml } from 'smol-toml'
 
+import { AgentACPField, AgentConnectionSettings, AgentCustomArgs, AgentDesktopField } from '@/components/agent/AgentConnectionSettings'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -40,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ThinkingIllustration } from '@/components/ui/thinking-illustration'
@@ -340,6 +342,16 @@ function BotConfigPageContent() {
 
   useEffect(() => {
     const hookEntries = [
+      ['agent.connection', AgentConnectionSettings, 'wrapper'],
+      ['agent.desktop_manifest', AgentDesktopField, 'wrapper'],
+      ['agent.acp_args', AgentCustomArgs, 'wrapper'],
+      ['agent.acp_command', AgentACPField, 'wrapper'],
+      ['agent.acp_cwd', AgentACPField, 'wrapper'],
+      ['agent.acp_env', AgentACPField, 'wrapper'],
+      ['agent.acp_model', AgentACPField, 'wrapper'],
+      ['agent.acp_timeout', AgentACPField, 'wrapper'],
+      ['agent.computer_tools', AgentACPField, 'wrapper'],
+
       ['bot.platform', HiddenFieldHook, 'hidden'],
       ['bot.alias_names', AliasNamesHook],
       ['bot.qq_account', HiddenFieldHook, 'hidden'],
@@ -599,36 +611,15 @@ function BotConfigPageContent() {
   }
 
   return (
-    <ScrollArea className="h-full min-w-0" scrollbars="vertical">
-      <div className="max-w-full space-y-4 p-4 sm:space-y-6 sm:p-6">
+    // 手机端由工作区 main 统一滚动，内部视口展开，避免嵌套滚动截住上下滑动。
+    <ScrollArea
+      className="h-full min-w-0 max-lg:h-auto max-lg:overflow-visible max-lg:[&>[data-dashboard-scrollbar]]:hidden"
+      viewportClassName="max-lg:h-auto max-lg:!overflow-visible max-lg:overscroll-auto"
+      scrollbars="vertical"
+    >
+      <div className={cn('max-w-full p-4 sm:p-6', editMode === 'detail' ? 'space-y-2' : 'space-y-4 sm:space-y-6')}>
         {/* 顶部操作栏整体吸顶：手机端分两行，PC 端导航与操作按钮同一行。 */}
         <div data-config-section-navigation="true" className="bg-background sticky top-0 z-20 flex min-w-0 flex-col gap-3 py-2 lg:flex-row lg:items-center">
-          {/* 手机：设置分区排成一行可横滑的胶囊，替代下拉菜单与钉固栏 */}
-          {editMode === 'detail' && tabGroups.length > 0 && (
-            <nav
-              aria-label="选择设置页面"
-              data-mobile-pill-nav="true"
-              className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:hidden"
-            >
-              {tabGroups.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  aria-pressed={activeConfigTab === tab.id}
-                  data-active={activeConfigTab === tab.id ? 'true' : 'false'}
-                  onClick={() => setActiveConfigTab(tab.id)}
-                  className={cn(
-                    'h-9 shrink-0 rounded-full px-4 text-[15px]',
-                    activeConfigTab === tab.id
-                      ? 'bg-foreground text-background font-semibold'
-                      : 'bg-card text-foreground'
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          )}
           <div className="flex w-full min-w-0 items-center gap-3 max-lg:hidden lg:flex-1">
             {editMode === 'detail' && tabGroups.length > 0 && (
               <DropdownMenu>
@@ -789,6 +780,32 @@ function BotConfigPageContent() {
             </DropdownMenu>
           </div>
 
+          {/* 手机：设置分区排成一行可横滑的胶囊，替代下拉菜单与钉固栏 */}
+          {editMode === 'detail' && tabGroups.length > 0 && (
+            <nav
+              aria-label="选择设置页面"
+              data-mobile-pill-nav="true"
+              className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:hidden"
+            >
+              {tabGroups.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-pressed={activeConfigTab === tab.id}
+                  data-active={activeConfigTab === tab.id ? 'true' : 'false'}
+                  onClick={() => setActiveConfigTab(tab.id)}
+                  className={cn(
+                    'h-9 shrink-0 rounded-full px-4 text-[15px]',
+                    activeConfigTab === tab.id
+                      ? 'bg-foreground text-background font-semibold'
+                      : 'bg-card text-foreground'
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
 
         {/* 源代码模式 */}
@@ -969,6 +986,7 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
   const initialActiveTab = tabGroups[0]?.id ?? ''
   const [expandedSubtabGroups, setExpandedSubtabGroups] = useState<Record<string, boolean>>({})
   const [activeSubtabByGroup, setActiveSubtabByGroup] = useState<Record<string, string>>({})
+  const [alternateStylesOpen, setAlternateStylesOpen] = useState(false)
   const [experimentalNoticeOpen, setExperimentalNoticeOpen] = useState(
     () =>
       initialActiveTab === 'experimental' &&
@@ -1002,9 +1020,14 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
     const frameId = window.requestAnimationFrame(() => {
       setActiveTab(targetTab.id)
       setAdvancedVisible(true)
+      if (searchFieldPath === 'personality.multiple_probability' || searchFieldPath === 'personality.multiple_reply_style') {
+        setAlternateStylesOpen(true)
+      }
 
       if (subcategoryName) {
-        const subtabId = `${sectionName}.${subcategoryName}`
+        const isChatQuoteField = searchFieldPath === 'chat.reply_style.private_quote_frequency' ||
+          searchFieldPath === 'chat.reply_style.group_quote_frequency'
+        const subtabId = isChatQuoteField ? 'chat' : `${sectionName}.${subcategoryName}`
         setActiveSubtabByGroup((current) => ({
           ...current,
           [targetTab.id]: subtabId,
@@ -1039,7 +1062,7 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
         window.cancelAnimationFrame(nestedFrameId)
       }
     }
-  }, [activeSubtabByGroup, activeTab, advancedVisible, searchFieldPath])
+  }, [activeSubtabByGroup, activeTab, advancedVisible, alternateStylesOpen, searchFieldPath])
 
   if (tabGroups.length === 0 || !configSchema?.nested) {
     return null
@@ -1063,9 +1086,10 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
 
   const identityFieldNames = new Set(['nickname', 'alias_names'])
   const basicChatPromptFieldNames = new Set(['group_chat_prompt', 'private_chat_prompts'])
+  const chatQuoteFieldNames = new Set(['private_quote_frequency', 'group_quote_frequency'])
   const basicChatContextFieldNames = new Set(['max_context_size', 'max_private_context_size'])
   const basicChatTimingFieldNames = new Set([
-    'talk_value', 'private_talk_value', 'mentioned_bot_reply', 'inevitable_at_reply', 'reply_trigger_mode',
+    'talk_value', 'private_talk_value', 'mentioned_bot_reply', 'inevitable_at_reply',
   ])
   const botSchema = configSchema.nested.bot
   const chatSchema = configSchema.nested.chat
@@ -1085,7 +1109,26 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
     nested: {},
   } : null
   const replyStyleSchema = configSchema.nested.chat?.nested?.reply_style
-  const hasPersonalitySchema = Boolean(configSchema.nested.personality)
+  // 群聊与私聊的引用频率展示在聊天设置中，仍通过 reply_style 路径读写。
+  const chatQuoteSchema: ConfigSchema | null = replyStyleSchema ? {
+    ...replyStyleSchema,
+    fields: replyStyleSchema.fields
+      .filter((field) => chatQuoteFieldNames.has(field.name))
+      .map((field) => ({ ...field, advanced: false, 'x-row': 'chat-quote-frequency' })),
+    nested: {},
+  } : null
+  const personalitySchema = configSchema.nested.personality
+  const hasPersonalitySchema = Boolean(personalitySchema)
+  const alternateStyleFieldNames = ['multiple_probability', 'multiple_reply_style']
+  // 备用风格集中放在表达风格后的浮层中，不再依赖全局高级设置。
+  const alternateStyleSchema: ConfigSchema | null = personalitySchema ? {
+    ...personalitySchema,
+    fields: alternateStyleFieldNames.flatMap((name) => {
+      const field = personalitySchema.fields.find((item) => item.name === name)
+      return field ? [{ ...field, advanced: false }] : []
+    }),
+    nested: {},
+  } : null
   const identitySchema: ConfigSchema | null = botSchema ? {
     ...botSchema,
     fields: botSchema.fields
@@ -1142,18 +1185,45 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
       />
     ),
   }
-  const fieldTrailingContent = basicChatPromptSchema ? {
+  const fieldTrailingContent = {
     'personality.reply_style': (
-      <DynamicConfigForm
-        schema={basicChatPromptSchema}
-        values={(sectionValues.chat?.reply_style as ConfigSectionData) ?? {}}
-        onChange={(field, value) => updateSectionValueByPath('chat', ['reply_style', field], value)}
-        basePath="chat.reply_style"
-        hooks={fieldHooks}
-        advancedVisible={advancedVisible}
-      />
+      <div className="space-y-3">
+        {alternateStyleSchema && alternateStyleSchema.fields.length > 0 && (
+          <Popover open={alternateStylesOpen} onOpenChange={setAlternateStylesOpen}>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                备用表达风格
+                <ChevronDown className={cn('ml-2 h-4 w-4 transition-transform', alternateStylesOpen && 'rotate-180')} />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[28rem] max-w-[calc(100vw-2rem)] overflow-y-auto p-3"
+              aria-label="备用表达风格设置"
+            >
+              <DynamicConfigForm
+                schema={alternateStyleSchema}
+                values={sectionValues.personality ?? {}}
+                onChange={(field, value) => updateSectionValueByPath('personality', [field], value)}
+                basePath="personality"
+                hooks={fieldHooks}
+              />
+            </PopoverContent>
+          </Popover>
+        )}
+        {basicChatPromptSchema && (
+          <DynamicConfigForm
+            schema={basicChatPromptSchema}
+            values={(sectionValues.chat?.reply_style as ConfigSectionData) ?? {}}
+            onChange={(field, value) => updateSectionValueByPath('chat', ['reply_style', field], value)}
+            basePath="chat.reply_style"
+            hooks={fieldHooks}
+            advancedVisible={advancedVisible}
+          />
+        )}
+      </div>
     ),
-  } : undefined
+  }
 
   // 仅调整展示归属，身份信息与聊天提示词仍通过原配置路径读写。
   const getDisplaySectionSchema = (sectionName: string, schema: ConfigSchema): ConfigSchema => {
@@ -1161,7 +1231,11 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
       return { ...schema, fields: schema.fields.filter((field) => !identityFieldNames.has(field.name)) }
     }
     if (sectionName === 'personality') {
-      return { ...schema, uiLabel: '身份与人格' }
+      return {
+        ...schema,
+        uiLabel: '身份与人格',
+        fields: schema.fields.filter((field) => !alternateStyleFieldNames.includes(field.name)),
+      }
     }
     if (sectionName === 'chat' && replyStyleSchema) {
       return {
@@ -1173,9 +1247,10 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
             uiLabel: '聊天流prompt',
             uiSubLabel: '聊天流prompt',
             uiAdvanced: false,
-            fields: hasPersonalitySchema
-              ? replyStyleSchema.fields.filter((field) => !basicChatPromptFieldNames.has(field.name))
-              : replyStyleSchema.fields,
+            fields: replyStyleSchema.fields.filter((field) =>
+              !chatQuoteFieldNames.has(field.name) &&
+              (!hasPersonalitySchema || !basicChatPromptFieldNames.has(field.name))
+            ),
           },
         },
       }
@@ -1285,17 +1360,30 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
           id: sectionName,
           label: sectionSchema.uiRootSubLabel || getSubtabLabel(sectionSchema, sectionName),
           content: (
-            <DynamicConfigForm
-              schema={rootSchema}
-              values={sectionValue}
-              onChange={(fieldPath, value) =>
-                updateSectionValueByPath(sectionName, fieldPath.split('.'), value)
-              }
-              basePath={sectionName}
-              hooks={fieldHooks}
-              advancedVisible={advancedVisible}
-              sectionColumns={1}
-            />
+            <div className="space-y-3">
+              <DynamicConfigForm
+                schema={rootSchema}
+                values={sectionValue}
+                onChange={(fieldPath, value) =>
+                  updateSectionValueByPath(sectionName, fieldPath.split('.'), value)
+                }
+                basePath={sectionName}
+                hooks={fieldHooks}
+                advancedVisible={advancedVisible}
+                sectionColumns={1}
+              />
+              {sectionName === 'chat' && chatQuoteSchema && (
+                <DynamicConfigForm
+                  schema={chatQuoteSchema}
+                  values={(sectionValue.reply_style as ConfigSectionData) ?? {}}
+                  onChange={(field, value) => updateSectionValueByPath('chat', ['reply_style', field], value)}
+                  basePath="chat.reply_style"
+                  hooks={fieldHooks}
+                  advancedVisible={advancedVisible}
+                  sectionColumns={1}
+                />
+              )}
+            </div>
           ),
         })
       }

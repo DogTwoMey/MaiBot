@@ -7,11 +7,13 @@ from typing import Any, Dict, List, Mapping, Optional
 import tomlkit
 from tomlkit.items import AoT, Table
 
+from src.common.paths import get_instance_root
 from src.common.logger import get_logger
+from src.core.local_operator import LOCAL_PLATFORM_BOT_IDS
 
 logger = get_logger("platform_io.adapter_policy")
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_PROJECT_ROOT = get_instance_root()
 _DEFAULT_POLICY_PATH = _PROJECT_ROOT / "config" / "adapter_policy.toml"
 _SUPPORTED_CHAT_TYPES = {"group", "private"}
 _SUPPORTED_LIST_TYPES = {"whitelist", "blacklist"}
@@ -90,6 +92,17 @@ class AdapterPolicyManager:
                 chat_type=normalized_chat_type,
                 target_id=normalized_target_id,
                 reason="missing_target_id",
+            )
+
+        # 内置聊天室与本地控制台不属于外部适配器，不能被适配器名单禁用。
+        if identity.platform == "webui" or identity.platform in LOCAL_PLATFORM_BOT_IDS:
+            return AdapterPolicyResult(
+                allowed=True,
+                configured=False,
+                chat_type=normalized_chat_type,
+                target_id=normalized_target_id,
+                source="internal_platform",
+                reason="internal_platform_exempt",
             )
 
         policy_data = self._load_policy_data()

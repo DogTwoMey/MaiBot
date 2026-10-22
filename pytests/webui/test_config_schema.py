@@ -81,13 +81,6 @@ def test_nested_model_schema():
     assert talk_value.get("minValue") == 0
 
 
-def test_personality_schema_exposes_behavior_style():
-    """核心设置需要从官方配置架构读取独立的行为风格字段。"""
-    schema = ConfigSchemaGenerator.generate_schema(PersonalityConfig)
-    behavior_style = next(field for field in schema["fields"] if field["name"] == "behavior_style")
-
-    assert behavior_style["label"]["zh_CN"] == "行为风格"
-    assert behavior_style.get("x-widget") == "textarea"
 
 
 def test_clear_context_command_uses_command_management():
@@ -96,22 +89,6 @@ def test_clear_context_command_uses_command_management():
 
 
 
-def test_config_subtab_metadata_is_exposed():
-    """配置子 Tab 元数据应由 schema 提供，而不是由 WebUI 硬编码。"""
-    schema = ConfigSchemaGenerator.generate_schema(Config)
-
-    chat_schema = schema["nested"]["chat"]
-    expression_schema = schema["nested"]["expression"]
-    jargon_schema = schema["nested"]["jargon"]
-
-    assert chat_schema.get("uiUseSubTabs") is True
-    assert chat_schema.get("uiRootSubLabel") == "基础设置"
-    assert chat_schema["nested"]["reply_timing"].get("uiLabel") == "什么时候发言"
-    assert chat_schema["nested"]["reply_style"].get("uiLabel") == "如何发言"
-
-    assert expression_schema.get("uiUseSubTabs") is True
-    assert expression_schema.get("uiSubLabel") == "表达"
-    assert jargon_schema.get("uiSubLabel") == "黑话"
 
 
 def test_message_debounce_fields_are_exposed_to_webui():

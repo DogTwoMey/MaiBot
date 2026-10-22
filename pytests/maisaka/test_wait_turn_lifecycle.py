@@ -1,5 +1,6 @@
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import asyncio
 import time
@@ -97,3 +98,28 @@ async def test_proactive_task_is_resolvable_as_reply_target() -> None:
     assert runtime._chat_history[-1].message_id == task_id
     assert runtime._chat_history[-1].original_message is trigger
     assert runtime.find_source_message_by_id(task_id) is trigger
+
+
+@pytest.mark.asyncio
+async def test_queued_proactive_turn_resumes_wait_entered_after_enqueue() -> None:
+    runtime = _build_runtime_stub()
+    trigger = object()
+    # 主动任务先排队，当前 Planner 随后调用 wait，再消费已排队的主动任务。
+    runtime._queue_proactive_turn(trigger, logical_turn_id="turn-proactive")  # type: ignore[arg-type]
+    runtime._enter_wait_state(tool_call_id="wait-call", logical_turn_id="turn-wait")
+    runtime._is_reply_frequency_silent = lambda: False
+    runtime._has_pending_messages = lambda: False
+    runtime._clear_focus_cooldown_wakeup_scheduled = lambda: None
+    runtime.restore_proactive_user_context = AsyncMock()
+    runtime._chat_history = []
+    engine = object.__new__(MaisakaReasoningEngine)
+    engine._runtime = runtime
+    engine._emit_flow_step = AsyncMock()
+
+    context = await engine._prepare_turn_start_context(runtime._internal_turn_queue.get_nowait())
+
+    assert context.trigger_message is trigger
+    assert context.logical_turn_id == "turn-wait"
+    assert runtime._chat_history[0].tool_call_id == "wait-call"
+    assert runtime._get_pending_wait_tool_call_ids() == set()
+    assert runtime._agent_state == runtime._STATE_RUNNING

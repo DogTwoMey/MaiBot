@@ -1,5 +1,19 @@
 {
   "pluginWebUI": {
+    "settingsTitle": "Plugin pages",
+    "settingsHint": "Choose which plugin pages appear in the top bar and in what order. Saved only in this browser; plugin permissions are unchanged.",
+    "topbarPreview": "Top bar preview",
+    "moreShort": "More",
+    "topbarLimit": "Up to {{count}} plugins in the top bar; the rest appear under More",
+    "orderAndVisibility": "Order and visibility",
+    "pluginCount": "{{count}} plugins",
+    "hiddenLabel": "Hidden",
+    "topbarLabel": "Top bar",
+    "overflowLabel": "More menu",
+    "sidebarLabel": "Sidebar",
+    "overflowGroup": "The following appear in the More menu",
+    "sidebarGroup": "These plugins provide sidebar pages only",
+    "visibleLabel": "Show",
     "customReload": "Reload page",
     "customStop": "Stop page",
     "customStopped": "Page stopped. Reload the page to run again.",
@@ -73,6 +87,7 @@
       "modelManagement": "Model Management",
       "promptManagement": "Prompt Management",
       "emojiManagement": "Emoji Management",
+      "learning": "Learning",
       "expressionManagement": "Expression Management",
       "slangManagement": "Slang Management",
       "personInfo": "Person Info",
@@ -85,10 +100,10 @@
       "mcpSettings": "MCP Settings",
       "dataTransfer": "Data Management",
       "statistics": "Detailed Statistics",
-      "replyEffects": "Reply Effects",
       "logViewer": "Log Viewer",
       "reasoningProcess": "Reasoning Process",
       "maisakaMonitor": "MaiSaka Chat Monitor",
+      "agent": "Independent Agent",
       "localChat": "Local Chat",
       "settings": "WebUI Settings"
     }
@@ -173,6 +188,14 @@
       "messages": "Messages"
     },
     "distributions": {
+      "metric": "Statistics metric",
+      "costs": "Cost",
+      "tokens": "Tokens",
+      "ownerTokens": "Tokens by caller",
+      "modelTokens": "Tokens by model",
+      "moduleTokens": "Tokens by module",
+      "requestTypeTokens": "Tokens by request type",
+      "chatTokens": "Tokens by chat",
       "ownerCosts": "Call source cost distribution",
       "modelCosts": "Model cost distribution",
       "moduleCosts": "Module cost distribution",
@@ -213,6 +236,54 @@
     "logs": "Logs"
   },
   "chat": {
+    "computerDesktop": "Computer desktop and takeover",
+    "computer": {
+      "desktopSetup": "Connect dsh Desktop",
+      "desktopInstall": "Install the bridge with the dsh command bundled with Desktop (0.2.1-rc.2 or later):",
+      "desktopConnect": "Start or restart Desktop. Leave the bridge file and model option empty to use its defaults. Tasks appear in the MaiMai session in Desktop. Stopping MaiBot does not quit Desktop.",
+      "dshSetup": "Connect dsh in three steps",
+      "dshInstall": "If dsh is not installed, run:",
+      "dshModel": "Configure the model and API key in dsh (skip if configured):",
+      "dshEnable": "Select the dsh CLI connection, enable and save the Agent, then send a task on its page. If the executable is not found, set ACP executable to the absolute path of dsh.cmd on Windows.",
+      "dshCommand": "The preset runs:",
+      "disabled": "Agent is disabled",
+      "reasoning": "Thinking history",
+      "connecting": "Connecting",
+      "disabled": "Computer use disabled",
+      "stopped": "Sandbox stopped",
+      "manual": "Manual control",
+      "paused": "Decisions paused",
+      "resting": "Resting",
+      "autonomous": "Exploring",
+      "running": "Operation running",
+      "pause": "Pause decisions",
+      "takeover": "Take control",
+      "resume": "Return control",
+      "stop": "Stop sandbox",
+      "refresh": "Refresh",
+      "help": "Desktop screenshots update continuously. Take control to click, right-click and type. Taking control requests cancellation; pausing decisions leaves submitted operations running.",
+      "screen": "Computer desktop",
+      "text": "Type after taking control",
+      "type": "Type text",
+      "enter": "Enter",
+      "takeoverFirst": "Take control first",
+      "toolCall": "Tool call",
+      "toolResult": "Result",
+      "failed": "Failed",
+      "thought": "Thinking",
+      "eventCount": "{{count}} records",
+      "userMessage": "User",
+      "systemEvent": "Autonomous wake",
+      "queued": "Queued",
+      "noEvents": "No activity yet",
+      "inputEvent": "Input and requests",
+      "stepEvent": "Model and tools",
+      "message": "Give the Agent a task",
+      "send": "Send",
+      "thinking": "Thinking",
+      "tool": "Using a tool",
+      "idle": "Idle"
+    },
     "setupTrial": {
       "title": "Try chatting with the bot",
       "description": "Say hello and check that the bot can reply.",
@@ -384,6 +455,7 @@
     "title": "WebUI Settings",
     "description": "Manage your application preferences",
     "tabs": {
+      "general": "General",
       "appearance": "Appearance",
       "security": "Security",
       "other": "Other",
@@ -494,6 +566,7 @@
       "retroPanelDepthDesc": "Controls the visibility of recessed surfaces and shadows."
     },
     "security": {
+      "tokenManagement": "Access Token Management",
       "currentToken": "Current Access Token",
       "yourToken": "Your Access Token",
       "regenerate": "Regenerate",
@@ -617,11 +690,18 @@
       "resetAllSettingsBtn": "Reset All Settings to Defaults",
       "confirmResetAll": "Confirm Reset All Settings",
       "confirmResetAllDesc": "This will restore all interface settings to their defaults, including theme, colors, animation, and other preferences. This will not affect your login status. Are you sure?",
-      "configWizardDesc": "Re-run the initial setup wizard to reconfigure system basics.",
+      "configWizardDesc": "Run setup again, optionally resetting the login password to start with password setup.",
       "rerunSetup": "Re-run Initial Setup",
+      "resetSetupPassword": "Also reset the login password",
+      "resetSetupPasswordDesc": "The old password will stop working immediately. Other browsers must sign in again. This browser stays signed in and opens password setup. A temporary credential is used until you save a new password and will change on restart.",
+      "setupPasswordResetSuccess": "Password reset. Opening password setup.",
+      "setupResetSuccess": "Setup reset. Opening the setup wizard.",
+      "setupResetFailed": "Unable to reset setup. Please try again.",
       "confirmRerunSetup": "Confirm Re-run Setup",
       "confirmRerunSetupDesc": "This will take you back to the initial setup wizard. You can reconfigure the system basics. Are you sure?",
       "devToolsDesc": "The following features are for development and debugging only. They may cause crashes or abnormal behavior.",
+      "alwaysShowUpdateButton": "Always show update button",
+      "alwaysShowUpdateButtonDesc": "Always show the main program update button in the top-right corner, even when no update is detected. Takes effect immediately.",
       "alwaysShowUpdateNotice": "Always Show Update Notice",
       "alwaysShowUpdateNoticeDesc": "When enabled, the update details and plugin compatibility notice appear every time you enter the WebUI. Takes effect after a refresh.",
       "triggerError": "Trigger Test Error",
@@ -642,6 +722,60 @@
       "importInvalidDesc": "Invalid file format",
       "resetDone": "Reset done",
       "resetDoneDesc": "All settings restored to defaults. Refresh the page to apply changes."
+    },
+    "selfUpdate": {
+      "title": "MaiBot Update",
+      "current": "Current version {{version}}",
+      "loading": "Loading update status…",
+      "loadFailed": "Failed to load update status",
+      "check": "Check for updates",
+      "checking": "Checking…",
+      "checkFailed": "Update check failed",
+      "notChecked": "Not checked yet",
+      "upToDate": "Up to date",
+      "checkedAt": "checked at {{time}}",
+      "newVersion": "New version {{version}} available",
+      "newCommits": "{{count}} new commit(s) available",
+      "behind": "{{count}} commit(s) behind the official {{branch}} branch",
+      "moreCommits": "Showing the latest {{count}} commits only",
+      "dependenciesChanged": "This update changes dependencies; they will be synced automatically ({{tool}})",
+      "cannotApply": "Automatic update is not possible right now",
+      "dirtyFiles": "Modified files:",
+      "apply": "Update now",
+      "applyFailed": "Failed to start the update",
+      "confirmTitle": "Update to {{version}}?",
+      "confirmDesc": "MaiBot will be offline for a few minutes: it stops, pulls the new version, syncs dependencies and starts again. If pulling or syncing dependencies fails, it rolls back to the current version automatically. Backing up the data directory first is recommended.",
+      "confirmAction": "Update and restart",
+      "cancel": "Cancel",
+      "overlayTitle": "Updating MaiBot",
+      "overlayDesc": "Pulling the new version and syncing dependencies. This may take a few minutes; do not close MaiBot",
+      "source": "Update source: {{name}}",
+      "sourceHint": "Sources are tried in the order of the plugin marketplace mirror settings; only the official repository Mai-with-u/MaiBot is pulled",
+      "packageSourceHint": "Install stable releases from PyPI. Configuration and databases are backed up; stop other instances sharing this environment first.",
+      "packageConfirmDesc": "MaiBot will be offline for a few minutes. It backs up configuration and databases, installs the confirmed version with uv, and restarts. Installation verification failures trigger an attempt to restore the previous package and dependencies. Backups are in data/self_update/backups. Database migrations after the new version starts are not automatically reversed.",
+      "lastSuccess": "Updated from {{from}} to {{to}} at {{time}}",
+      "lastFailed": "Update to {{to}} failed at {{time}}",
+      "rolledBack": "Rolled back to the previous version automatically",
+      "rollbackFailed": "Automatic rollback failed; check the repository and dependencies manually: {{error}}",
+      "toastSuccess": "Update complete",
+      "toastSuccessDesc": "Updated to {{version}}",
+      "toastFailed": "Update failed",
+      "toastFailedDesc": "Update failed. See Settings → About for details.",
+      "blockers": {
+        "uv_missing": "uv was not found; add it to the startup PATH",
+        "not_uv_tool": "This is not a PyPI-based uv tool installation; use the original installer to update",
+        "package_runner_missing": "Start with maibot run to enable automatic updates",
+        "other_instances_running": "Stop other MaiBot instances sharing this tool environment first",
+        "package_busy": "The tool environment is updating; try again later",
+        "git_missing": "Git was not found, so self-update is unavailable",
+        "not_git_repo": "This deployment is not a Git repository (e.g. a Docker image or an archive); update it the way it was deployed",
+        "detached_head": "Not on any branch (detached HEAD), so self-update is unavailable",
+        "unsupported_branch": "Self-update is only supported on the main or dev branch",
+        "dirty_worktree": "There are uncommitted local changes; commit or revert them first",
+        "diverged": "There are local commits that the official branch does not have, so a fast-forward update is impossible",
+        "no_dependency_tool": "This update changes dependencies, but no way to install them was found (uv or pip)",
+        "python_requirement_changed": "This update changes the required Python version; please update manually"
+      }
     },
     "about": {
       "openSource": "Open Source",
@@ -739,7 +873,8 @@
       },
       "customToken": {
         "title": "Set Login Token",
-        "description": "Replace this startup's random token with a fixed custom token"
+        "description": "Without a saved password, a random one is generated on every startup.",
+        "label": "Password"
       },
       "botBasic": {
         "title": "Bot Basics",
@@ -801,7 +936,7 @@
       "next": "Next",
       "skip": "Skip Wizard",
       "complete": "Complete Setup",
-      "saveToken": "Save Token",
+      "saveToken": "Save and continue",
       "saving": "Saving...",
       "completing": "Completing..."
     },
@@ -814,6 +949,7 @@
     "defaults": {
       "personality": {
         "personality": "She is a sophomore college student who spends time on Tieba.",
+        "behaviorStyle": "Join everyday conversations naturally. Understand the context before replying or staying quiet, and avoid forcing a topic.",
         "replyStyle": "Keep replies plain and concise, speak Chinese, and avoid deliberately emphasizing any academic background. You can refer to the reply styles commonly seen on Tieba, Zhihu, and Weibo.",
         "multipleReplyStyles": {
           "plain": "Your style is plain, lightly sarcastic, very short, and colloquial. You can reference Tieba and Weibo reply styles.",
@@ -831,11 +967,19 @@
         "noticeTitle": "You are still using the random startup token",
         "noticeDescription": "The random token changes on the next startup. Set a fixed custom token and use it for future WebUI sign-ins.",
         "label": "Custom Token *",
-        "placeholder": "Enter a secure token you can store safely",
+        "placeholder": "Enter a new password",
         "description": "After saving, your current session will expire and you will need to sign in with the new token.",
         "requirements": "Token requirements",
-        "show": "Show token",
-        "hide": "Hide token"
+        "show": "Show",
+        "hide": "Hide",
+        "met": "Met",
+        "unmet": "Not met",
+        "rules": {
+          "minLength": "10+ characters",
+          "hasUppercase": "Uppercase",
+          "hasLowercase": "Lowercase",
+          "hasSpecialChar": "Special symbol"
+        }
       },
       "botBasic": {
         "platform": {
@@ -861,7 +1005,7 @@
           "description": "The bot's account identifier on this platform"
         },
         "nickname": {
-          "label": "Nickname *",
+          "label": "Nickname",
           "placeholder": "Enter the bot's nickname",
           "description": "The bot's primary display name"
         },
@@ -874,15 +1018,26 @@
         }
       },
       "personality": {
+        "expand": "Expand editor for {{field}}",
+        "presets": {
+          "default": "Default (MaiMai)",
+          "label": "Persona presets",
+          "description": "Selecting a preset replaces the personality, behavior style, and reply style below. You can continue editing them."
+        },
         "personality": {
-          "label": "Personality Traits *",
+          "label": "Personality Traits",
           "placeholder": "Describe the bot's personality and identity traits (recommended within 120 characters)",
-          "description": "Example: a sophomore college girl who browses Tieba"
+          "description": "Describe the bot's core personality traits, shaping how it understands itself"
+        },
+        "behaviorStyle": {
+          "label": "Behavior style",
+          "placeholder": "Describe when to participate, observe, or stay quiet",
+          "description": "Describe the bot's behavior, determining how it acts"
         },
         "replyStyle": {
-          "label": "Reply Style *",
+          "label": "Reply Style",
           "placeholder": "Describe how the bot speaks and expresses itself",
-          "description": "Example: keep replies plain and concise, speak Chinese, and refer to styles seen on Tieba, Zhihu, and Weibo"
+          "description": "Directly shape how the bot speaks and its speaking style"
         },
         "multipleReplyStyle": {
           "label": "Alternate Reply Styles",
@@ -1047,7 +1202,7 @@
     "navigate": "Navigate",
     "select": "Select",
     "close": "Close",
-    "aiSearch": "AI Search",
+    "aiSearch": "Ask",
     "aiSearching": "Understanding",
     "aiHint": "Describe the outcome you want, such as “MaiBot talks too much”",
     "progressTitle": "Search progress",
@@ -1092,8 +1247,8 @@
       "model": "Model Config",
       "modelDesc": "Configure model parameters",
       "emoji": "Emoji Management",
-      "emojiDesc": "Manage bot emoji",
       "expression": "Expression Management",
+      "learningDesc": "Manage learned expressions, slang and emoji",
       "expressionDesc": "Manage bot expressions",
       "person": "Person Info",
       "personDesc": "Manage person info",

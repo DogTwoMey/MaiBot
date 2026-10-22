@@ -39,7 +39,6 @@ const STAGE_LABELS: Record<string, string> = {
   jargon_learning_update: '黑话含义推断',
   llm_error: 'LLM 请求异常',
   planner: '规划器',
-  reply_effect_judge: '回复效果评估',
   replyer: '回复器',
   timing_gate: '时机判断',
 }
@@ -266,7 +265,7 @@ function getContextItemContentBlocks(item: ContextItemSnapshot): ContextItemCont
   return blocks
 }
 
-function ContextItemImagePreview({ image, index }: { image: ContextItemImage; index: number }) {
+export function ContextItemImagePreview({ image, index }: { image: ContextItemImage; index: number }) {
   const [src, setSrc] = useState('')
 
   useEffect(() => {
@@ -795,20 +794,6 @@ export function ToolCallsCollapsible({ toolCalls }: { toolCalls: unknown[] }) {
                 <Badge variant="secondary" className="font-mono">
                   {toolCall.name}
                 </Badge>
-                {toolCall.sourceLabel && (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'px-1.5 py-0 text-[11px]',
-                      getToolCallSourceClassName(toolCall.source)
-                    )}
-                  >
-                    {toolCall.sourceLabel}
-                  </Badge>
-                )}
-                {toolCall.id && (
-                  <span className="text-muted-foreground font-mono text-[11px]">{toolCall.id}</span>
-                )}
               </div>
               <pre className="bg-muted/20 mt-2 rounded-md border p-2 font-mono text-xs leading-5 whitespace-pre-wrap">
                 {stringifyStructuredValue(toolCall.arguments)}
@@ -858,10 +843,6 @@ export function ContextItemCard({
   const images = getContextItemImages(item)
   const contentBlocks = getContextItemContentBlocks(item)
   const toolCalls = getContextItemToolCalls(item)
-  const callId =
-    item.item_type === 'FunctionCallItem' && isRecord(item.tool_call)
-      ? String(item.tool_call.call_id || '')
-      : String(item.call_id || '')
 
   return (
     <article
@@ -878,23 +859,11 @@ export function ContextItemCard({
             {roleStyle.label}
           </Badge>
           <span className="text-muted-foreground font-mono text-[11px]">{item.item_type}</span>
-          {item.meta.logical_turn_id && (
-            <Badge
-              variant="outline"
-              className="max-w-48 truncate font-mono text-[10px]"
-              title={item.meta.logical_turn_id}
-            >
-              turn {item.meta.logical_turn_id}
-            </Badge>
-          )}
           {item.phase && <Badge variant="outline">phase: {item.phase}</Badge>}
           {item.representation && <Badge variant="outline">{item.representation}</Badge>}
           {item.status && <Badge variant="outline">{item.status}</Badge>}
         </div>
 
-        {callId && (
-          <div className="text-muted-foreground font-mono text-[11px]">call_id: {callId}</div>
-        )}
         {contentBlocks.map((block, blockIndex) =>
           block.type === 'text' ? (
             <NaturalLanguageText
@@ -918,7 +887,7 @@ export function ContextItemCard({
         )}
         {toolCalls.length > 0 && <ToolCallsCollapsible toolCalls={toolCalls} />}
         {item.item_type === 'ProviderActivityItem' && item.details && item.details.length > 0 && (
-          <pre className="bg-muted/20 max-h-64 overflow-auto rounded-md border p-2.5 font-mono text-xs leading-5 whitespace-pre-wrap">
+          <pre className="bg-muted/20 max-h-64 overflow-auto rounded-md border p-2.5 font-mono text-xs leading-5 whitespace-pre-wrap max-lg:max-h-none max-lg:overflow-visible max-lg:break-words">
             {item.details.join('\n')}
           </pre>
         )}
@@ -952,7 +921,7 @@ export function ContextItemCard({
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent className="min-w-0 border-t">
-          <pre className="max-h-96 overflow-auto p-2.5 font-mono text-xs leading-5 whitespace-pre-wrap lg:max-h-[32rem]">
+          <pre className="max-h-96 overflow-auto p-2.5 font-mono text-xs leading-5 whitespace-pre-wrap max-lg:max-h-none max-lg:overflow-visible max-lg:break-words lg:max-h-[32rem]">
             {JSON.stringify(item, null, 2)}
           </pre>
         </CollapsibleContent>

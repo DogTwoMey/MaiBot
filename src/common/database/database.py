@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-from pathlib import Path
 from time import perf_counter
 from typing import ContextManager, Generator, TYPE_CHECKING
 
@@ -12,6 +11,7 @@ from sqlmodel import SQLModel, Session, create_engine
 
 import threading
 
+from src.common.paths import get_instance_root
 from src.common.database.migrations import create_database_migration_bootstrapper
 from src.common.logger import get_logger
 
@@ -24,7 +24,7 @@ logger = get_logger("database")
 
 
 # 定义数据库文件路径
-ROOT_PATH = Path(__file__).parent.parent.parent.parent.absolute().resolve()
+ROOT_PATH = get_instance_root()
 _DB_DIR = ROOT_PATH / "data"
 _DB_FILE = _DB_DIR / "MaiBot.db"
 
@@ -123,7 +123,7 @@ def ensure_runtime_performance_indexes() -> None:
             f" 错误={exc}"
         )
         return
-    logger.info(f"数据库运行期性能索引检查完成，耗时={int((perf_counter() - index_start_time) * 1000)}ms")
+    logger.debug(f"数据库运行期性能索引检查完成，耗时={int((perf_counter() - index_start_time) * 1000)}ms")
 
 
 def initialize_database() -> None:
@@ -147,7 +147,7 @@ def initialize_database() -> None:
         import src.common.database.database_model  # noqa: F401
 
         migration_state = _migration_bootstrapper.prepare_database()
-        logger.info(
+        logger.debug(
             "数据库迁移准备完成，"
             f" 当前版本={migration_state.resolved_version.version}，目标版本={migration_state.target_version}"
         )

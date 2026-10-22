@@ -900,9 +900,16 @@ class ChatInfo(BaseModel):
     is_group: bool = False
     use_expression: bool = True
     enable_learning: bool = True
+    expression_count: Optional[int] = None
 
 
-def build_chat_info(chat_id: str, db_session: Any, chat_session: Optional[ChatSession] = None) -> ChatInfo:
+def build_chat_info(
+    chat_id: str,
+    db_session: Any,
+    chat_session: Optional[ChatSession] = None,
+    *,
+    expression_count: Optional[int] = None,
+) -> ChatInfo:
     """根据聊天流 ID 构建 WebUI 展示用的聊天信息。"""
 
     use_expression, enable_learning = ExpressionConfigUtils.get_expression_config_for_chat(chat_id)
@@ -914,6 +921,7 @@ def build_chat_info(chat_id: str, db_session: Any, chat_session: Optional[ChatSe
         is_group=bool(chat_session and chat_session.group_id),
         use_expression=use_expression,
         enable_learning=enable_learning,
+        expression_count=expression_count,
     )
 
 
@@ -998,13 +1006,31 @@ def get_chat_list(
         chat_by_id: Dict[str, ChatInfo] = {}
         with get_db_session() as session:
             expression_chat_ids = get_visible_expression_chat_ids(session, include_legacy)
+            # 与列表使用同一可见聊天范围，一次聚合全部聊天的记录数，不截取排行榜或逐聊天计数。
+            expression_counts = dict(session.exec(
+                select(Expression.session_id, func.count())
+                .where(col(Expression.session_id).in_(expression_chat_ids))
+                .group_by(col(Expression.session_id))
+            ).all())
             for session_id in expression_chat_ids:
                 chat_session = session.exec(select(ChatSession).where(col(ChatSession.session_id) == session_id)).first()
-                chat_by_id[session_id] = build_chat_info(session_id, session, chat_session)
+                chat_by_id[session_id] = build_chat_info(
+                    session_id,
+                    session,
+                    chat_session,
+                    expression_count=expression_counts.get(session_id, 0),
+                )
 
-        # 按名称排序
-        chat_list = list(chat_by_id.values())
-        chat_list.sort(key=lambda x: x.chat_name)
+            # 聚合每个聊天的最新消息时间，避免逐聊天查询消息历史。
+            latest_message_times = dict(session.exec(
+                select(Messages.session_id, func.max(Messages.timestamp))
+                .where(col(Messages.session_id).in_(chat_by_id))
+                .group_by(col(Messages.session_id))
+            ).all())
+
+        # 有消息的聊天按时间倒序；无消息的聊天排在最后，同一时间按名称稳定排序。
+        chat_list = sorted(chat_by_id.values(), key=lambda item: (item.chat_name, item.chat_id))
+        chat_list.sort(key=lambda item: latest_message_times.get(item.chat_id, datetime.min), reverse=True)
 
         return ChatListResponse(success=True, data=chat_list)
 
