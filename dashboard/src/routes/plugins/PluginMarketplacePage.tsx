@@ -261,6 +261,17 @@ function PluginMarketplacePageContent({ embedded }: Required<PluginMarketplacePa
     setDeferDetailContent(routeDetailPluginId !== null && !reducedMotion)
   }, [detailPluginId, routeDetailPluginId, reducedMotion, syncDetailAddress])
 
+  useEffect(() => {
+    if (!detailPluginId) return
+    const closeDetailOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      setDetailPluginId(null)
+    }
+    document.addEventListener('keydown', closeDetailOnEscape)
+    return () => document.removeEventListener('keydown', closeDetailOnEscape)
+  }, [detailPluginId, setDetailPluginId])
+
   const handleDetail = useCallback((plugin: PluginInfo) => setDetailPluginId(plugin.id), [setDetailPluginId])
 
   const { toast } = useToast()
