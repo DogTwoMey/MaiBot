@@ -1,5 +1,5 @@
 import { Download, Loader2, RefreshCw, Trash2, Upload } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -80,6 +80,7 @@ function selectorPayload(type: MemoryBundleSelectorType, value: string): Record<
 }
 
 export function MemoryBundleCard({ chatTargets }: MemoryBundleCardProps) {
+  const imageSelectionId = useId()
   const [contentLevel, setContentLevel] = useState<MemoryBundleContentLevel>('knowledge')
   const [selectorType, setSelectorType] = useState<MemoryBundleSelectorType>('all')
   const [selectorValue, setSelectorValue] = useState('')
@@ -357,8 +358,9 @@ export function MemoryBundleCard({ chatTargets }: MemoryBundleCardProps) {
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {imageOptions.map((image) => (
-                    <label key={image.asset_id} className="rounded border p-2">
+                    <label key={image.asset_id} htmlFor={`${imageSelectionId}-${image.asset_id}`} className="rounded border p-2">
                       <Checkbox
+                        id={`${imageSelectionId}-${image.asset_id}`}
                         aria-label={`选择图片 ${image.content_hash.slice(0, 12)}`}
                         checked={selectorValue.split(',').includes(image.content_hash)}
                         onCheckedChange={(checked) => {

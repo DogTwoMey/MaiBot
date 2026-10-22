@@ -17,6 +17,7 @@ export function ComputerDesktop() {
   const [connectionError, setConnectionError] = useState('')
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const frameRef = useRef<HTMLImageElement>(null)
   const locked = useRef(false)
   const controller = useRef<AbortController | null>(null)
   const refresh = useRef<() => void>(() => {})
@@ -87,15 +88,19 @@ export function ComputerDesktop() {
     if (!result.success) throw new Error(result.error || result.capture_error || JSON.stringify(result))
   })
 
-  const click = (event: MouseEvent<HTMLImageElement>, button: 'left' | 'right') => {
+  const click = (event: MouseEvent<HTMLButtonElement>, button: 'left' | 'right') => {
     event.preventDefault()
     if (!status?.takeover || busy) return
-    const image = event.currentTarget
+    const image = frameRef.current
+    if (!image) return
     const bounds = image.getBoundingClientRect()
+    const keyboardClick = button === 'left' && event.detail === 0
+    const clientX = keyboardClick ? bounds.left + bounds.width / 2 : event.clientX
+    const clientY = keyboardClick ? bounds.top + bounds.height / 2 : event.clientY
     void input([{
       action: 'click', button,
-      x: Math.min(image.naturalWidth - 1, Math.max(0, Math.floor((event.clientX - bounds.left) * image.naturalWidth / bounds.width))),
-      y: Math.min(image.naturalHeight - 1, Math.max(0, Math.floor((event.clientY - bounds.top) * image.naturalHeight / bounds.height))),
+      x: Math.min(image.naturalWidth - 1, Math.max(0, Math.floor((clientX - bounds.left) * image.naturalWidth / bounds.width))),
+      y: Math.min(image.naturalHeight - 1, Math.max(0, Math.floor((clientY - bounds.top) * image.naturalHeight / bounds.height))),
     }])
   }
 
@@ -119,9 +124,12 @@ export function ComputerDesktop() {
       <p className="mb-3 text-xs text-muted-foreground">{t('chat.computer.help')}</p>
       {(error || connectionError) && <p role="alert" className="mb-3 whitespace-pre-wrap break-words text-sm text-destructive">{error || connectionError}</p>}
       {frame ? (
-        <img src={frame} alt={t('chat.computer.screen')} draggable={false}
-          className={cn('block h-auto w-full rounded-lg border bg-muted', status?.takeover && 'cursor-crosshair ring-2 ring-primary')}
-          onClick={event => click(event, 'left')} onContextMenu={event => click(event, 'right')} />
+        <button type="button" className="block w-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          disabled={!status?.takeover || busy} aria-label={t('chat.computer.screen')}
+          onClick={event => click(event, 'left')} onContextMenu={event => click(event, 'right')}>
+          <img ref={frameRef} src={frame} alt={t('chat.computer.screen')} draggable={false}
+            className={cn('block h-auto w-full rounded-lg border bg-muted', status?.takeover && 'cursor-crosshair ring-2 ring-primary')} />
+        </button>
       ) : <div className="flex min-h-48 items-center justify-center rounded-lg border bg-muted/30 text-sm text-muted-foreground">{t(`chat.computer.${state}`)}</div>}
       <form className="my-3 flex flex-wrap gap-2" onSubmit={event => {
         event.preventDefault()

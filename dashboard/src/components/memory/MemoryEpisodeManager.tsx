@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Play, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -153,6 +153,7 @@ export function MemoryEpisodeManager({
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('')
   const [platform, setPlatform] = useState('')
+  const rebuildAllId = useId()
   const [userId, setUserId] = useState('')
   const [personId, setPersonId] = useState('')
   const [showAdvancedPersonId, setShowAdvancedPersonId] = useState(false)
@@ -666,8 +667,8 @@ export function MemoryEpisodeManager({
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={rebuildAll} onCheckedChange={(checked) => setRebuildAll(checked === true)} />
+                <label htmlFor={rebuildAllId} className="flex items-center gap-2 text-sm">
+                  <Checkbox id={rebuildAllId} checked={rebuildAll} onCheckedChange={(checked) => setRebuildAll(checked === true)} />
                   重新生成全部可用来源
                 </label>
                 <Button onClick={() => void submitRebuild()} disabled={actionLoading}>

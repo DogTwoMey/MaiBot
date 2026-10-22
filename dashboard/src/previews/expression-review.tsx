@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Download, Plus, Star } from 'lucide-react'
 
 import { ChatScopeFilterPanel } from '@/components/chat-scope-filter-panel'
@@ -52,6 +52,7 @@ const sampleExpressions: Expression[] = Array.from({ length: 73 }, (_, index) =>
 
 /** 直接使用生产组件展示布局；所有操作只改变本页示例，不连接业务接口。 */
 export function ExpressionReview() {
+  const legacyId = useId()
   const [items, setItems] = useState(sampleExpressions)
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<'chat' | 'group' | 'all'>('chat')
@@ -113,9 +114,10 @@ export function ExpressionReview() {
               meta: (1204 - index * 121).toLocaleString(),
             }))}
             footer={
-              <label className="flex items-center justify-between gap-2 text-xs">
+              <label htmlFor={legacyId} className="flex items-center justify-between gap-2 text-xs">
                 显示旧格式
                 <Checkbox
+                  id={legacyId}
                   size="sm"
                   checked={legacy}
                   onCheckedChange={(value) => setLegacy(value === true)}
