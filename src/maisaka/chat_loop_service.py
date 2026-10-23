@@ -49,6 +49,7 @@ from src.services.llm_service import LLMServiceClient
 from src.maisaka.builtin_tool import get_builtin_tools
 from src.maisaka.context.history import collect_tool_turn_anchor_indices, normalize_tool_call_result_pairs
 from src.maisaka.context.messages import (
+    IMAGE_QUALITY_MAX_SIDE,
     LLMContextMessage,
     ModelOutputContextMessage,
     ReferenceMessage,
@@ -64,8 +65,8 @@ from src.maisaka.context.usage import (
     resolve_tool_definition_name,
 )
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
-from src.maisaka.memory.mid_term import is_mid_term_memory_message
 from src.maisaka.prompt_sections import build_system_guidance_prompt
+from src.maisaka.context.compaction import ContextSummaryMessage, PlannerRequestSnapshot
 from src.maisaka.focus import focus_mode_manager
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.maisaka.visual.deferred_images import defer_context_image_encoding
@@ -77,13 +78,11 @@ from .attention_drift import build_attention_drift_prompt_block
 REQUEST_TYPE_BY_REQUEST_KIND = {
     "emotion": "emoji.selector",
     "expression_selector": "expression.selector",
-    "focus_summary": "maisaka.focus_summary",
     "planner": "maisaka.planner",
     "sub_agent": "maisaka.sub_agent",
 }
 MODEL_TASK_NAME_BY_REQUEST_KIND: dict[str, str] = {
     "expression_selector": "fast_model",
-    "focus_summary": "utils",
 }
 PROMPT_PREVIEW_CATEGORY_BY_REQUEST_KIND = {
     "planner": "planner",
@@ -648,6 +647,7 @@ class MaisakaChatLoopService:
         self._custom_chat_system_prompt = chat_system_prompt
         self._prompt_load_lock = asyncio.Lock()
         self._llm_chat_clients: dict[str, LLMServiceClient] = {}
+        self.planner_request_snapshot: PlannerRequestSnapshot | None = None
 
     @property
     def personality_prompt(self) -> str:
@@ -1084,6 +1084,7 @@ class MaisakaChatLoopService:
                 msg,
                 enable_visual_message=enable_visual_message,
                 limit_emoji_size=True,
+                max_image_side=IMAGE_QUALITY_MAX_SIDE[global_config.visual.image_quality],
             )
             if not context_items:
                 continue
@@ -1335,6 +1336,11 @@ class MaisakaChatLoopService:
                 force_stream_mode=request_kind == "planner" and global_config.chat.reply_timing.planner_message_steering,
             ),
         )
+        if request_kind == "planner":
+            self.planner_request_snapshot = (
+                PlannerRequestSnapshot(generation_result.request_snapshot, tuple(selected_history))
+                if generation_result.request_snapshot is not None else None
+            )
         if logical_turn_id:
             generation_result.output_items = bind_output_items_to_turn(
                 generation_result.output_items,
@@ -1576,7 +1582,8 @@ class MaisakaChatLoopService:
         selected_indices: List[int] = []
         for index, message in enumerate(chat_history):
             if not (
-                isinstance(message, ReferenceMessage) and message.reference_type == ReferenceMessageType.CONTEXT_RESTORE
+                isinstance(message, ContextSummaryMessage)
+                or isinstance(message, ReferenceMessage) and message.reference_type == ReferenceMessageType.CONTEXT_RESTORE
             ):
                 continue
             if not build_context_items_from_history_entry(message, enable_visual_message=enable_visual_message):
@@ -1595,15 +1602,8 @@ class MaisakaChatLoopService:
         if request_kind == "expression_selector":
             return [message for message in selected_history if isinstance(message, SessionBackedMessage)]
 
-        if request_kind == "planner":
-            return [message for message in selected_history if not is_mid_term_memory_message(message)]
-
         if request_kind != "planner":
-            return [
-                message
-                for message in selected_history
-                if not is_mid_term_memory_message(message)
-            ]
+            return [message for message in selected_history if not isinstance(message, ContextSummaryMessage)]
 
         return selected_history
 

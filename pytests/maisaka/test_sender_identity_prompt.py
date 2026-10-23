@@ -7,6 +7,7 @@ from src.chat.replyer.maisaka_generator_base import BaseMaisakaReplyGenerator
 from src.common.data_models.message_component_data_model import MessageSequence
 from src.llm_models.payload_content.context_item import get_item_text
 from src.maisaka.context.messages import ComplexSessionMessage, InternalContextMessage, SessionBackedMessage
+from src.maisaka.context import messages as context_messages
 
 
 @pytest.mark.parametrize("user_id", ["test-user-1", "test-user-2"])
@@ -52,3 +53,21 @@ def test_internal_context_does_not_claim_sender_account():
         raw_message=MessageSequence([]).text("内部任务"), visible_text="内部任务", timestamp=datetime.now(),
     )
     assert get_item_text(context.to_context_item()) == "内部任务"
+
+
+def test_history_forwards_image_quality_without_losing_sender_identity(monkeypatch):
+    original = SimpleNamespace(platform="qq", message_info=SimpleNamespace(user_info=SimpleNamespace(user_id="test-user-1")))
+    history = SessionBackedMessage(
+        raw_message=MessageSequence([]).text("你好"), visible_text="你好", timestamp=datetime.now(),
+        original_message=original, message_id="quality-history",
+    )
+    captured = {}
+
+    def build(*args, **kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr(context_messages, "_build_item_from_sequence", build)
+    history.to_context_item(max_image_side=512)
+    assert captured["max_image_side"] == 512
+    assert "user_id=test-user-1" in captured["sender_identity"]

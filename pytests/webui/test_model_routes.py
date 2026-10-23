@@ -4,6 +4,8 @@
 并且不会回退到 OpenAI 兼容接口使用的 Bearer 认证方式。
 """
 
+from ipaddress import ip_address
+
 import importlib
 import base64
 import struct
@@ -13,6 +15,8 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+
+from src.common import network_security
 
 
 def load_model_routes(monkeypatch: pytest.MonkeyPatch):
@@ -174,6 +178,7 @@ async def test_test_provider_connection_uses_query_api_key_for_gemini(
 ) -> None:
     """Gemini 连接测试应通过查询参数传递 API Key。"""
     model_routes = load_model_routes(monkeypatch)
+    monkeypatch.setattr(network_security, "_resolve_ip_addresses", lambda *_args: {ip_address("93.184.216.34")})
     calls: list[dict[str, Any]] = []
     fake_client_class = build_async_client_factory(
         responses=[FakeResponse(200), FakeResponse(200)],
@@ -210,6 +215,7 @@ async def test_test_provider_connection_uses_bearer_auth_for_openai_compatible(
 ) -> None:
     """非 Gemini 提供商连接测试应继续使用 Bearer 认证。"""
     model_routes = load_model_routes(monkeypatch)
+    monkeypatch.setattr(network_security, "_resolve_ip_addresses", lambda *_args: {ip_address("93.184.216.34")})
     calls: list[dict[str, Any]] = []
     fake_client_class = build_async_client_factory(
         responses=[FakeResponse(200), FakeResponse(200)],

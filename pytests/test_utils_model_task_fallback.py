@@ -8,26 +8,19 @@ from src.llm_models.utils_model import LLMOrchestrator
 
 
 @pytest.mark.parametrize(
-    ("mid_models", "fast_models", "expected_task"),
-    [
-        (["mid-model"], ["fast-model"], "mid_memory"),
-        ([], ["fast-model"], "fast_model"),
-        ([], [], "utils"),
-    ],
+    ("task_name", "models", "expected_task"),
+    [("fast_model", ["fast"], "fast_model"), ("fast_model", [], "utils"),
+     ("learner", ["learn"], "learner"), ("learner", [], "utils")],
 )
-def test_mid_memory_resolves_configured_task_chain(monkeypatch, mid_models, fast_models, expected_task) -> None:
+def test_configured_task_chain_retains_current_fallback_contract(monkeypatch, task_name, models, expected_task) -> None:
     tasks = SimpleNamespace(
-        mid_memory=TaskConfig(model_list=mid_models, hard_timeout=180.0),
-        fast_model=TaskConfig(model_list=fast_models, hard_timeout=120.0),
+        fast_model=TaskConfig(model_list=models if task_name == "fast_model" else ["fast"]),
+        learner=TaskConfig(model_list=models if task_name == "learner" else ["learn"]),
         utils=TaskConfig(model_list=["utils-model"], hard_timeout=240.0),
         planner=TaskConfig(model_list=["planner-model"]),
     )
-    monkeypatch.setattr(
-        utils_model.config_manager, "get_model_config", lambda: SimpleNamespace(model_task_config=tasks)
-    )
-
-    orchestrator = LLMOrchestrator(task_name="mid_memory")
-
+    monkeypatch.setattr(utils_model.config_manager, "get_model_config", lambda: SimpleNamespace(model_task_config=tasks))
+    orchestrator = LLMOrchestrator(task_name=task_name)
     assert orchestrator.model_for_task is getattr(tasks, expected_task)
 
 

@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GeneralTab } from '../GeneralTab'
@@ -16,17 +17,18 @@ afterEach(cleanup)
 describe('常规设置语言选择', () => {
   it('按语言代码归一化地区并优先使用已解析语言', () => {
     const { rerender } = render(<GeneralTab />)
-    expect(screen.getByRole('combobox', { name: 'header.switchLanguage' })).toHaveValue('zh')
-    expect(screen.getByRole('option', { name: '中文' })).toHaveProperty('selected', true)
+    expect(screen.getByRole('combobox', { name: 'header.switchLanguage' })).toHaveTextContent('中文')
     i18n.resolvedLanguage = 'ja-JP'
     rerender(<GeneralTab />)
-    expect(screen.getByRole('combobox', { name: 'header.switchLanguage' })).toHaveValue('ja')
+    expect(screen.getByRole('combobox', { name: 'header.switchLanguage' })).toHaveTextContent('日本語')
   })
 
-  it.each([['English', 'en'], ['日本語', 'ja'], ['한국어', 'ko'], ['中文', 'zh']])('支持切换到 %s', (name, code) => {
+  it.each([['English', 'en'], ['日本語', 'ja'], ['한국어', 'ko'], ['中文', 'zh']])('支持切换到 %s', async (name, code) => {
+    const user = userEvent.setup()
+    if (code === 'zh') i18n.language = 'en'
     render(<GeneralTab />)
-    expect(screen.getByRole('option', { name })).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('combobox', { name: 'header.switchLanguage' }), { target: { value: code } })
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'header.switchLanguage' }), { key: 'ArrowDown' })
+    await user.click(await screen.findByRole('option', { name }))
     expect(i18n.changeLanguage).toHaveBeenCalledWith(code)
   })
 })
