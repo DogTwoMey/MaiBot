@@ -430,7 +430,7 @@ def _reset_expression_defaults(data: Dict[str, Any]) -> List[str]:
 
     reasons: List[str] = []
     expression = _as_dict(data.get("expression"))
-    vector_enabled = expression.get("expression_selection_mode", "vector_intent") != "legacy" if expression else True
+    vector_enabled = expression.get("expression_selection_mode", "legacy") != "legacy" if expression else False
     if set_nested_config_value(data, ("expression", "expression_checked_only"), False, force=False):
         reasons.append("expression.expression_checked_only")
     if set_nested_config_value(data, ("expression", "use_vector_expression"), vector_enabled, force=False):

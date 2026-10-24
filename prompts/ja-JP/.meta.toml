@@ -1,7 +1,22 @@
+[text_learning_expression]
+display_name = "文章からの表現学習"
+advanced = true
+description = "貼り付けた文章を根拠に表現候補を抽出し、ユーザーが選択して取り込みます。"
+
+[text_learning_jargon]
+display_name = "文章からの隠語学習"
+advanced = true
+description = "貼り付けた文章から隠語と意味を抽出し、ユーザーが選択して取り込みます。"
+
 [a_memorix_chat_summary]
 display_name = "長期記憶の増分要約"
 advanced = true
 description = "会話から新しい事実、エンティティの関係、画像の根拠を抽出し、長期記憶へ保存します。"
+
+[maisaka_chat_passive]
+display_name = "Planner（受動型 replyer）"
+advanced = true
+description = "実験的な受動型 replyer の有効時に使用。Planner の最終本文を返信の指針とし、操作にはツールを使う。"
 
 [maisaka_chat]
 display_name = "Planner"
@@ -177,3 +192,8 @@ description = "AI 検索の読み取り専用ツールの結果を、ツール�
 display_name = "記事執筆"
 advanced = true
 description = "提供された資料と出力形式に従って記事やコミュニティ投稿を執筆します。"
+
+[maisaka_wait_reminder]
+display_name = "連続待機のリマインダー"
+advanced = true
+description = "連続する待機を踏まえて、返答・待機・終了を明示的に判断するための補助情報です。"

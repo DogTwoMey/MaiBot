@@ -182,3 +182,25 @@ def test_regular_turn_rejects_historical_offline_review_as_reply_target() -> Non
             SimpleNamespace(runtime=runtime),
             offline_review.message_id,
         )
+
+@pytest.mark.parametrize("mismatched", [False, True])
+def test_reply_target_snapshot_retains_identity_without_live_lookup(mismatched):
+    snapshot = SimpleNamespace(message_id="snapshot-message")
+
+    def reject_lookup(_message_id):
+        pytest.fail("A pinned reply target must not be replaced by a live history lookup")
+
+    runtime = SimpleNamespace(
+        get_active_turn_trigger_message=lambda: None,
+        find_source_message_by_id=reject_lookup,
+    )
+    context = SimpleNamespace(runtime=runtime)
+    requested = "other-message" if mismatched else snapshot.message_id
+    if mismatched:
+        with pytest.raises(ValueError, match="ID"):
+            reply_module._resolve_reply_target_message(context, requested, snapshot)
+    else:
+        target_id, target, synthetic = reply_module._resolve_reply_target_message(context, requested, snapshot)
+        assert target_id == snapshot.message_id
+        assert target is snapshot
+        assert synthetic is False

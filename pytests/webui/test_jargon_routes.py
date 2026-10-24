@@ -139,8 +139,14 @@ def test_list_jargons(client: TestClient, sample_jargons):
     assert data["page_size"] == 20
     assert len(data["data"]) == 3
 
-    assert data["data"][0]["content"] == "yyds"
-    assert data["data"][0]["count"] == 10
+    assert [item["id"] for item in data["data"]] == [3, 2, 1]
+    assert data["data"][0]["content"] == "hello"
+    assert data["data"][0]["count"] == 2
+
+    ascending = client.get("/api/webui/jargon/list?sort_by=time_asc").json()
+    assert [item["id"] for item in ascending["data"]] == [1, 2, 3]
+    assert ascending["data"][0]["content"] == "yyds"
+    assert ascending["data"][0]["count"] == 10
 
 
 def test_list_jargons_with_pagination(client: TestClient, sample_jargons):
@@ -623,6 +629,7 @@ def test_get_chat_list_includes_chat_session_without_jargon(client: TestClient, 
             "chat_name": sample_chat_session.group_name,
             "platform": sample_chat_session.platform,
             "account_id": sample_chat_session.account_id,
+            "target_id": sample_chat_session.group_id,
             "is_group": True,
             "jargon_count": 0,
         }

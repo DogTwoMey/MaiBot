@@ -245,6 +245,7 @@ const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = 
   ['personality.multiple_reply_style', 'replace'],
   ['chat.reply_style.chat_prompts', 'replace'],
   ['chat.reply_timing.talk_value_rules', 'replace'],
+  ['chat.reply_timing.private_reply_pause_rules', 'replace'],
   ['experimental.focus_chat_whitelist', 'replace'],
   ['experimental.focus_groups', 'replace'],
   ['expression.expression_groups', 'replace'],

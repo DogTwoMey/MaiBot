@@ -1,7 +1,22 @@
+[text_learning_expression]
+display_name = "长文学习表达"
+advanced = true
+description = "从用户粘贴的文段中提取有原文依据的表达候选，供用户选择导入。"
+
+[text_learning_jargon]
+display_name = "长文学习黑话"
+advanced = true
+description = "从用户粘贴的文段中提取黑话与含义，供用户选择导入。"
+
 [a_memorix_chat_summary]
 display_name = "长期记忆增量摘要"
 advanced = true
 description = "提取聊天中的新增事实、实体关系及图片证据，供长期记忆写入使用。"
+
+[maisaka_chat_passive]
+display_name = "规划器（被动式 replyer）"
+advanced = true
+description = "开启实验性被动式 replyer 时使用；Planner 最终正文作为回复指导，工具调用仍用于操作。"
 
 [maisaka_chat]
 display_name = "规划器"
@@ -172,3 +187,8 @@ description = "用于把 AI 搜索中只读工具的返回结果包装成无工�
 display_name = "文章写作"
 advanced = true
 description = "按给定材料和输出格式撰写完整文章或社区帖子。"
+
+[maisaka_wait_reminder]
+display_name = "连续等待提醒"
+advanced = true
+description = "提醒规划器在连续等待后明确判断回复、继续等待或结束本轮。"

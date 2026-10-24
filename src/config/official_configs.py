@@ -471,6 +471,31 @@ class TalkRulesItem(ConfigBase):
     """该规则下的发言频率；0 更安静，1 按正常频率。"""
 
 
+class PrivateReplyPauseRule(ConfigBase):
+    platform: str = Field(
+        default="",
+        min_length=1,
+        json_schema_extra={"label": {"zh_CN": "平台", "en_US": "Platform", "ja_JP": "プラットフォーム"}},
+    )
+    """私聊所在的平台，需填写具体平台。"""
+
+    item_id: str = Field(
+        default="",
+        min_length=1,
+        json_schema_extra={"label": {"zh_CN": "用户 ID", "en_US": "User ID", "ja_JP": "ユーザー ID"}},
+    )
+    """私聊对象的用户 ID，需填写具体用户。"""
+
+    paused: bool = Field(
+        default=True,
+        json_schema_extra={
+            "label": {"zh_CN": "暂停回复", "en_US": "Pause replies", "ja_JP": "返信を一時停止"},
+            "x-widget": "switch",
+        },
+    )
+    """开启后暂停这个私聊的回复；关闭则允许回复，覆盖全局私聊暂停设置。"""
+
+
 class ChatReplyTimingConfig(ConfigBase):
     """聊天回复时机与频率配置类"""
 
@@ -536,6 +561,7 @@ class ChatReplyTimingConfig(ConfigBase):
         default=1,
         ge=0,
         le=1,
+        deprecated=True,
         json_schema_extra={
             "label": {
                 "zh_CN": "私聊频率",
@@ -547,7 +573,34 @@ class ChatReplyTimingConfig(ConfigBase):
             "step": 0.001,
         },
     )
-    """私聊里麦麦主动说话的频率；越小越安静。"""
+    """旧版私聊频率，仅保留配置兼容，不再生效；请使用 private_reply_paused。"""
+
+    private_reply_paused: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "暂停私聊回复",
+                "en_US": "Pause private replies",
+                "ja_JP": "個別チャットの返信を一時停止",
+            },
+            "x-widget": "switch",
+            "x-row": "talk-values",
+        },
+    )
+    """开启后私聊只接收消息并维护历史，不进入思考；单个私聊可通过暂停规则覆盖此设置。"""
+
+    private_reply_pause_rules: List[PrivateReplyPauseRule] = Field(
+        default_factory=list,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "单个私聊暂停规则",
+                "en_US": "Private reply pause overrides",
+                "ja_JP": "個別チャットの返信一時停止ルール",
+            },
+            "x-widget": "custom",
+        },
+    )
+    """按具体平台和用户 ID 覆盖全局暂停设置，可在聊天流设置中切换或恢复跟随全局。"""
 
     mentioned_bot_reply: bool = Field(
         default=True,
@@ -576,20 +629,6 @@ class ChatReplyTimingConfig(ConfigBase):
         },
     )
     """开启后，被 @ 时会尽量回复。"""
-
-    max_consecutive_wait_count: int = Field(
-        default=3,
-        ge=1,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "连续 wait 上限",
-                "en_US": "Max consecutive wait",
-                "ja_JP": "連続 wait 上限",
-            },
-            "x-widget": "input",
-        },
-    )
-    """Planner 最多连续调用 wait 多少次；达到上限后 wait 工具会拒绝继续进入等待。"""
 
     no_action_backoff_base_seconds: float = Field(
         default=15,
@@ -668,7 +707,7 @@ class ChatReplyTimingConfig(ConfigBase):
             "x-widget": "switch",
         },
     )
-    """开启后，可以按聊天或时间段单独调整发言频率。"""
+    """开启后，可以按群聊或时间段单独调整发言频率；私聊不使用频率规则。"""
 
     talk_value_rules: list[TalkRulesItem] = Field(
         default_factory=lambda: [
@@ -685,7 +724,7 @@ class ChatReplyTimingConfig(ConfigBase):
         },
     )
     """
-    _wrap_动态发言频率规则；可让麦麦在某些群、私聊或时段更活跃或更安静。
+    _wrap_动态发言频率规则；可让麦麦在某些群或时段更活跃或更安静。旧的私聊频率规则不再生效。
     """
 
 
@@ -824,21 +863,6 @@ class ChatConfig(ConfigBase):
         },
     )
     """私聊回复时参考的最近消息数量。"""
-
-    context_compaction_max_chars: int = Field(
-        default=48000,
-        ge=16000,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "上下文文本预算",
-                "en_US": "Context text budget",
-                "ja_JP": "文脈テキスト上限",
-            },
-            "x-widget": "input",
-            "advanced": True,
-        },
-    )
-    """历史文字、工具参数与结果的字符预算；超过预算或近期消息数的两倍时生成滚动状态摘要。"""
 
     context_compaction_summary_max_chars: int = Field(
         default=6000,
@@ -998,6 +1022,19 @@ class ExperimentalConfig(ConfigBase):
     __ui_label__ = "实验性功能"
     __ui_advanced__ = True
     __ui_order__ = 140
+
+    passive_replyer: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "被动式 replyer",
+                "en_US": "Passive replyer",
+                "ja_JP": "受動型 replyer",
+            },
+            "x-widget": "switch",
+        },
+    )
+    """仅作用于普通聊天模式：Planner 不调用工具而输出正文时，将正文作为指导启动一次回复；附件与插件参数通过 set_reply_options 提前设置。关闭时使用原有 reply 工具。切换从下一轮思考生效，Focus 不受影响。"""
 
     attention_drift: AttentionDriftConfig = Field(default_factory=AttentionDriftConfig)
     """注意力漂移实验模式；让麦麦在群聊/私聊中表现出更活跃的联想和轻微话题漂移。"""
@@ -4035,19 +4072,24 @@ class ExpressionConfig(ConfigBase):
     """写入表达方式前先让 AI 检查，减少学到奇怪内容。"""
 
     use_vector_expression: bool = Field(
-        default=True,
+        default=False,
         json_schema_extra={
             "label": {
-                "zh_CN": "使用向量表达",
-                "en_US": "Use vector expressions",
-                "ja_JP": "ベクトル表現を使用",
+                "zh_CN": "表达选择",
+                "en_US": "Expression selection",
+                "ja_JP": "表現の選択",
             },
-            "x-widget": "switch",
-            "x-row": "expression-learning-switches",
+            "x-widget": "discrete-slider",
+            "options": ["false", "true"],
+            "x-option-labels": {"false": "快速", "true": "精细"},
+            "x-option-descriptions": {
+                "false": "默认档位。加权随机抽取表达，直接供回复参考，不额外调用选择模型。",
+                "true": "使用向量召回，再由 LLM 按语境筛选，需要配置嵌入模型。",
+            },
             "advanced": False,
         },
     )
-    """开启后使用表达意图与嵌入召回，需要配置嵌入模型；关闭时使用随手候选。"""
+    """表达选择档位：false 为快速，加权随机抽样后直接注入，不额外调用选择 LLM；true 为精细，使用表达意图与嵌入召回，再由 LLM 筛选，需要配置嵌入模型。复古回复不使用表达选择。"""
 
     expression_vector_index_path: str = Field(
         default="data/expression_selection/expression_vector_index.json",
@@ -4248,9 +4290,9 @@ class EmojiCacheCleanupConfig(ConfigBase):
 class EmojiConfig(ConfigBase):
     """表情包配置类"""
 
-    __ui_label__ = "表情"
-    __ui_advanced__ = True
-    __ui_order__ = 80
+    __ui_parent__ = "expression"
+    __ui_label__ = "表情包"
+    __ui_sub_label__ = "表情包"
 
     use_new_send_logic: bool = Field(
         default=False,
@@ -4983,7 +5025,7 @@ class DebugConfig(ConfigBase):
             "x-widget": "switch",
         },
     )
-    """按旧版（0.12.x）的方式组织 replyer 提示词：全部回复指令集中在一份完整模板里，用块占位符填充，群聊/私聊/简短回复各用一套模板，并整段作为一条 user 消息发送。模型名称或标识包含 mai_replier（兼容 mai-replier），或为 v2p1-contract、v2p1-raw 时自动开启且不可关闭，全部移走后自动关闭；其他模型可手动开启。"""
+    """按旧版（0.12.x）的方式组织 replyer 提示词：全部回复指令集中在一份完整模板里，用块占位符填充，群聊/私聊/简短回复各用一套模板，并整段作为一条 user 消息发送。仅检查实际分配给 replyer 的模型：名称或标识包含 mai_replier（兼容 mai-replier），或为 v2p1-contract、v2p1-raw 时自动开启且不可关闭；解除这些模型的 replyer 分配后清除自动开关，未分配的模型不影响此设置。其他模型可手动开启。"""
 
     enable_console_input: bool = Field(
         default=True,

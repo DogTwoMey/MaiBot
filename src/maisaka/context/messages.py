@@ -551,8 +551,8 @@ class LLMContextMessage(ABC):
 
     @property
     def count_in_context(self) -> bool:
-        """是否占用普通 user/assistant 上下文窗口。"""
-        return True
+        """是否计入真实收发消息条数；内部上下文默认不计数。"""
+        return False
 
     @property
     def source(self) -> str:
@@ -669,6 +669,11 @@ class SessionBackedMessage(ContentContextMessage):
             meta=ContextItemMeta.create(item_id=self.context_item_id, timestamp=self.timestamp),
             sender_identity=self.sender_identity,
         )
+
+    @property
+    def count_in_context(self) -> bool:
+        """用户与麦麦实际收发的每条 IM 消息各计一条。"""
+        return True
 
     @property
     def received_at(self) -> Optional[datetime]:
@@ -851,7 +856,7 @@ class ModelOutputContextMessage(LLMContextMessage):
 
     @property
     def count_in_context(self) -> bool:
-        return self.source_kind != "perception"
+        return False
 
     @property
     def source(self) -> str:

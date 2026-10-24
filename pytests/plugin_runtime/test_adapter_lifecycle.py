@@ -40,6 +40,7 @@ class _FakeSupervisor:
 def _build_runtime_manager(supervisor: _FakeSupervisor) -> PluginRuntimeManager:
     manager = object.__new__(PluginRuntimeManager)
     manager._started = True
+    manager._plugin_usage_tracker = None
     manager._status_listeners = set()
     manager._adapter_transition_lock = asyncio.Lock()
     manager._blocked_plugin_reasons = {}
