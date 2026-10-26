@@ -106,6 +106,7 @@ const expectedPaths = [
   '/reasoning-process',
   '/planner-monitor',
   '/agent',
+  '/computer',
   '/chat-management',
   '/chat',
   '/manage',

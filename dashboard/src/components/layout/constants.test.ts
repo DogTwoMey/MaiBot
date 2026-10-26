@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { menuSections } from './constants'
@@ -37,15 +39,17 @@ describe('menuSections 菜单结构', () => {
     for (const item of allItems) {
       if (item.path === '/chat') {
         expect(item.label).toBe('workspace.chat')
+      } else if (item.path === '/computer') {
+        expect(item.label).toBe('chat.computerDesktop')
       } else {
         expect(item.label).toMatch(/^sidebar\.menu\./)
       }
     }
   })
 
-  it('所有菜单项 icon 均为可渲染的组件（函数）', () => {
+  it('所有菜单项 icon 均为可渲染的组件', () => {
     for (const item of allItems) {
-      expect(typeof item.icon).toBe('function')
+      expect(renderToStaticMarkup(createElement(item.icon))).toContain('<svg')
     }
   })
 
@@ -118,10 +122,11 @@ describe('menuSections 菜单结构', () => {
   it('电脑入口受特性开关控制', () => {
     const flaggedItems = allItems.filter((item) => item.featureFlag !== undefined)
 
-    expect(flaggedItems).toHaveLength(1)
+    expect(flaggedItems).toHaveLength(2)
     expect(flaggedItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ path: '/agent', featureFlag: 'agent' }),
+        expect.objectContaining({ path: '/computer', featureFlag: 'computer' }),
       ])
     )
   })

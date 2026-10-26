@@ -197,3 +197,8 @@ description = "Writes a complete article or community post from supplied materia
 display_name = "Consecutive Wait Reminder"
 advanced = true
 description = "Reminds the planner to deliberately reply, wait, or stop after repeated waits."
+
+[reply_supplement]
+display_name = "Reply supplement"
+advanced = true
+description = "Reuses the planner snapshot to arrange quotes, images, emoji and mentions alongside reply generation."

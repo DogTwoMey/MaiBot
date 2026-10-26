@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast, get_origin
+from typing import Any, Dict, List, Optional, Tuple, get_origin
 
 from fastapi import HTTPException, Request
 
@@ -26,7 +26,7 @@ MAX_PLUGIN_README_CHARS = 500000
 def require_plugin_token(auth_source: Optional[str] | Request) -> str:
     token_manager = get_token_manager()
     maibot_session = get_auth_cookie_value(auth_source) if isinstance(auth_source, Request) else auth_source
-    if not maibot_session or not token_manager.verify_token(maibot_session):
+    if not maibot_session or not token_manager.verify_cookie_token(maibot_session):
         raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
     return maibot_session
 

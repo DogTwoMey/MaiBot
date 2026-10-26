@@ -1,8 +1,8 @@
-"""普通 Planner 正文交接、参数暂存及共用回复服务的回归测试。"""
+"""普通 Planner 正文、并行补充编排及共用回复服务的回归测试。"""
 
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from unittest.mock import AsyncMock, Mock
 
 import asyncio
@@ -83,7 +83,7 @@ def engine(monkeypatch) -> MaisakaReasoningEngine:
         build_deferred_tools_reminder=lambda: "",
         _max_context_size=100,
         _cycle_counter=1,
-        _chat_loop_service=SimpleNamespace(select_llm_context_messages=lambda *a, **kw: ([], 0)),
+        _chat_loop_service=SimpleNamespace(planner_request_snapshot=None, select_llm_context_messages=lambda *a, **kw: ([], 0)),
     )
     result = MaisakaReasoningEngine(runtime)
     runtime._reasoning_engine = result
@@ -120,17 +120,16 @@ async def test_text_executes_once_preserves_guidance_and_ends(engine, monkeypatc
         )
     )
     monkeypatch.setattr(engine_module, "execute_reply", execute)
-    engine._reply_options = {"attach_at": ["original"], "plugin_options": {"test.extension": {"enabled": True}}}
 
     assert await _act(engine, response, state)
 
     execute.assert_awaited_once()
     arguments = execute.call_args.args[1]
     assert arguments["reply_reference"] == response.content == "安慰对方，简短回应。"
-    assert arguments["attach_at"] == ["original"]
-    assert arguments["plugin_options"] == {"test.extension": {"enabled": True}}
+    assert arguments == {"msg_id": target.message_id, "reply_reference": response.content}
+    assert callable(execute.call_args.kwargs["supplement_runner"])
     assert execute.call_args.kwargs["target_message"] is target
-    assert not engine._reply_options
+    assert not hasattr(engine, "_reply_options")
     assert state.cycle_end.reason == ("planner_reply_end" if success else "planner_reply_failed")
     assert not is_idle_cycle_reason(state.cycle_end.reason)
     assert state.tool_monitor_results[0]["tool_call_source"] == "planner_text"
@@ -242,15 +241,12 @@ async def test_reply_target_is_fixed_before_request_and_refreshed_next_round(eng
 
 
 @pytest.mark.asyncio
-async def test_normal_tools_keep_options_but_focus_provider_keeps_reply(engine):
+async def test_passive_tools_use_supplement_and_focus_provider_keeps_reply(engine):
     definitions, _ = await engine._build_action_tool_definitions()
     by_name = {item["name"]: item for item in definitions}
     assert "reply" not in by_name
-    assert "set_reply_options" in by_name
-    properties = by_name["set_reply_options"]["parameters_schema"]["properties"]
-    assert "attach_pic" in properties
-    assert "reply_reference" not in properties
-    assert "msg_id" not in properties
+    assert "set_reply_options" not in by_name
+    assert "并行回复补充器" in by_name["show_emoji_list"]["description"]
     assert "与不调用任何工具时一致" not in by_name["stop"]["description"]
     # Focus 直接使用 Provider，不经过普通模式的定义转换。
     focus_spec = await engine._runtime._tool_registry.get_tool_spec("reply")
@@ -259,28 +255,29 @@ async def test_normal_tools_keep_options_but_focus_provider_keeps_reply(engine):
 
 
 @pytest.mark.asyncio
-async def test_options_replace_validate_and_clear_without_sending(engine, monkeypatch):
-    execute = AsyncMock()
+async def test_supplement_uses_fixed_request_snapshot_and_missing_snapshot_fails(engine, monkeypatch):
+    snapshot = object()
+    engine._runtime._chat_loop_service.planner_request_snapshot = snapshot
+    target = engine._runtime._chat_history[0].original_message
+    observed = []
+    generated = object()
+    supplement = AsyncMock(return_value=generated)
+    monkeypatch.setattr(engine_module, "generate_reply_supplement", supplement)
+
+    async def execute(context, arguments, *, supplement_runner, **kwargs):
+        engine._runtime._chat_loop_service.planner_request_snapshot = object()
+        observed.append(await supplement_runner())
+        return ToolExecutionResult(tool_name="reply", success=True)
+
     monkeypatch.setattr(engine_module, "execute_reply", execute)
-
-    async def configure(arguments: Dict[str, Any]):
-        return await engine._handle_tool_calls(
-            [ToolCall("options", "set_reply_options", arguments)], "准备附件", SimpleNamespace(), CycleRuntimeState()
-        )
-
-    _, _, _, results = await configure({"attach_pic": [{"msg_id": "original", "index": 0}]})
-    assert results[0]["success"]
-    assert "attach_pic" in engine._reply_options
-    _, _, _, results = await configure({"reply_reference": "不得在工具里触发回复"})
-    assert not results[0]["success"]
-    await configure({"reply_style": "简短表达"})
-    assert engine._reply_options == {"reply_style": "简短表达"}
-    await configure({})
-    assert not engine._reply_options
-    await configure({"reply_style": "正常回复"})
-    engine._end_planner_no_tool_cycle([], status_line="stop")
-    assert not engine._reply_options
-    execute.assert_not_awaited()
+    assert await _act(engine, _response(), CycleRuntimeState(reply_target_message=target))
+    assert observed == [generated]
+    supplement.assert_awaited_once_with(snapshot, "安慰对方，简短回应。", "chat", True, allow_quote=True)
+    engine._runtime._chat_loop_service.planner_request_snapshot = None
+    state = CycleRuntimeState(reply_target_message=target)
+    assert await _act(engine, _response(), state)
+    assert state.cycle_end.reason == "planner_reply_failed"
+    assert "缺少本轮 Planner 请求快照" in state.cycle_end.detail
 
 
 @pytest.mark.asyncio
@@ -308,7 +305,7 @@ def test_prompt_and_tail_reminder_follow_experimental_switch(monkeypatch, locale
         prompt = service._build_chat_system_prompt()
         reminder = service._build_planner_final_user_reminder()
     assert ("reply_reference" in prompt) is (not enabled)
-    assert ("set_reply_options" in prompt) is enabled
+    assert "set_reply_options" not in prompt
     assert "stop()" in prompt and "wait()" in prompt
     if enabled:
         assert "stop" in reminder and "wait" in reminder
@@ -341,7 +338,7 @@ async def test_disabled_mode_restores_reply_tool_and_does_not_send_text(engine, 
         [ToolCall("options", "set_reply_options", {})], "", SimpleNamespace(), CycleRuntimeState(),
     )
     assert not results[0]["success"]
-    assert not engine._reply_options
+    assert not hasattr(engine, "_reply_options")
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -473,3 +470,79 @@ async def test_passive_reply_snapshot_keeps_current_internal_trigger(engine, kin
     assert target_id == active.message_id
     assert target is active
     assert synthetic is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("synthetic", [False, True])
+async def test_supplement_request_keeps_current_trigger_quote_policy(engine, monkeypatch, synthetic):
+    target = _message("proactive:plugin.test:1" if synthetic else "original")
+    snapshot = object()
+    engine._runtime._chat_loop_service.planner_request_snapshot = snapshot
+    supplement = AsyncMock(return_value=object())
+    monkeypatch.setattr(engine_module, "generate_reply_supplement", supplement)
+
+    async def execute(context, arguments, *, supplement_runner, **kwargs):
+        await supplement_runner()
+        return ToolExecutionResult(tool_name="reply", success=True)
+
+    monkeypatch.setattr(engine_module, "execute_reply", execute)
+    assert await _act(engine, _response(), CycleRuntimeState(reply_target_message=target))
+    assert supplement.call_args.kwargs["allow_quote"] is (not synthetic)
+
+
+@pytest.mark.asyncio
+async def test_supplement_failure_cancels_body_and_never_sends(engine, monkeypatch):
+    target = engine._runtime._chat_history[0].original_message
+    started, cancelled = asyncio.Event(), asyncio.Event()
+
+    async def generate(**kwargs):
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    async def supplement():
+        await started.wait()
+        raise ValueError("invalid snapshot resource")
+
+    extension = SimpleNamespace(context=SimpleNamespace(), targets=[], reply_id="test", prepare=AsyncMock())
+    monkeypatch.setattr(reply_module, "ReplyExtensionExecution", lambda **kwargs: extension)
+    monkeypatch.setattr(reply_module.replyer_manager, "get_replyer", lambda **kwargs: SimpleNamespace(generate_reply_with_context=generate))
+    send = AsyncMock()
+    monkeypatch.setattr(reply_module.send_service, "_send_to_target_with_message", send)
+    result = await reply_module.execute_reply(
+        BuiltinToolRuntimeContext(engine, engine._runtime),
+        {"msg_id": target.message_id, "reply_reference": "guidance"}, call_id="test",
+        target_message=target, supplement_runner=supplement,
+    )
+    assert not result.success
+    assert "invalid snapshot resource" in result.error_message
+    assert cancelled.is_set()
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_supplement_resources_are_bounded_and_quote_disable_is_enforced(monkeypatch):
+    from pydantic import ValidationError
+    from src.maisaka.reply_supplement import ReplySupplementPlan, SupplementResources, resolve_supplement
+
+    target, foreign, notification = _message("original"), _message("foreign"), _message("notification")
+    foreign.session_id = "another-chat"
+    notification.is_notify = True
+    monkeypatch.setattr(global_config.chat.reply_style, "group_quote_frequency", "never")
+    snapshot = SimpleNamespace(history=tuple(_history(m) for m in (target, foreign, notification)))
+    resources = SupplementResources.capture(snapshot, "chat", True)
+    assert list(resources.messages) == ["original"]
+    assert resources.allow_quote is False
+    with pytest.raises(ValueError, match="关闭引用"):
+        await resolve_supplement(ReplySupplementPlan(msg_id="original", parts=[{"type": "reply"}]), resources, {})
+    for parts in ([], [{"type": "reply"}, {"type": "reply"}], [{"type": "reply", "text": "rewrite"}]):
+        with pytest.raises(ValidationError):
+            ReplySupplementPlan(msg_id=None, parts=parts)
+    supplement = await resolve_supplement(ReplySupplementPlan(msg_id=None, parts=[{"type": "reply"}]), resources, {})
+    body = [PostProcessedReplyMessage(MessageSequence([TextComponent("body")]))]
+    assert supplement.compose(body) == body
+    assert supplement.quote_message is None
+    with pytest.raises(ValueError, match="不存在或编号有歧义"):
+        resources.resolve_id("foreign", resources.messages)

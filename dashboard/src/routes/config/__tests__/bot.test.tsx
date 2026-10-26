@@ -236,7 +236,6 @@ const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = 
   ['agent.acp_env', 'wrapper'],
   ['agent.acp_model', 'wrapper'],
   ['agent.acp_timeout', 'wrapper'],
-  ['agent.computer_tools', 'wrapper'],
 
   ['bot.platform', 'hidden'],
   ['bot.alias_names', 'replace'],

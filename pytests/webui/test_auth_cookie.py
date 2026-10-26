@@ -29,7 +29,7 @@ def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
     app.include_router(webui_extensions.router)
     other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
     with patch.object(support, "get_token_manager") as manager:
-        manager.return_value.verify_token.side_effect = lambda token: token == "test-token"
+        manager.return_value.verify_cookie_token.side_effect = lambda token: token == "test-token"
         for cookie_name, expected in (
             (auth_module.COOKIE_NAME, 200),
             (auth_module.build_auth_cookie_name(other_port), 401),
@@ -198,3 +198,37 @@ def test_cookie_security_follows_configuration(
     cleared = Response()
     auth_module.clear_auth_cookie(cleared)
     assert bool(SimpleCookie(cleared.headers["set-cookie"])[auth_module.COOKIE_NAME]["secure"]) is expected_secure
+
+
+def test_unicode_password_cookie_preserves_plugin_instance_auth(monkeypatch, tmp_path):
+    import json
+    from src.webui.core.security import TokenManager
+    from src.webui.routers.plugin import support, webui_extensions
+
+    password = "测试日文かな-Emoji😀"
+    path = tmp_path / "webui.json"
+    path.write_text(json.dumps({"access_token": password, "token_source": "configured"}), encoding="utf-8")
+    manager = TokenManager(path)
+    assert manager.verify_token(password)
+    encoded = manager.encode_cookie_token(password)
+    assert encoded.isascii() and encoded != password
+    assert manager.verify_cookie_token(encoded)
+    assert not manager.verify_cookie_token(password)
+    monkeypatch.setattr(support, "get_token_manager", lambda: manager)
+
+    async def run_inline(coroutine):
+        return await coroutine
+
+    async def empty_result(*args):
+        return {"success": True, "extensions": []}
+
+    monkeypatch.setattr(webui_extensions, "run_on_main_loop", run_inline)
+    monkeypatch.setattr(webui_extensions, "_list_extensions", empty_result)
+    app = FastAPI()
+    app.include_router(webui_extensions.router)
+    with TestClient(app) as client:
+        client.cookies.set(auth_module.COOKIE_NAME, encoded)
+        assert client.get("/runtime/webui").status_code == 200
+        client.cookies.clear()
+        client.cookies.set("maibot_session", encoded)
+        assert client.get("/runtime/webui").status_code == 401

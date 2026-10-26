@@ -14,8 +14,8 @@ vi.mock('@/lib/computer-api', () => ({
 
 beforeEach(() => {
   vi.mocked(getComputerStatus).mockResolvedValue({
-    enabled: true, desktop_enabled: true, paused: false, takeover: true,
-    sandbox_running: true, agent_state: 'idle', pending_request: null, error: '',
+    enabled: true, paused: false, takeover: true,
+    sandbox_running: true, pending_request: null, error: '',
   })
   vi.mocked(getComputerFrame).mockResolvedValue(new Blob(['frame'], { type: 'image/png' }))
   vi.mocked(inputComputer).mockResolvedValue({ success: true, status: 'completed', operation_id: 'click-1' })
@@ -55,8 +55,8 @@ describe('ComputerDesktop accessible screenshot control', () => {
 
   it('keeps the screenshot read-only until manual takeover', async () => {
     vi.mocked(getComputerStatus).mockResolvedValue({
-      enabled: true, desktop_enabled: true, paused: false, takeover: false,
-      sandbox_running: true, agent_state: 'idle', pending_request: null, error: '',
+      enabled: true, paused: false, takeover: false,
+      sandbox_running: true, pending_request: null, error: '',
     })
     const control = await renderDesktop()
     expect(control).toBeDisabled()

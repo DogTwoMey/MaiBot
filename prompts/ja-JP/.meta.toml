@@ -197,3 +197,8 @@ description = "提供された資料と出力形式に従って記事やコミ�
 display_name = "連続待機のリマインダー"
 advanced = true
 description = "連続する待機を踏まえて、返答・待機・終了を明示的に判断するための補助情報です。"
+
+[reply_supplement]
+display_name = "返信補足の構成"
+advanced = true
+description = "プランナーのスナップショットを再利用し、返信生成と並行して引用・画像・絵文字・メンションを構成します。"
