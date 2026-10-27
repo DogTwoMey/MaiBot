@@ -48,7 +48,8 @@ def test_resolve_bindings_prefer_initialized_global_config(monkeypatch):
     fake_config_module = SimpleNamespace(
         global_config=SimpleNamespace(
             maim_message=SimpleNamespace(ws_server_host="10.0.0.2", ws_server_port=32000),
-            webui=SimpleNamespace(host="10.0.0.3", port=32001),
+            http=SimpleNamespace(host="10.0.0.3", port=32001),
+            webui=SimpleNamespace(host="legacy.invalid", port=39999),
         )
     )
 

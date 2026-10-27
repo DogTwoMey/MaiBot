@@ -106,6 +106,7 @@ describe('chatWsClient', () => {
       data: {
         content: '看看这张图',
         emojis: [],
+        files: [],
         images: [
           {
             name: 'cat.png',
@@ -130,6 +131,7 @@ describe('chatWsClient', () => {
       data: {
         content: '你好',
         emojis: [],
+        files: [],
         images: [],
         user_name: 'Bob',
       },

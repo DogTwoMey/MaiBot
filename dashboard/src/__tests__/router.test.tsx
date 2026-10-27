@@ -102,6 +102,7 @@ const expectedPaths = [
   '/plugin-mirrors',
   '/mcp-settings',
   '/data-transfer',
+  '/files',
   '/logs',
   '/reasoning-process',
   '/planner-monitor',
@@ -194,6 +195,7 @@ describe('router 路由表', () => {
     for (const path of expectedPaths.filter(
       (path) =>
         ![
+          '/files',
           '/mcp-settings',
           '/settings',
           '/extensions',
@@ -205,6 +207,19 @@ describe('router 路由表', () => {
       const route = routesByPath[path]
       expect(route, `routesByPath 缺少 ${path}`).toBeDefined()
       expect(typeof route?.options.component, `${path} 缺少组件`).toBe('function')
+    }
+  })
+
+  it('文件入口跳转数据管理的文件分页', () => {
+    const beforeLoad = getRoutesByPath()['/files']?.options.beforeLoad as () => void
+    expect(() => beforeLoad()).toThrow()
+    try {
+      beforeLoad()
+    } catch (error) {
+      expect(isRedirect(error)).toBe(true)
+      if (isRedirect(error)) {
+        expect(error.options).toMatchObject({ to: '/data-transfer', search: { tab: 'files' }, replace: true })
+      }
     }
   })
 
@@ -357,6 +372,7 @@ describe('router 路由表', () => {
     for (const path of expectedPaths.filter(
       (path) =>
         ![
+          '/files',
           '/mcp-settings',
           '/settings',
           '/extensions',

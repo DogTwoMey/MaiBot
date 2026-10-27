@@ -232,3 +232,18 @@ def test_unicode_password_cookie_preserves_plugin_instance_auth(monkeypatch, tmp
         client.cookies.clear()
         client.cookies.set("maibot_session", encoded)
         assert client.get("/runtime/webui").status_code == 401
+
+
+def test_instance_cookie_name_follows_shared_http_port() -> None:
+    assert auth_module.COOKIE_NAME == auth_module.build_auth_cookie_name(global_config.http.port)
+
+
+def test_request_auth_reads_only_current_instance_cookie(monkeypatch):
+    from types import SimpleNamespace
+
+    manager = SimpleNamespace(verify_cookie_token=lambda token: token == "test-token")
+    monkeypatch.setattr(auth_module, "get_token_manager", lambda: manager)
+    other_port = 8101 if global_config.http.port != 8101 else 8001
+    for name, expected in ((auth_module.COOKIE_NAME, True), (auth_module.build_auth_cookie_name(other_port), False), ("maibot_session", False)):
+        request = Request({"type": "http", "headers": [(b"cookie", f"{name}=test-token".encode())]})
+        assert auth_module.is_token_valid(request) is expected

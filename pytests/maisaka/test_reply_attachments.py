@@ -21,7 +21,7 @@ from src.common.data_models.message_component_data_model import (
 from src.common.data_models.reply_generation_data_models import LLMCompletionResult, ReplyGenerationResult
 from src.common.prompt_i18n import list_prompt_templates, load_prompt
 from src.config.config import global_config
-from src.core.tooling import ToolInvocation
+from src.core.tooling import ToolAvailabilityContext, ToolInvocation
 from src.llm_models.payload_content.context_item import ContextItemMeta, ContextTextPart, UserMessageItem
 from src.maisaka.builtin_tool import build_builtin_tool_handlers, get_all_builtin_tool_specs
 from src.maisaka.builtin_tool import context as context_module
@@ -65,18 +65,20 @@ def reply_context(monkeypatch):
     return BuiltinToolRuntimeContext(SimpleNamespace(), runtime)
 
 
+@pytest.mark.parametrize("is_group", [False, True])
 @pytest.mark.parametrize("enable_at", [False, True])
 @pytest.mark.parametrize("new_emoji", [False, True])
-def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, enable_at, new_emoji):
+def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, enable_at, new_emoji, is_group):
     monkeypatch.setattr(global_config.chat, "enable_reply_at", enable_at)
     monkeypatch.setattr(global_config.emoji, "use_new_send_logic", new_emoji)
-    names = {spec.name for spec in get_all_builtin_tool_specs()}
-    schema = reply_tool.get_tool_spec().parameters_schema
+    availability = ToolAvailabilityContext(is_group_chat=is_group, platform="qq")
+    names = {spec.name for spec in get_all_builtin_tool_specs(availability)}
+    schema = reply_tool.get_tool_spec(availability).parameters_schema
     properties = schema["properties"]
     assert schema["required"] == ["msg_id", "reply_reference"]
     assert properties["reply_reference"]["minLength"] == 1
     assert "attach_pic" in properties
-    assert ("attach_at" in properties) == enable_at
+    assert ("attach_at" in properties) == (enable_at and is_group)
     assert ("attach_emoji" in properties) == new_emoji
     assert ("show_emoji_list" in names) == new_emoji
     assert ("send_emoji" in names) != new_emoji

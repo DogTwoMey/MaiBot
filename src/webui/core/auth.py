@@ -23,7 +23,7 @@ def build_auth_cookie_name(port: int) -> str:
     return f"{COOKIE_NAME_PREFIX}_{port}"
 
 
-COOKIE_NAME = build_auth_cookie_name(global_config.webui.port)
+COOKIE_NAME = build_auth_cookie_name(global_config.http.port)
 
 
 def auth_cookie() -> Any:
@@ -77,8 +77,10 @@ def get_current_token(
     return maibot_session
 
 
-def is_token_valid(maibot_session: Optional[str]) -> bool:
+def is_token_valid(maibot_session: Optional[str] | Request) -> bool:
     """判断认证 token 是否存在且有效。"""
+    if isinstance(maibot_session, Request):
+        maibot_session = get_auth_cookie_value(maibot_session)
     if not maibot_session:
         return False
 

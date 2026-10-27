@@ -72,7 +72,7 @@ class DummyDBSession:
         return []
 
 
-def get_db_session():
+def get_db_session(*, auto_commit=True):
     return DummyDBSession()
 
 
@@ -273,6 +273,9 @@ async def test_reply_component_success(monkeypatch):
     module_msg = load_message_via_file(monkeypatch)
 
     class DummyDBSessionWithReply(DummyDBSession):
+        def all(self):
+            return [self.first()]
+
         def exec(self, s):
             return self
 
@@ -285,7 +288,11 @@ async def test_reply_component_success(monkeypatch):
 
             return DummyRecord()
 
-    module_msg.get_db_session = lambda: DummyDBSessionWithReply()
+    def get_reply_session(*, auto_commit):
+        assert auto_commit is False
+        return DummyDBSessionWithReply()
+
+    module_msg.get_db_session = get_reply_session
     msg = SessionMessage("msg123", datetime.now(), platform="test_platform")
     msg.session_id = "session123"
     msg.platform = "test_platform"
@@ -303,7 +310,11 @@ async def test_reply_component_with_db_fail(monkeypatch):
         def exec(self, s):
             raise Exception("数据库查询失败")
 
-    module_msg.get_db_session = lambda: DummyDBSessionWithError()
+    def get_reply_session(*, auto_commit):
+        assert auto_commit is False
+        return DummyDBSessionWithError()
+
+    module_msg.get_db_session = get_reply_session
     msg = SessionMessage("msg123", datetime.now(), platform="test_platform")
     msg.session_id = "session123"
     msg.platform = "test_platform"
