@@ -578,7 +578,7 @@ describe('ModelConfigPage 特征化', () => {
     }]
     const timedConfig = {
       ...baseConfig(),
-      models: [{ ...baseConfig().models[0], price_in: 2, price_out: 4, cache: true, price_periods: periods }],
+      models: [{ ...baseConfig().models[0], price_in: 2, price_out: 4, price_periods: periods }],
     }
     vi.mocked(configApi.getModelConfigCached).mockResolvedValue(timedConfig as never)
     vi.mocked(configApi.getModelConfig).mockResolvedValue(timedConfig as never)
@@ -605,7 +605,6 @@ describe('ModelConfigPage 特征化', () => {
       price_out: 4,
       price_periods: [{ start_time: '23:00', end_time: '07:00', price_in: 0, price_out: 0, cache_price_in: 0 }],
     })
-    expect(saved.models[0]).not.toHaveProperty('cache')
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '编辑模型' })).not.toBeInTheDocument())
     await user.click(within(getModelTable()).getByRole('button', { name: '编辑模型 gpt-4' }))
     const reopened = await screen.findByRole('dialog', { name: '编辑模型' })
@@ -669,7 +668,7 @@ describe('ModelConfigPage 特征化', () => {
     const periods = [{ start_time: '23:00', end_time: '07:00', price_in: 1, price_out: 2, cache_price_in: 0.3 }]
     const timedConfig = {
       ...baseConfig(),
-      models: [{ ...baseConfig().models[0], cache: true, price_periods: periods }],
+      models: [{ ...baseConfig().models[0], price_periods: periods }],
     }
     vi.mocked(configApi.getModelConfigCached).mockResolvedValue(timedConfig as never)
     vi.mocked(configApi.getModelConfig).mockResolvedValue(timedConfig as never)
@@ -1454,7 +1453,6 @@ describe('ModelConfigPage 特征化', () => {
           model_type: 'llm',
           api_provider: 'openai',
           visual: true,
-          cache: true,
           cache_price_in: 0.4,
           force_stream_mode: false,
           temperature: 1.2,

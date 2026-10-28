@@ -249,6 +249,8 @@ const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = 
   ['experimental.focus_groups', 'replace'],
   ['expression.expression_groups', 'replace'],
   ['expression.learning_list', 'replace'],
+  ['expression.learning_blacklist', 'replace'],
+  ['jargon.learning_blacklist', 'replace'],
   ['jargon.jargon_groups', 'replace'],
   ['jargon.learning_list', 'replace'],
   ['a_memorix.global_memory_sharing_enabled', 'hidden'],

@@ -84,6 +84,7 @@ vi.mock('@/lib/http', () => ({ backendApi: { get: httpMocks.get } }))
 
 const breakdown: DetailedStatisticsBreakdown = {
   name: 'model-a',
+  is_embedding: false,
   request_count: 2,
   input_tokens: 20,
   output_tokens: 10,
@@ -101,6 +102,7 @@ const breakdown: DetailedStatisticsBreakdown = {
 
 const abnormalBreakdown: DetailedStatisticsBreakdown = {
   name: 'broken-model',
+  is_embedding: false,
   request_count: 0,
   input_tokens: 0,
   output_tokens: 0,
@@ -473,7 +475,7 @@ describe('StatisticsPage', () => {
     expect(screen.getByText('1万')).toBeInTheDocument()
     expect(screen.getAllByText('N/A').length).toBeGreaterThan(0)
     expect(screen.getAllByText('broken-model')).toHaveLength(2)
-    expect(screen.getAllByText('0.0s').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('0.0±0.0s').length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('tab', { name: 'statisticsPage.breakdowns.chats' }))
     expect(screen.getByText('私聊用户')).toBeInTheDocument()

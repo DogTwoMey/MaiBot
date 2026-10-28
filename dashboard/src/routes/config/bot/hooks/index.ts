@@ -25,4 +25,5 @@ export {
 } from './complexFieldHooks'
 export { ChatTalkValueRulesVisualHook } from './TalkValueRulesVisualHook'
 export { AMemorixRetrievalChatsHook } from './AMemorixRetrievalChatsHook'
+export { LearningBlacklistHook } from './LearningBlacklistHook'
 export { AMemorixRetrievalFilterGroupHook } from './AMemorixRetrievalFilterGroupHook'

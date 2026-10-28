@@ -59,8 +59,8 @@ import type {
   WsMessage,
 } from './types'
 import {
+  INTERNAL_CHAT_USER_ID,
   getChatTabDisplayName,
-  getOrCreateUserId,
   getStoredUserAvatarVersion,
   getStoredUserName,
   getSavedVirtualTabs,
@@ -241,7 +241,7 @@ function matchesMonitorTarget(
 
   const eventPlatform = typeof data.platform === 'string' ? data.platform : ''
   const tabPlatform =
-    tab.type === 'virtual' ? tab.virtualConfig?.platform || '' : tab.sessionInfo.platform || 'webui'
+    tab.type === 'virtual' ? tab.virtualConfig?.platform || '' : tab.sessionInfo.platform || 'internal'
   return !eventPlatform || !tabPlatform || eventPlatform === tabPlatform
 }
 
@@ -417,8 +417,8 @@ export function ChatPage() {
   // 页内聊天流设置弹窗：非空时打开
   const [settingsChat, setSettingsChat] = useState<ChatStreamSettingsTarget | null>(null)
 
-  // 持久化用户 ID
-  const [userId] = useState(getOrCreateUserId)
+  // 网页聊天室统一以主人身份进入 Bot 内部统一聊天
+  const userId = INTERNAL_CHAT_USER_ID
 
   const messageIdCounterRef = useRef(0)
   const monitorStatusesRef = useRef<Map<string, StageStatusEvent>>(new Map())
@@ -458,14 +458,13 @@ export function ChatPage() {
   }, [])
 
   const handleSessionMessage = useCallback(
-    (
-      tabId: string,
-      tabType: 'webui' | 'virtual',
-      config: VirtualIdentityConfig | undefined,
-      data: WsMessage
-    ) => {
+    (tabId: string, tabType: 'webui' | 'virtual', data: WsMessage) => {
       switch (data.type) {
         case 'session_info':
+          if (tabType === 'webui' && data.user_name) {
+            setUserName(data.user_name)
+            saveUserName(data.user_name)
+          }
           setTabs((prev) =>
             prev.map((tab) => {
               if (tab.id !== tabId) {
@@ -504,6 +503,20 @@ export function ChatPage() {
           )
           break
 
+        case 'nickname_updated':
+          if (tabType === 'webui' && data.user_name) {
+            setUserName(data.user_name)
+            saveUserName(data.user_name)
+            setTabs((prev) =>
+              prev.map((tab) =>
+                tab.id === tabId
+                  ? { ...tab, sessionInfo: { ...tab.sessionInfo, user_name: data.user_name } }
+                  : tab
+              )
+            )
+          }
+          break
+
         case 'system':
           addMessageToTab(tabId, {
             id: generateMessageId('sys'),
@@ -515,12 +528,9 @@ export function ChatPage() {
 
         case 'user_message': {
           updateTab(tabId, { runtimeStatus: null })
-          const senderUserId = data.sender?.user_id
-          const currentUserId = tabType === 'virtual' && config ? config.userId : userId
-
-          const normalizeSenderId = senderUserId ? senderUserId.replace(/^webui_user_/, '') : ''
-          const normalizeCurrentId = currentUserId ? currentUserId.replace(/^webui_user_/, '') : ''
-          if (normalizeSenderId && normalizeCurrentId && normalizeSenderId === normalizeCurrentId) {
+          // 同一身份可能有多个网页和桌宠等插件界面同时在线，只跳过本标签页自己发出的回显
+          const ownSessionId = tabsRef.current.find((tab) => tab.id === tabId)?.sessionInfo.session_id
+          if (data.origin && data.origin === ownSessionId) {
             break
           }
 
@@ -680,17 +690,17 @@ export function ChatPage() {
           break
       }
     },
-    [addMessageToTab, t, toast, updateTab, userId]
+    [addMessageToTab, t, toast, updateTab]
   )
 
   const ensureSessionListener = useCallback(
-    (tabId: string, tabType: 'webui' | 'virtual', config?: VirtualIdentityConfig) => {
+    (tabId: string, tabType: 'webui' | 'virtual') => {
       if (sessionUnsubscribeMapRef.current.has(tabId)) {
         return
       }
 
       const unsubscribe = chatWsClient.onSessionMessage(tabId, (message) => {
-        handleSessionMessage(tabId, tabType, config, message as unknown as WsMessage)
+        handleSessionMessage(tabId, tabType, message as unknown as WsMessage)
       })
       sessionUnsubscribeMapRef.current.set(tabId, unsubscribe)
     },
@@ -699,7 +709,7 @@ export function ChatPage() {
 
   const openSessionForTab = useCallback(
     async (tabId: string, tabType: 'webui' | 'virtual', config?: VirtualIdentityConfig) => {
-      ensureSessionListener(tabId, tabType, config)
+      ensureSessionListener(tabId, tabType)
       setIsLoadingHistory(true)
 
       try {
@@ -1096,11 +1106,11 @@ export function ChatPage() {
       setUserName(trimmed)
       saveUserName(trimmed)
 
-      if (activeTab?.isConnected) {
-        void chatWsClient.updateNickname(activeTabId, trimmed)
+      if (tabsRef.current.find((tab) => tab.id === 'webui-default')?.isConnected) {
+        void chatWsClient.updateNickname('webui-default', trimmed)
       }
     },
-    [activeTab?.isConnected, activeTabId, t]
+    [t]
   )
 
   const handleUpdateUserAvatar = useCallback(

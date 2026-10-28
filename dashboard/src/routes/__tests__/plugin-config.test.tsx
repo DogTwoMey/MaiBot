@@ -669,7 +669,7 @@ describe('PluginConfigPage 空列表', () => {
     window.history.replaceState(null, '', '/adapter-management')
     renderPage()
     expect(await screen.findByText('暂无已安装的适配器')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '前往插件市场安装适配器' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加连接' })).toBeEnabled()
     expect(screen.queryByText('Emoji Plugin')).not.toBeInTheDocument()
   })
 })

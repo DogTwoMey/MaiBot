@@ -197,3 +197,8 @@ description = "提醒规划器在连续等待后明确判断回复、继续等�
 display_name = "回复补充编排"
 advanced = true
 description = "复用规划器快照，并行生成正文之外的引用、图片、表情与提及编排。"
+
+[maisaka_expression_selector]
+display_name = "回复表达选择"
+advanced = true
+description = "根据真实聊天上下文选择合适的候选表达，输出表达编号。"

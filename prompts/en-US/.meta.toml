@@ -202,3 +202,8 @@ description = "Reminds the planner to deliberately reply, wait, or stop after re
 display_name = "Reply supplement"
 advanced = true
 description = "Reuses the planner snapshot to arrange quotes, images, emoji and mentions alongside reply generation."
+
+[maisaka_expression_selector]
+display_name = "Reply expression selection"
+advanced = true
+description = "Selects suitable candidate expressions from the actual chat context and returns their identifiers."

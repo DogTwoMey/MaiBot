@@ -202,3 +202,8 @@ description = "連続する待機を踏まえて、返答・待機・終了を�
 display_name = "返信補足の構成"
 advanced = true
 description = "プランナーのスナップショットを再利用し、返信生成と並行して引用・画像・絵文字・メンションを構成します。"
+
+[maisaka_expression_selector]
+display_name = "返信表現の選択"
+advanced = true
+description = "実際のチャット文脈に合う表現候補を選び、その識別子を返します。"

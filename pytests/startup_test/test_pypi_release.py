@@ -12,7 +12,9 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[2] / ".github/scripts/maibot_release.py"
 SPEC = spec_from_file_location("maibot_release_checks", SCRIPT)
 release = module_from_spec(SPEC)
-SPEC.loader.exec_module(release)
+with pytest.MonkeyPatch.context() as patch:
+    patch.syspath_prepend(str(SCRIPT.parent))
+    SPEC.loader.exec_module(release)
 
 
 def test_partial_upload_accepts_identical_files() -> None:
