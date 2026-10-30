@@ -122,10 +122,10 @@ describe('menuSections 菜单结构', () => {
   it('电脑入口受特性开关控制', () => {
     const flaggedItems = allItems.filter((item) => item.featureFlag !== undefined)
 
-    expect(flaggedItems).toHaveLength(2)
+    expect(allItems.map((item) => item.path)).not.toContain('/agent')
+    expect(flaggedItems).toHaveLength(1)
     expect(flaggedItems).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ path: '/agent', featureFlag: 'agent' }),
         expect.objectContaining({ path: '/computer', featureFlag: 'computer' }),
       ])
     )

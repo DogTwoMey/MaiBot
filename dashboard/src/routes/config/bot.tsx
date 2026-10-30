@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { parse as parseToml } from 'smol-toml'
 
+import { DesktopPetSkinField } from '@/components/DesktopPetSkinField'
 import { AgentACPField, AgentConnectionSettings, AgentCustomArgs, AgentDesktopField } from '@/components/agent/AgentConnectionSettings'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -91,6 +92,7 @@ import {
 } from './bot/hooks'
 import { CommandPermissions } from './bot/CommandPermissions'
 import { GlobalLearningSettings } from './bot/GlobalLearningSettings'
+import { PersonalityProfiles } from './bot/PersonalityProfiles'
 import { MemorySwitchGuard, MemorySwitchProvider } from './bot/MemorySwitchGuard'
 
 type ConfigSectionData = Record<string, unknown>
@@ -344,6 +346,7 @@ function BotConfigPageContent() {
 
   useEffect(() => {
     const hookEntries = [
+      ['desktop_pet.skin_id', DesktopPetSkinField],
       ['agent.connection', AgentConnectionSettings, 'wrapper'],
       ['agent.desktop_manifest', AgentDesktopField, 'wrapper'],
       ['agent.acp_args', AgentCustomArgs, 'wrapper'],
@@ -575,6 +578,28 @@ function BotConfigPageContent() {
   }
   // 保留给后续恢复重启入口或快捷操作复用；当前页面不渲染重启按钮。
   void handleSaveAndRestart
+
+  const savePersonality = async (value: ConfigSectionData) => {
+    const { group_chat_prompt, private_chat_prompts, ...personality } = value
+    const chat = {
+      ...sectionValues.chat,
+      reply_style: {
+        ...(sectionValues.chat?.reply_style as ConfigSectionData),
+        group_chat_prompt,
+        private_chat_prompts,
+      },
+    }
+    const configToSave = { ...buildFullConfig(), personality, chat }
+    setSectionValues((current) => ({ ...current, personality, chat }))
+    // 标记两部分的待保存修订，再通过现有写入屏障一次保存，避免分区自动保存竞争。
+    triggerAutoSave('personality', personality)
+    triggerAutoSave('chat', chat)
+    try {
+      await runWithAutoSaveBarrier(() => updateBotConfig(configToSave))
+    } catch (error) {
+      toast({ title: '保存人设失败', description: (error as Error).message, variant: 'destructive' })
+    }
+  }
 
   // 根据 schema 构建 tab 分组
   const tabGroups = useMemo(() => {
@@ -889,6 +914,7 @@ function BotConfigPageContent() {
             tabGroups={tabGroups}
             sectionValues={sectionValues}
             setSectionValue={setSectionValue}
+            onPersonalityChange={savePersonality}
             setHasUnsavedChanges={setHasUnsavedChanges}
             searchFieldPath={searchFieldPath}
           />
@@ -943,6 +969,7 @@ function updateNestedValue(
 }
 
 interface DynamicConfigTabsProps {
+  onPersonalityChange: (value: ConfigSectionData) => Promise<void>
   activeTab: string
   setActiveTab: (tab: string) => void
   advancedVisible: boolean
@@ -985,6 +1012,7 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
     sectionValues,
     setHasUnsavedChanges,
     setSectionValue,
+    onPersonalityChange,
     tabGroups,
   } = props
   const initialActiveTab = tabGroups[0]?.id ?? ''
@@ -1164,9 +1192,17 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
       schema: { ...schema, fields: [{ ...field, label, advanced: false }], nested: {} },
     }]
   })
-  const sectionLeadingContent = identitySchema ? {
+  const sectionLeadingContent = {
     personality: (
       <div className="space-y-3">
+        <PersonalityProfiles
+          values={{
+            ...sectionValues.personality,
+            group_chat_prompt: (sectionValues.chat?.reply_style as ConfigSectionData)?.group_chat_prompt,
+            private_chat_prompts: (sectionValues.chat?.reply_style as ConfigSectionData)?.private_chat_prompts,
+          }}
+          onChange={(value) => { void onPersonalityChange(value) }}
+        />
         {identitySchema && (
           <DynamicConfigForm
             schema={identitySchema}
@@ -1179,7 +1215,7 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
         )}
       </div>
     ),
-  } : undefined
+  }
   const sectionTrailingContent = {
     personality: (
       <GlobalLearningSettings
@@ -1238,7 +1274,8 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
       return {
         ...schema,
         uiLabel: '身份与人格',
-        fields: schema.fields.filter((field) => !alternateStyleFieldNames.includes(field.name)),
+        fields: schema.fields.filter((field) => ![...alternateStyleFieldNames, 'profiles', 'selected_profile'].includes(field.name)),
+        nested: Object.fromEntries(Object.entries(schema.nested ?? {}).filter(([name]) => name !== 'profiles')),
       }
     }
     if (sectionName === 'chat' && replyStyleSchema) {

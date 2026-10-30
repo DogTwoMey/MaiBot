@@ -60,7 +60,8 @@ SUPPLIED_PLACEHOLDERS = GROUP_PLACEHOLDERS | PRIVATE_PLACEHOLDERS
 
 @pytest.fixture(autouse=True)
 def reset_prompt_cache(monkeypatch: pytest.MonkeyPatch) -> Any:
-    monkeypatch.setattr(global_config.experimental.attention_drift, "enabled", False)
+    monkeypatch.setattr(global_config.experimental.group_attention_drift, "enabled", False)
+    monkeypatch.setattr(global_config.experimental.private_attention_drift, "enabled", False)
     set_locale("zh-CN")
     clear_prompt_cache()
     yield
@@ -348,7 +349,7 @@ def test_retro_replyer_system_stays_stable_across_attention_drift_config(
     isolate_retro_blocks(generator, monkeypatch)
 
     for enabled in (False, True, False):
-        monkeypatch.setattr(global_config.experimental.attention_drift, "enabled", enabled)
+        monkeypatch.setattr(global_config.experimental.group_attention_drift, "enabled", enabled)
         items = generator._build_retro_request_messages(
             chat_history=[], reply_message=None, reply_reason="测试回复原因"
         )

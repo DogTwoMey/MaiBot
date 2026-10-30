@@ -14,7 +14,7 @@ from src.webui.dependencies import require_auth
 
 
 def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
-    from src.webui.routers.plugin import support, webui_extensions
+    from src.webui.routers.plugin import config_routes, support, webui_extensions
 
     async def run_inline(coroutine):
         return await coroutine
@@ -25,8 +25,10 @@ def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
     monkeypatch.setattr(webui_extensions, "run_on_main_loop", run_inline)
     monkeypatch.setattr(webui_extensions, "_list_extensions", empty_result)
     monkeypatch.setattr(webui_extensions, "_invoke", empty_result)
+    monkeypatch.setattr(config_routes, "_request_config_widgets", empty_result)
     app = FastAPI()
     app.include_router(webui_extensions.router)
+    app.include_router(config_routes.router)
     other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
     with patch.object(support, "get_token_manager") as manager:
         manager.return_value.verify_cookie_token.side_effect = lambda token: token == "test-token"
@@ -39,6 +41,8 @@ def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
             with TestClient(app) as client:
                 if cookie_name:
                     client.cookies.set(cookie_name, "test-token")
+                assert client.get("/config/test/widgets").status_code == expected
+                assert client.post("/config/test/widgets/refresh").status_code == expected
                 assert client.get("/runtime/webui").status_code == expected
                 assert client.post("/runtime/webui/test/page/queries/summary", json={}).status_code == expected
 

@@ -40,6 +40,8 @@
     touch-action: none;
   }
   .dragging #pet { cursor: grabbing; }
+  /* 叶子摆动和跳跃会超出 SVG 视口，允许绘制到外层预留的动画区域。 */
+  #builtin-pet { overflow: visible; }
 
   #float { animation: bob 3.2s ease-in-out infinite; }
   .dragging #float { animation-play-state: paused; }
@@ -117,7 +119,7 @@
   /* ---------- 菜单按钮 ---------- */
   .orb {
     position: absolute;
-    bottom: 112px;
+    bottom: var(--pet-top, 112px);
     width: 46px;
     height: 46px;
     display: none;
@@ -146,7 +148,7 @@
     position: absolute;
     left: 10px;
     right: 10px;
-    bottom: 116px;
+    bottom: var(--pet-top, 116px);
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -188,7 +190,7 @@
   .scroll::-webkit-scrollbar { width: 5px; }
   .scroll::-webkit-scrollbar-thumb { background: #dcc4a3; border-radius: 3px; }
 
-  input {
+  input, textarea {
     width: 100%;
     padding: 6px 11px;
     border: 2px solid var(--ink);
@@ -200,8 +202,15 @@
     caret-color: var(--orange);
     user-select: text;
   }
-  input:focus { box-shadow: 0 0 0 3px rgba(236, 147, 65, .35); }
+  input:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(236, 147, 65, .35); }
 
+  #chat-form { flex-shrink: 0; }
+  #chat-input { display: block; resize: none; min-width: 0; }
+  #attachments { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; }
+  #attachments img { width: 40px; height: 40px; object-fit: cover; }
+  #attachments button { padding: 2px; flex-shrink: 0; }
+  #chat-error { color: #a32b22; font-size: 11px; }
+  #chat-error:empty, #attachments:empty { display: none; }
   /* 对话 */
   #log { display: flex; flex-direction: column; gap: 6px; }
   .line { max-width: 86%; word-break: break-word; white-space: pre-wrap; user-select: text; }
@@ -257,7 +266,7 @@
     position: absolute;
     left: 10px;
     right: 10px;
-    bottom: 116px;
+    bottom: var(--pet-top, 116px);
     display: flex;
     justify-content: center;
     pointer-events: none;
@@ -286,18 +295,19 @@
 <body>
 <div id="stage" data-mode="idle">
 
-  <svg id="pet" data-hit="34" viewBox="0 0 210 150" aria-hidden="true">
+  <div id="pet" data-hit="34"><canvas id="skin-canvas" style="display:none"></canvas><svg id="builtin-pet" width="150" height="107" viewBox="0 0 210 150" aria-hidden="true">
     <defs>
       <path id="body-shape" d="M39 96C39 68 72 48 128 44C174 41 201 64 201 93C201 124 172 141 127 141C74 141 39 124 39 96Z"/>
       <clipPath id="body-clip"><use href="#body-shape"/></clipPath>
-      <path id="lobe" d="M0 0C-6 -6 -17 -13 -17 -22C-17 -29 -11 -33 -6 -31C-3 -30 -1 -28 0 -25C1 -28 3 -30 6 -31C11 -33 17 -29 17 -22C17 -13 6 -6 0 0Z"/>
+      <path id="tail-leaf" d="M-4 0C-13 -4 -18 -18 -14 -29C-10 -43 10 -43 14 -29C18 -18 13 -4 4 0Q0 2 -4 0Z"/>
     </defs>
     <g id="float">
       <g id="squash">
-        <g id="tail" fill="var(--leaf)">
-          <use href="#lobe" transform="translate(42 92) scale(1.02 1.22)"/>
-          <use href="#lobe" transform="translate(45 94) rotate(-90) scale(1.02 1.2)"/>
-          <use href="#lobe" transform="translate(42 96) rotate(180) scale(1.02 1.18)"/>
+        <g id="tail" fill="var(--leaf)" stroke="var(--ink)" stroke-width="1.9" stroke-linejoin="round">
+          <use href="#tail-leaf" transform="translate(44 96)"/>
+          <use href="#tail-leaf" transform="translate(44 96) rotate(90)"/>
+          <use href="#tail-leaf" transform="translate(44 96) rotate(180)"/>
+          <use href="#tail-leaf" transform="translate(44 96) rotate(270)"/>
         </g>
         <g id="sprout" stroke="var(--ink)" stroke-width="1.7" stroke-linejoin="round" fill="var(--leaf)">
           <path d="M143.6 47C144.2 38 143.8 29 143.4 21H148.4C148.6 29 149.2 38 149 47Z"/>
@@ -324,15 +334,17 @@
             <path d="M128.5 88Q135 79.5 141.5 88"/>
             <path d="M171 88Q177.5 79.5 184 88"/>
           </g>
-          <ellipse id="mouth" cx="157.3" cy="112" rx="4.2" ry="3" fill="#b8473f"/>
+          <ellipse id="mouth" cx="157.3" cy="108" rx="4.2" ry="3" fill="#b8473f"/>
           <g fill="var(--ink)" stroke="var(--ink)" stroke-width="1.4" stroke-linejoin="round">
-            <path d="M148.6 106H166L162.1 111H152.5Z"/>
-            <path id="jaw" d="M152.5 111.4H162.1L157.3 116.4Z"/>
+            <path d="M148.6 102H166L162.1 107H152.5Z"/>
+            <path id="jaw" d="M152.5 107.4H162.1L157.3 112.4Z"/>
           </g>
         </g>
       </g>
     </g>
   </svg>
+
+  </div>
 
   <button id="orb-chat" class="orb" data-hit="23" aria-label="chat">
     <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round">
@@ -351,7 +363,8 @@
 
   <div id="chat" class="bubble" data-hit="18">
     <div id="log" class="scroll"></div>
-    <form id="chat-form"><input id="chat-input" maxlength="500" autocomplete="off" spellcheck="false"></form>
+    <div id="attachments"></div><div id="chat-error" role="status"></div>
+    <form id="chat-form"><textarea id="chat-input" rows="1" maxlength="10000" autocomplete="off" spellcheck="false" placeholder="输入文字或粘贴图片"></textarea></form>
   </div>
 
   <div id="todo" class="bubble" data-hit="18">
@@ -366,6 +379,7 @@
   <button class="tick"><svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 6.2L5 8.5L9.4 3.6"/></svg></button>
 </template>
 
+<script src="skin.js"></script>
 <script>
 (() => {
   const stage = document.getElementById("stage");
@@ -408,9 +422,15 @@
       const rects = [];
       for (const el of document.querySelectorAll("[data-hit]")) {
         if (getComputedStyle(el).display === "none") continue;
-        const [x, y, w, h] = layoutBox(el);
+        let [x, y, w, h] = layoutBox(el);
+        if (el === pet && pet.dataset.skinHitbox) {
+          const box = JSON.parse(pet.dataset.skinHitbox);
+          x += box[0]; y += box[1]; w = box[2]; h = box[3];
+        }
         if (!w || !h) continue;
-        rects.push([x - pad, y - pad, w + pad * 2, h + pad * 2, Number(el.dataset.hit) + pad]);
+        // 桌宠跳跃时顶部超出布局盒，原生窗口区域也要保留这段绘制空间。
+        const topPad = el === pet ? 24 : pad;
+        rects.push([x - pad, y - topPad, w + pad * 2, h + topPad + pad, Number(el.dataset.hit) + pad]);
       }
       api.region(rects, devicePixelRatio);
     });
@@ -433,7 +453,10 @@
   }
 
   // ---------- 表情 ----------
+  window.addEventListener('pet-skin-changed', updateRegion);
   function flash(name, ms) {
+    const event = {squish: 'click', happy: 'happy', shake: 'error'}[name];
+    if (event) window.petSkin.event(event);
     stage.classList.remove(name);
     void stage.offsetWidth;
     stage.classList.add(name);
@@ -559,16 +582,85 @@
     stage.classList.remove("thinking");
     log.querySelector(".dots")?.remove();
   }
-  document.getElementById("chat-form").addEventListener("submit", (event) => {
+  const attachments = document.getElementById("attachments");
+  const chatError = document.getElementById("chat-error");
+  let draftImages = [];
+  let pendingSend = null;
+  let readingImages = false;
+  function renderAttachments() {
+    attachments.replaceChildren();
+    draftImages.forEach((item, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = "点击移除图片";
+      button.disabled = !!pendingSend;
+      const img = document.createElement("img");
+      img.src = item.src;
+      button.append(img);
+      button.onclick = () => { draftImages.splice(index, 1); renderAttachments(); };
+      attachments.append(button);
+    });
+    updateRegion();
+  }
+  chatInput.addEventListener("paste", async (event) => {
+    const files = [...event.clipboardData.items].filter(item => item.type.startsWith("image/"))
+      .map(item => item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    if (pendingSend || readingImages) return;
+    readingImages = true;
+    chatError.textContent = "";
+    try {
+      if (draftImages.length + files.length > 4) throw new Error("最多粘贴 4 张图片");
+      for (const file of files) {
+        if (file.size > 8 * 1024 * 1024) throw new Error("每张图片不能超过 8 MiB");
+        const src = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("读取剪贴板图片失败"));
+          reader.readAsDataURL(file);
+        });
+        draftImages.push({src, base64: src.split(",")[1], mime_type: file.type, name: file.name});
+      }
+    } catch (error) { chatError.textContent = String(error.message || error); }
+    finally { readingImages = false; renderAttachments(); }
+  });
+  chatInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      document.getElementById("chat-form").requestSubmit();
+    }
+  });
+  function finishSend(message) {
+    if (!pendingSend || message.request_id !== pendingSend.id) return;
+    if (message.type === "accepted") {
+      pushLine("me", [{kind: "text", text: pendingSend.text},
+        ...draftImages.map(item => ({kind: "image", src: item.src}))]);
+      chatInput.value = "";
+      draftImages = [];
+      flash("squish", 400);
+    } else {
+      chatError.textContent = message.error || "发送失败，请重试";
+      stopWaiting();
+    }
+    pendingSend = null;
+    chatInput.disabled = false;
+    renderAttachments();
+  }
+  document.getElementById("chat-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = chatInput.value.trim();
-    if (!text || !api) return;
-    chatInput.value = "";
-    api.send(text);
+    if ((!text && !draftImages.length) || !api || pendingSend || readingImages) return;
+    const id = crypto.randomUUID().replaceAll("-", "");
+    pendingSend = {id, text};
+    chatInput.disabled = true;
+    chatError.textContent = "";
+    renderAttachments();
     clearTimeout(waitTimer);
     waitTimer = setTimeout(stopWaiting, WAIT_LIMIT_MS);
-    pushLine("me", [{ kind: "text", text }]);
-    flash("squish", 400);
+    try {
+      await api.send(id, text, draftImages.map(({base64, mime_type, name}) => ({base64, mime_type, name})));
+    } catch (error) { finishSend({type: "failed", request_id: id, error: String(error.message || error)}); }
   });
 
   function hideSay() {
@@ -618,23 +710,34 @@
     const text = todoInput.value.trim();
     if (!text || !api) return;
     todoInput.value = "";
-    const item = await api.add_todo(text);
-    todoList.append(todoNode(item));
+    await api.add_todo(text);
+    await window.pet.refreshTodos();
     todoList.scrollTop = todoList.scrollHeight;
     flash("happy", 1200);
     updateRegion();
   });
 
   // ---------- 与宿主通信 ----------
+  let todoRefresh = 0;
   window.pet = {
+    async refreshTodos() {
+      const revision = ++todoRefresh;
+      const items = await api.todos();
+      if (revision !== todoRefresh) return;
+      todoList.replaceChildren(...items.map(todoNode));
+      updateRegion();
+    },
     receive(message) {
-      if (message.type === "reply") {
+      if (message.type === "accepted") {
+        finishSend(message);
+      } else if (message.type === "reply") {
         speak(message.parts);
       } else if (message.type === "notice") {
         // 插件提示只显示气泡，不混入聊天记录，也不打断正在等待的聊天回复。
         showSay(message.parts);
         flash("talking", 1500);
       } else if (message.type === "failed") {
+        finishSend(message);
         stopWaiting();
         flash("shake", 500);
       } else if (message.type === "idle") {
@@ -663,7 +766,7 @@
     api = window.pywebview.api;
     await api.fit(devicePixelRatio);
     watchScale();
-    for (const item of await api.todos()) todoList.append(todoNode(item));
+    await window.pet.refreshTodos();
     const observer = new ResizeObserver(updateRegion);
     for (const el of document.querySelectorAll("[data-hit]")) observer.observe(el);
     updateRegion();

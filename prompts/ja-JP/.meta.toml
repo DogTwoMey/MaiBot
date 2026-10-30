@@ -207,3 +207,43 @@ description = "プランナーのスナップショットを再利用し、返�
 display_name = "返信表現の選択"
 advanced = true
 description = "実際のチャット文脈に合う表現候補を選び、その識別子を返します。"
+
+[a_memorix_fact_deduplication]
+display_name = "長期記憶の事実重複判定"
+advanced = true
+description = "新しい事実と既存の記憶の重複を判定し、別の出来事、状態変化、矛盾する情報を保持します。"
+
+[agent_acp]
+display_name = "外部 Agent 接続ガイド"
+advanced = true
+description = "外部 Agent 接続ガイド。"
+
+[agent_acp_computer]
+display_name = "外部 Agent のコンピューター操作"
+advanced = true
+description = "外部 Agent のコンピューター操作。"
+
+[agent_acp_environment]
+display_name = "外部 Agent 環境説明"
+advanced = true
+description = "外部 Agent 環境説明。"
+
+[agent_acp_failure]
+display_name = "外部 Agent 失敗報告"
+advanced = true
+description = "外部 Agent 失敗報告。"
+
+[agent_planner]
+display_name = "外部 Planner 接続ガイド"
+advanced = true
+description = "外部 Planner 接続ガイド。"
+
+[agent_planner_resume]
+display_name = "外部 Planner 中断復帰"
+advanced = true
+description = "外部 Planner 中断復帰。"
+
+[agent_planner_continue]
+display_name = "外部 Planner 継続実行"
+advanced = true
+description = "外部 Planner 継続実行。"

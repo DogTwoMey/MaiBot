@@ -750,18 +750,18 @@ describe('PluginConfigPage 主程序放行规则', () => {
     expect(screen.queryByText('Emoji Plugin')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '打开 QQ Adapter 配置' }))
-    expect(await screen.findByRole('tab', { name: '黑白名单规则' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '设置' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '详情' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: '黑白名单规则' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '源代码' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '查看详情' })).toBeInTheDocument()
   })
 
   it('普通插件配置页不展示主程序放行规则页签', async () => {
     window.history.replaceState(null, '', '/plugin-config')
-    vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([makeAdapter()] as never)
+    vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([makePlugin('test.emoji', 'Emoji Plugin')] as never)
     renderPage()
-    await openNamedPlugin(/QQ Adapter/)
+    await openNamedPlugin()
     await screen.findByRole('button', { name: /保存/ })
-    expect(screen.queryByRole('tab', { name: '黑白名单规则' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '黑白名单规则' })).not.toBeInTheDocument()
   })
 
   it('深链接非适配器在适配器管理页不会打开编辑器', async () => {
@@ -777,7 +777,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     vi.mocked(chatApi.getAdapterHostPolicy).mockRejectedValue(new Error('策略服务不可用'))
     renderPage()
     await user.click(await screen.findByRole('button', { name: '打开 QQ Adapter 配置' }))
-    await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
+    await user.click(await screen.findByRole('region', { name: '黑白名单规则' }))
     expect(await screen.findByText('策略服务不可用')).toBeInTheDocument()
   })
 
@@ -786,7 +786,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     vi.mocked(chatApi.getAdapterHostPolicy).mockRejectedValue('offline')
     renderPage()
     await user.click(await screen.findByRole('button', { name: '打开 QQ Adapter 配置' }))
-    await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
+    await user.click(await screen.findByRole('region', { name: '黑白名单规则' }))
     expect(await screen.findByText('主程序规则加载失败')).toBeInTheDocument()
   })
 
@@ -795,7 +795,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     vi.mocked(chatApi.getAdapterHostPolicy).mockReturnValue(new Promise(() => {}))
     renderPage()
     await user.click(await screen.findByRole('button', { name: '打开 QQ Adapter 配置' }))
-    await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
+    await user.click(await screen.findByRole('region', { name: '黑白名单规则' }))
     expect(await screen.findByText('正在加载主程序规则')).toBeInTheDocument()
   })
 
@@ -803,7 +803,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: '打开 QQ Adapter 配置' }))
-    await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
+    await user.click(await screen.findByRole('region', { name: '黑白名单规则' }))
 
     expect(await screen.findByText('群聊规则')).toBeInTheDocument()
     expect(screen.queryByText('这是 MaiBot 主程序侧规则，与适配器自身名单相互独立。')).not.toBeInTheDocument()
@@ -811,8 +811,8 @@ describe('PluginConfigPage 主程序放行规则', () => {
     expect(screen.getByTestId('mode-hint:group')).toHaveTextContent('黑名单模式')
     expect(screen.getByTestId('mode-hint:private')).toHaveTextContent('白名单模式')
     expect(screen.queryByRole('button', { name: /保存主程序规则/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /源代码/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /重置/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /源代码/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /重置/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
 
     // 页签行工具栏新增了「当前生效分组」下拉框，默认规则下拉框需限定在群聊规则卡片内查找
@@ -824,7 +824,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     await waitFor(
       () =>
         expect(chatApi.updateAdapterHostPolicy).toHaveBeenCalledWith('adapter.qq', {
-          group: { default_action: 'allow', allow_ids: ['new-item'], deny_ids: [] },
+          group: { default_action: 'allow', allow_ids: [], deny_ids: ['new-item'] },
           private: { default_action: 'inherit', allow_ids: [], deny_ids: [] },
         }),
       { timeout: 6000 }
@@ -837,7 +837,7 @@ describe('PluginConfigPage 主程序放行规则', () => {
     vi.mocked(chatApi.updateAdapterHostPolicy).mockRejectedValue(new Error('写入失败'))
     renderPage()
     await user.click(await screen.findByRole('button', { name: '打开 QQ Adapter 配置' }))
-    await user.click(await screen.findByRole('tab', { name: '黑白名单规则' }))
+    await user.click(await screen.findByRole('region', { name: '黑白名单规则' }))
     await user.click(await screen.findByText('群聊规则'))
     const groupRulesCard = screen.getByText('群聊规则').closest('[data-dashboard-card="true"]') as HTMLElement
     await user.click(within(groupRulesCard).getByRole('combobox'))
@@ -1724,7 +1724,7 @@ describe('PluginConfigPage 详情与文档', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
 
     expect(await screen.findByText('插件详情')).toBeInTheDocument()
     expect(screen.getByText('丰富描述')).toBeInTheDocument()
@@ -1735,7 +1735,7 @@ describe('PluginConfigPage 详情与文档', () => {
     expect(screen.getByRole('link', { name: '问题反馈' })).toHaveAttribute('href', 'https://issues.example')
     expect(await screen.findByText('# Hello README')).toBeInTheDocument()
     expect(screen.getByText('# 插件更新日志')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(await screen.findByText('search_tool')).toBeInTheDocument()
     expect(screen.getByText('q')).toBeInTheDocument()
     expect(screen.getByText('limit')).toBeInTheDocument()
@@ -1760,12 +1760,12 @@ describe('PluginConfigPage 详情与文档', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
 
     expect(await screen.findByText('暂无描述')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(await screen.findByText('组件挂了')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '详情' }))
+    await user.click(screen.getByRole('button', { name: '查看详情' }))
     expect(screen.getByText('readme 挂了')).toBeInTheDocument()
     expect(screen.getByText('暂无更新日志')).toBeInTheDocument()
     expect(screen.queryByText('作者')).not.toBeInTheDocument()
@@ -1777,10 +1777,10 @@ describe('PluginConfigPage 详情与文档', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(await screen.findByText('组件加载失败')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '详情' }))
+    await user.click(screen.getByRole('button', { name: '查看详情' }))
     expect(screen.getByText('README 加载失败')).toBeInTheDocument()
   })
 
@@ -1790,9 +1790,9 @@ describe('PluginConfigPage 详情与文档', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
     expect(await screen.findByText('暂无 README')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(screen.getByText('当前插件未注册运行时组件')).toBeInTheDocument()
   })
 
@@ -1809,8 +1809,8 @@ describe('PluginConfigPage 详情与文档', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(await screen.findByText('only-cmd')).toBeInTheDocument()
     expect(screen.getByText('暂无工具组件')).toBeInTheDocument()
   })
@@ -2333,9 +2333,9 @@ describe('PluginConfigPage 覆盖补全', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
     expect(await screen.findByText('# Hello README')).toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(screen.getByText('search_tool')).toBeInTheDocument()
 
     plugin.id = 'test.emoji.v2'
@@ -2368,7 +2368,7 @@ describe('PluginConfigPage 覆盖补全', () => {
     const user = userEvent.setup()
     renderPage()
     await user.click(await screen.findByRole('button', { name: /Emoji Plugin/ }))
-    await user.click(await screen.findByRole('tab', { name: '详情' }))
+    await user.click(await screen.findByRole('button', { name: '查看详情' }))
 
     expect(await screen.findByRole('link', { name: '主页' })).toHaveAttribute(
       'href',
@@ -2378,7 +2378,7 @@ describe('PluginConfigPage 覆盖补全', () => {
       'href',
       'https://repo-fallback.example'
     )
-    await user.click(screen.getByRole('tab', { name: '设置' }))
+    await user.click(screen.getByRole('button', { name: '查看设置' }))
     expect(screen.getByText('silent_action')).toBeInTheDocument()
     expect(screen.getByText('旧版动作')).toBeInTheDocument()
     expect(screen.queryByText('触发方式：')).not.toBeInTheDocument()

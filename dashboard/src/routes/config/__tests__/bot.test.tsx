@@ -237,6 +237,7 @@ const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = 
   ['agent.acp_model', 'wrapper'],
   ['agent.acp_timeout', 'wrapper'],
 
+  ['desktop_pet.skin_id', 'replace'],
   ['bot.platform', 'hidden'],
   ['bot.alias_names', 'replace'],
   ['bot.qq_account', 'hidden'],

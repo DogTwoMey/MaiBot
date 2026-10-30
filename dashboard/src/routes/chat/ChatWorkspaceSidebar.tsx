@@ -17,9 +17,13 @@ import { getStageStatusLight } from '@/routes/monitor/stage-status-light'
 
 import type { ChatMessage, ChatTab, ObservedMessagePreview } from './types'
 import { getChatTabDisplayName } from './utils'
+import { ObservedConversationHoverCard } from './ObservedConversationHoverCard'
 
 interface ChatWorkspaceSidebarProps {
   className?: string
+  agentEnabled?: boolean
+  agentActive?: boolean
+  onSelectAgent?: () => void
   tabs: ChatTab[]
   activeTabId: string
   activeObservedSessionId: string | null
@@ -123,40 +127,50 @@ const ObservedConversationItem = memo(function ObservedConversationItem({
       ? `${latestMessage.speakerName}: ${messagePreview}`
       : messagePreview
   return (
-    <ConversationListItem
-      title={session.sessionName}
+    <ObservedConversationHoverCard
+      sessionId={session.sessionId}
+      name={session.sessionName}
+      platform={session.platform}
+      targetId={targetId}
+      isGroupChat={session.isGroupChat}
+      status={status?.stage ? <StageStatusLabel status={status} /> : '暂无运行状态'}
       preview={previewText}
-      selected={active}
-      onSelect={() => onSelect(session.sessionId)}
-      avatar={<ConversationAvatar src={avatarUrl} name={session.sessionName} />}
-      status={
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-          <StatusIndicator
-            variant="inline"
-            status={getStageStatusLight(status)}
-          />
-          {status?.stage && <span className="truncate"><StageStatusLabel status={status} /></span>}
-        </span>
-      }
-      actions={
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('chat.sidebar.openSettings', { name: session.sessionName })}
-              onClick={() => onOpenSettings(session.sessionId)}
-            >
-              <Settings />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {t('chat.sidebar.openSettings', { name: session.sessionName })}
-          </TooltipContent>
-        </Tooltip>
-      }
-    />
+    >
+      <ConversationListItem
+        title={session.sessionName}
+        preview={previewText}
+        selected={active}
+        onSelect={() => onSelect(session.sessionId)}
+        avatar={<ConversationAvatar src={avatarUrl} name={session.sessionName} />}
+        status={
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+            <StatusIndicator
+              variant="inline"
+              status={getStageStatusLight(status)}
+            />
+            {status?.stage && <span className="truncate"><StageStatusLabel status={status} /></span>}
+          </span>
+        }
+        actions={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('chat.sidebar.openSettings', { name: session.sessionName })}
+                onClick={() => onOpenSettings(session.sessionId)}
+              >
+                <Settings />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {t('chat.sidebar.openSettings', { name: session.sessionName })}
+            </TooltipContent>
+          </Tooltip>
+        }
+      />
+      </ObservedConversationHoverCard>
   )
 }, (previous, next) => {
   // 父页面会重建会话/预览对象，只比较本行实际使用的字段。
@@ -180,6 +194,9 @@ const ObservedConversationItem = memo(function ObservedConversationItem({
 
 export function ChatWorkspaceSidebar({
   className,
+  agentEnabled = false,
+  agentActive = false,
+  onSelectAgent,
   tabs,
   activeTabId,
   activeObservedSessionId,
@@ -216,10 +233,11 @@ export function ChatWorkspaceSidebar({
       : sortedObservedSessions,
     [normalizedQuery, sortedObservedSessions]
   )
+  const showAgent = agentEnabled && (!normalizedQuery || t('sidebar.menu.agent').toLowerCase().includes(normalizedQuery))
   const showLocalSection = !normalizedQuery || filteredTabs.length > 0
   const showObservedSection = !normalizedQuery || filteredObservedSessions.length > 0
   const showNoResults =
-    normalizedQuery.length > 0 && filteredTabs.length === 0 && filteredObservedSessions.length === 0
+    normalizedQuery.length > 0 && !showAgent && filteredTabs.length === 0 && filteredObservedSessions.length === 0
 
   return (
     <PageFrame asChild>
@@ -265,7 +283,7 @@ export function ChatWorkspaceSidebar({
                 {filteredTabs.map((tab) => (
                   <ConversationItem
                     key={tab.id}
-                    active={activeObservedSessionId === null && activeTabId === tab.id}
+                    active={!agentActive && activeObservedSessionId === null && activeTabId === tab.id}
                     tab={tab}
                     onSwitch={onSwitch}
                     onClose={onClose}
@@ -273,6 +291,18 @@ export function ChatWorkspaceSidebar({
                 ))}
               </DataPanel>
             </section>
+          )}
+
+          {showAgent && onSelectAgent && (
+            <DataPanel padding="none" className="shrink-0">
+              <ConversationListItem
+                title={t('sidebar.menu.agent')}
+                preview=""
+                selected={agentActive}
+                onSelect={onSelectAgent}
+                avatar={<ConversationAvatar name={t('sidebar.menu.agent')} bot />}
+              />
+            </DataPanel>
           )}
 
           {showObservedSection && (
@@ -312,7 +342,7 @@ export function ChatWorkspaceSidebar({
                           session={session}
                           status={observedStageStatuses.get(session.sessionId)}
                           latestMessage={observedLatestMessages.get(session.sessionId)}
-                          active={activeObservedSessionId === session.sessionId}
+                          active={!agentActive && activeObservedSessionId === session.sessionId}
                           onSelect={onSelectObserved}
                           onOpenSettings={onOpenObservedSettings}
                         />
