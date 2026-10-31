@@ -654,9 +654,9 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
         """根据 reply 工具参数构建本次回复的篇幅要求。"""
 
         style_messages = {
-            "简短表达": "请简短的回复，允许句子残缺，奇怪表达，倒装，省略，符合口语习惯，符合省力随意回复习惯",
+            "简短表达": "请简短的回复，符合口语习惯，1-2句短句即可。不要长篇大论，无复杂修辞和比喻。",
             "正常回复": "",
-            "长回复": "可以针对问题做出较为详细的评论和说明",
+            "长回复": "可以针对问题做出较为详细的评论和说明，不限制回复长度",
         }
         normalized_reply_style = reply_style.strip()
         if not normalized_reply_style:

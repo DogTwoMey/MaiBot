@@ -142,7 +142,7 @@ def get_tool_spec(context: Optional[ToolAvailabilityContext] = None) -> ToolSpec
         },
         "reply_style": {
             "type": "string",
-            "description": "可选。控制本次回复的篇幅和表达方式",
+            "description": "控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。",
             "enum": ["简短表达", "正常回复", "长回复"],
         },
     }

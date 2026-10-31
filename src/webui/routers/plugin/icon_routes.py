@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 from urllib.parse import unquote, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
@@ -9,7 +9,6 @@ import mimetypes
 
 from src.common.http_client import get_shared_ssl_context
 from src.common.network_security import validate_public_url
-from src.plugin_market.cache import MarketCache
 
 from src.webui.core import auth_cookie
 
@@ -19,7 +18,6 @@ router = APIRouter()
 
 _LOCAL_ICON_SUFFIXES = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
 _MAX_ICON_BYTES = 512 * 1024
-_market_icon_cache = MarketCache(max_entries=128)
 
 
 class _NoIconRedirect(HTTPRedirectHandler):
@@ -40,7 +38,7 @@ def get_market_icon(
     ):
         raise HTTPException(status_code=400, detail="只能读取 CNB 插件市场仓库图标")
 
-    def load() -> Tuple[bytes, str]:
+    try:
         validate_public_url(url, allow_fake_ip=True)
         opener = build_opener(_NoIconRedirect(), HTTPSHandler(context=get_shared_ssl_context()))
         request = Request(url, headers={"User-Agent": "MaiBot", "Accept": "image/*"})
@@ -51,14 +49,10 @@ def get_market_icon(
             content = response.read(_MAX_ICON_BYTES + 1)
             if len(content) > _MAX_ICON_BYTES:
                 raise ValueError("插件图标文件过大")
-            return content, media_type
-
-    try:
-        (content, media_type), cache = _market_icon_cache.get(url, load, 3600)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=502, detail=f"获取 CNB 插件图标失败：{exc}") from exc
     return Response(content, media_type=media_type, headers={
-        "Cache-Control": f"private, max-age={cache['remaining_seconds']}",
+        "Cache-Control": "private, max-age=3600",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "X-Content-Type-Options": "nosniff",
     })
