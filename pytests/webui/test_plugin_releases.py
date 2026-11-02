@@ -214,7 +214,7 @@ def test_new_plugin_syncs_dependencies_and_config_subscription(
         return True
 
     monkeypatch.setattr(manager, "_iter_plugin_dirs", lambda: iter([tmp_path]))
-    monkeypatch.setattr(manager, "_iter_watchable_plugin_paths", lambda: iter([("example.demo", plugin_path)]))
+    monkeypatch.setattr(manager, "_iter_watchable_plugin_paths", lambda plugin_dirs, registered_plugin_ids, path_cache: iter([("example.demo", plugin_path)]))
     monkeypatch.setattr(manager, "_sync_plugin_dependencies", sync)
     monkeypatch.setattr(manager, "load_plugin_globally", load)
     monkeypatch.setattr(manager, "_restart_supervisors", restart)
@@ -242,7 +242,7 @@ def test_new_plugin_restart_failure_still_registers_config_subscription(tmp_path
 
     monkeypatch.setattr(manager, "_sync_plugin_dependencies", sync)
     monkeypatch.setattr(manager, "_restart_supervisors", restart)
-    monkeypatch.setattr(manager, "_iter_watchable_plugin_paths", lambda: iter([("example.demo", tmp_path)]))
+    monkeypatch.setattr(manager, "_iter_watchable_plugin_paths", lambda plugin_dirs, registered_plugin_ids, path_cache: iter([("example.demo", tmp_path)]))
     with pytest.raises(RuntimeError, match="重启插件运行时失败"):
         asyncio.run(manager.activate_installed_plugin("example.demo"))
     assert manager._plugin_config_watcher_subscriptions["example.demo"][0] == tmp_path / "config.toml"

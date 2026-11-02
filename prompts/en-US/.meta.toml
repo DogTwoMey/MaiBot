@@ -247,3 +247,8 @@ description = "External planner recovery。"
 display_name = "External planner continuation"
 advanced = true
 description = "External planner continuation。"
+
+[reply_supplement_retry]
+display_name = "Reply supplement retry"
+advanced = true
+description = "Regenerate a supplement plan once using validation error feedback."

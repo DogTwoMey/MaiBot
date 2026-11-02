@@ -242,3 +242,8 @@ description = "外接 Planner 中断恢复。"
 display_name = "外接 Planner 继续执行"
 advanced = true
 description = "外接 Planner 继续执行。"
+
+[reply_supplement_retry]
+display_name = "回复补充器重试"
+advanced = true
+description = "补充编排校验失败后，携带错误反馈重新生成一次。"

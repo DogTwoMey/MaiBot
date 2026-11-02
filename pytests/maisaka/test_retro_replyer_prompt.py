@@ -197,7 +197,7 @@ def test_retro_visual_request_keeps_original_image(
 ) -> None:
     generator = build_retro_generator(is_group_session=True)
     isolate_retro_blocks(generator, monkeypatch)
-    monkeypatch.setattr(global_config.debug, "replyer_retro_prompt", True)
+    monkeypatch.setattr(global_config.chat, "creative_mode", True)
     monkeypatch.setattr(global_config.visual, "max_image_num", max_images)
     image_bytes = BytesIO()
     Image.new("RGB", (2, 2)).save(image_bytes, format="PNG")
@@ -259,6 +259,7 @@ def test_retro_images_stay_between_history_messages_in_single_user(
         build_history_message("LAST_MESSAGE"),
     ]
     items = generator._build_retro_request_messages(
+        mai_replier=True,
         chat_history=history, reply_message=None, reply_reason="FINAL_REPLY_REFERENCE", enable_visual_message=True,
     )
     assert [item.role for item in items] == [RoleType.System, RoleType.User]
@@ -303,6 +304,7 @@ def test_retro_visual_descriptions_follow_actual_media_quota(
             timestamp=message.timestamp, message_id=message.message_id,
         )
     items = generator._build_retro_request_messages(
+        mai_replier=True,
         chat_history=[message], reply_message=target if has_original else None, reply_reason="回答",
         enable_visual_message=True,
     )
@@ -351,6 +353,7 @@ def test_retro_replyer_system_stays_stable_across_attention_drift_config(
     for enabled in (False, True, False):
         monkeypatch.setattr(global_config.experimental.group_attention_drift, "enabled", enabled)
         items = generator._build_retro_request_messages(
+            mai_replier=True,
             chat_history=[], reply_message=None, reply_reason="测试回复原因"
         )
         assert read_item_text(items[0]).count(heading) == 0
@@ -361,6 +364,7 @@ def test_retro_request_messages_fill_single_template(monkeypatch: pytest.MonkeyP
     isolate_retro_blocks(generator, monkeypatch)
 
     items = generator._build_retro_request_messages(
+        mai_replier=True,
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
         reply_reason="小明在问晚饭",
@@ -398,6 +402,7 @@ def test_retro_keeps_persona_in_system_and_reply_style_in_user(
     monkeypatch.setattr(generator, "_build_group_chat_attention_block", lambda session_id: "GUIDELINES_BLOCK")
     monkeypatch.setattr(generator, "_select_temporary_reply_style", lambda: "REPLY_STYLE_BLOCK")
     items = generator._build_retro_request_messages(
+        mai_replier=True,
         chat_history=[build_history_message("HISTORY_BLOCK")],
         reply_message=None,
         reply_reason="REASON_BLOCK",
@@ -447,6 +452,7 @@ def test_retro_keeps_sent_bot_messages_and_discards_planner_output(
 
     monkeypatch.setattr(generator, "_build_keyword_reaction_prompt", capture_keyword_history)
     items = generator._build_retro_request_messages(
+        mai_replier=True,
         chat_history=chat_history,
         reply_message=None,
         reply_reason="一起吃面",
@@ -490,6 +496,7 @@ def test_select_retro_prompt_name(
     reply_message = build_fake_target_message() if is_self_target else None
 
     prompt_name = generator._select_retro_prompt_name(
+        mai_replier=True,
         reply_message=reply_message,
         stream_id="session-1",
         think_level=think_level,
@@ -503,7 +510,7 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
     generator = build_retro_generator(is_group_session=True)
     isolate_retro_blocks(generator, monkeypatch)
 
-    monkeypatch.setattr(global_config.debug, "replyer_retro_prompt", True)
+    monkeypatch.setattr(global_config.chat, "creative_mode", True)
     retro_items: List[Any] = generator._build_request_messages(
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
@@ -514,10 +521,12 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
 
     assert [item.role for item in retro_items] == [RoleType.System, RoleType.User]
     retro_prompt_text = read_item_text(retro_items[1])
-    assert "现在请你读读之前的聊天记录，把握当前的话题，然后给出日常且简短的回复" in retro_prompt_text
+    assert generator._select_retro_prompt_name(
+        reply_message=None, stream_id="session-1", think_level=0, reply_tool_args={}
+    ) == RETRO_GROUP_LIGHT_PROMPT
     assert "小明在问晚饭" in retro_prompt_text
 
-    monkeypatch.setattr(global_config.debug, "replyer_retro_prompt", False)
+    monkeypatch.setattr(global_config.chat, "creative_mode", False)
     normal_items: List[Any] = generator._build_request_messages(
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
@@ -539,7 +548,7 @@ def test_reply_reference_takes_priority_over_planner_content(
     generator = build_retro_generator(is_group_session=True)
     isolate_retro_blocks(generator, monkeypatch)
     set_locale(locale)
-    monkeypatch.setattr(global_config.debug, "replyer_retro_prompt", retro_mode)
+    monkeypatch.setattr(global_config.chat, "creative_mode", retro_mode)
 
     items = generator._build_request_messages(
         chat_history=[build_history_message("晚上吃什么")],
@@ -554,9 +563,13 @@ def test_reply_reference_takes_priority_over_planner_content(
     assert "PLANNER_VISIBLE_BODY" not in text
     assert (
         generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", "REPLY_REFERENCE_BODY")
-        == "REPLY_REFERENCE_BODY"
+        == {"zh-CN": "当前想法：\n“REPLY_REFERENCE_BODY”", "en-US": 'Current thought:\n"REPLY_REFERENCE_BODY"',
+            "ja-JP": "現在の考え：\n「REPLY_REFERENCE_BODY」"}[locale]
     )
-    assert generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", " \n ") == "PLANNER_VISIBLE_BODY"
+    assert generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", " \n ") == {
+        "zh-CN": "当前想法：\n“PLANNER_VISIBLE_BODY”", "en-US": 'Current thought:\n"PLANNER_VISIBLE_BODY"',
+        "ja-JP": "現在の考え：\n「PLANNER_VISIBLE_BODY」",
+    }[locale]
     assert generator._build_reply_reference_message("", "") == ""
 
 
@@ -590,6 +603,7 @@ def test_retro_template_context_covers_every_placeholder(monkeypatch: pytest.Mon
     isolate_retro_blocks(generator, monkeypatch)
 
     template_context = generator._build_retro_template_context(
+        mai_replier=True,
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
         reply_reason="",

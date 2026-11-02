@@ -565,7 +565,6 @@ describe('PluginDetailPage 配置信息卡与交互', () => {
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([
       {
         ...makeInstalledPlugin(),
-        changelog: '- 本地条目',
         manifest: {
           ...makeInstalledPlugin().manifest,
           homepage_url: undefined,
@@ -590,7 +589,7 @@ describe('PluginDetailPage 配置信息卡与交互', () => {
       expect(screen.getAllByText('本地插件').length).toBeGreaterThan(0)
     })
     expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('通用扩展').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('无类别').length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /访问/ })).toHaveAttribute(
       'href',
       'https://local.example'

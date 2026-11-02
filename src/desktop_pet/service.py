@@ -229,6 +229,7 @@ class DesktopPetService:
             self._button_sync_task = self._observe(self._sync_buttons())
 
     async def _sync_buttons(self) -> None:
+        """读取各插件的桌宠按钮状态并推送给窗口；同步期间按钮又有变动时重新同步一轮。"""
         from src.plugin_runtime.integration import get_plugin_runtime_manager
 
         runtime = get_plugin_runtime_manager()

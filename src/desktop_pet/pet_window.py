@@ -45,6 +45,8 @@ DCX_CACHE = 0x0002
 BLACK_BRUSH = 4
 SPI_GETWORKAREA = 0x0030
 MONITOR_DEFAULTTONULL = 0
+DWMWA_SYSTEMBACKDROP_TYPE = 38
+DWMSBT_NONE = 1
 
 user32 = ctypes.windll.user32 if sys.platform == "win32" else None
 gdi32 = ctypes.windll.gdi32 if sys.platform == "win32" else None
@@ -61,6 +63,8 @@ class MARGINS(ctypes.Structure):
 
 
 def _bind_win32() -> None:
+    dwmapi.DwmSetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+    dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
     dwmapi.DwmExtendFrameIntoClientArea.argtypes = [wintypes.HWND, ctypes.POINTER(MARGINS)]
     dwmapi.DwmExtendFrameIntoClientArea.restype = ctypes.c_long
     user32.SetProcessDPIAware.restype = wintypes.BOOL
@@ -217,10 +221,22 @@ class PetApi:
     def _attach(self, window: "webview.Window") -> None:
         """在窗口首次显示前（GUI 线程）调整样式与位置。"""
         # pythonnet 由 pywebview 的 WinForms 后端加载，只能在窗口创建后导入。
+        from Microsoft.Win32 import SystemEvents
         from System.Drawing import Color
 
         self._window = window
         self._hwnd = window.native.Handle.ToInt64()
+        # 无标题栏的透明窗口不需要标题栏主题同步。pywebview 在深色模式下会开启
+        # Mica，将整个透明客户区填成实色；取消订阅，避免系统主题变化时再次开启。
+        SystemEvents.UserPreferenceChanged -= window.native.on_system_theme_changed
+        # 系统背景属性从 Windows 11 22H2 起可用，旧系统没有这一层背景。
+        if sys.getwindowsversion().build >= 22621:
+            backdrop = ctypes.c_int(DWMSBT_NONE)
+            result = dwmapi.DwmSetWindowAttribute(
+                self._hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ctypes.byref(backdrop), ctypes.sizeof(backdrop),
+            )
+            if result != 0:
+                raise OSError(f"关闭桌宠系统背景失败: 0x{result & 0xFFFFFFFF:08X}")
         # 工具窗口不出现在任务栏和 Alt+Tab 中。
         style = user32.GetWindowLongPtrW(self._hwnd, GWL_EXSTYLE)
         user32.SetWindowLongPtrW(self._hwnd, GWL_EXSTYLE, (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)

@@ -73,6 +73,7 @@ def engine(monkeypatch) -> MaisakaReasoningEngine:
         get_active_turn_trigger_message=lambda: None,
         _enter_stop_state=Mock(),
         _update_stage_status=Mock(),
+        build_retro_reply_history=Mock(),
         expand_message_id_aliases=lambda args: args,
         is_action_tool_currently_available=lambda name: name != "reply",
         _tool_registry=ToolRegistry(),
@@ -491,20 +492,20 @@ async def test_supplement_request_keeps_current_trigger_quote_policy(engine, mon
 
 
 @pytest.mark.asyncio
-async def test_supplement_failure_cancels_body_and_never_sends(engine, monkeypatch):
+async def test_body_failure_cancels_supplement_and_never_sends(engine, monkeypatch):
     target = engine._runtime._chat_history[0].original_message
     started, cancelled = asyncio.Event(), asyncio.Event()
 
     async def generate(**kwargs):
+        await started.wait()
+        raise ValueError("body generation failed")
+
+    async def supplement():
         started.set()
         try:
             await asyncio.Future()
         finally:
             cancelled.set()
-
-    async def supplement():
-        await started.wait()
-        raise ValueError("invalid snapshot resource")
 
     extension = SimpleNamespace(context=SimpleNamespace(), targets=[], reply_id="test", prepare=AsyncMock())
     monkeypatch.setattr(reply_module, "ReplyExtensionExecution", lambda **kwargs: extension)
@@ -517,7 +518,7 @@ async def test_supplement_failure_cancels_body_and_never_sends(engine, monkeypat
         target_message=target, supplement_runner=supplement,
     )
     assert not result.success
-    assert "invalid snapshot resource" in result.error_message
+    assert "ValueError" in result.error_message
     assert cancelled.is_set()
     send.assert_not_awaited()
 

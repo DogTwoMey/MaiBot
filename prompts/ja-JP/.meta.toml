@@ -247,3 +247,8 @@ description = "外部 Planner 中断復帰。"
 display_name = "外部 Planner 継続実行"
 advanced = true
 description = "外部 Planner 継続実行。"
+
+[reply_supplement_retry]
+display_name = "返信補足の再試行"
+advanced = true
+description = "補足プランの検証エラーを渡して一度だけ再生成します。"

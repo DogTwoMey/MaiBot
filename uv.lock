@@ -935,7 +935,7 @@ requires-dist = [
     { name = "jieba", specifier = ">=0.42.1" },
     { name = "json-repair", specifier = ">=0.60.1,<0.61" },
     { name = "jsonschema", specifier = ">=4.26.0,<5" },
-    { name = "maibot-dashboard", specifier = "==1.9.13.dev20261030568" },
+    { name = "maibot-dashboard", specifier = "==1.9.13.dev20261101569" },
     { name = "maibot-plugin-sdk", specifier = ">=2.20.0" },
     { name = "maim-message", specifier = "==0.6.8" },
     { name = "mcp", specifier = ">=1.28.1,<2" },
@@ -980,11 +980,11 @@ dev = [
 
 [[package]]
 name = "maibot-dashboard"
-version = "1.9.13.dev20261030568"
+version = "1.9.13.dev20261101569"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/89/55/44f8c67e25fa22ca9056a4766e89eabc4b22343ed72c570602daac69b94b/maibot_dashboard-1.9.13.dev20261030568.tar.gz", hash = "sha256:a58b07024c22a03bd9fa1f64dd801b3481b4b12352c51ea1ab4ebf0d688d221d" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/40/27/a51a57767287e88a3db5b9f2fd698ad8559b7949e7aac107979fbafbdfca/maibot_dashboard-1.9.13.dev20261101569.tar.gz", hash = "sha256:ae9f35e11a2f961fd0f5adb643d9d71e73613d4f8b01ce660d97553d150fdf6a" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/f0/e2/6b9ffbc9e5b0b4028febb01d47f4a61540a693fc4fa65b7aa8c746dd140f/maibot_dashboard-1.9.13.dev20261030568-py3-none-any.whl", hash = "sha256:f6a91b7f5506e938dc76e629a0d2aba8df6b8a47560ca317b89ab265cfc3b9b8" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/a6/7d/d0fa62eb49501ecd402d3b366ef34e7df6b005dbb45514ac2e7c0db25f90/maibot_dashboard-1.9.13.dev20261101569-py3-none-any.whl", hash = "sha256:605f6bbbd104fae8de2d5f6ee1469678cf2170568175f36456c1fdabfbeaa334" },
 ]
 
 [[package]]

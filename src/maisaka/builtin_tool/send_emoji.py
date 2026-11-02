@@ -15,6 +15,7 @@ from pydantic import Field as PydanticField
 from src.cli.maisaka_cli_sender import CLI_PLATFORM_NAME
 from src.common.data_models.image_data_model import MaiEmoji
 from src.common.data_models.message_component_data_model import ImageComponent, MessageSequence, TextComponent
+from src.common.llm_json import validate_llm_json
 from src.common.logger import get_logger
 from src.config.config import config_manager, global_config
 from src.core.tooling import ToolExecutionContext, ToolExecutionResult, ToolInvocation, ToolSpec
@@ -28,6 +29,7 @@ from src.maisaka.context.messages import (
     InternalContextMessage,
 )
 from src.prompt.prompt_manager import prompt_manager
+from src.plugin_runtime.host.hook_dispatcher import HookAbortedError, build_hook_abort_tool_result
 
 from .context import BuiltinToolRuntimeContext
 
@@ -411,7 +413,7 @@ async def _select_emoji_with_sub_agent(
         selection_metadata["prompt_html_uri"] = response.prompt_html_uri
 
     try:
-        selection = EmojiSelectionResult.model_validate_json(response.content or "")
+        selection = validate_llm_json(response.content or "", EmojiSelectionResult)
     except Exception as exc:
         logger.warning(f"{tool_ctx.runtime.log_prefix} 表情包子代理结果解析失败，将回退到候选首项: {exc}")
         if selection_metadata is not None:
@@ -497,6 +499,11 @@ async def handle_tool(
                     selection_metadata,
                 )
             ),
+        )
+    except HookAbortedError as exc:
+        return build_hook_abort_tool_result(
+            invocation.tool_name, exc.to_dict(), structured_content={**structured_result, "msg_id": target_id},
+            metadata=_build_send_emoji_monitor_metadata(selection_metadata, error_message=str(exc)),
         )
     except Exception as exc:
         logger.exception(f"{tool_ctx.runtime.log_prefix} 发送表情包时发生异常: {exc}")

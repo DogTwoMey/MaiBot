@@ -196,7 +196,6 @@ function makePlugin(id: string, name: string): InstalledPlugin {
     enabled: true,
     load_status: 'success',
     load_error: undefined,
-    changelog: null,
     manifest: {
       manifest_version: 2,
       id,
@@ -1671,7 +1670,7 @@ describe('PluginConfigPage 详情与文档', () => {
       documentation: 'https://docs.example',
       issues: 'https://issues.example',
     }
-    plugin.changelog = '# 插件更新日志'
+    documentMocks.changelog.mockResolvedValue('# 插件更新日志')
     plugin.manifest.description = '丰富描述'
     plugin.manifest.id = 'emoji.manifest'
     return plugin
@@ -1750,7 +1749,6 @@ describe('PluginConfigPage 详情与文档', () => {
   it('详情页在组件/README 失败与空内容时展示对应空态', async () => {
     const plugin = makePlugin('test.emoji', 'Emoji Plugin')
     plugin.manifest.description = ''
-    plugin.changelog = null
     plugin.manifest.author = { name: '' }
     plugin.manifest.license = '   '
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([plugin] as never)
@@ -1845,7 +1843,7 @@ describe('PluginConfigPage 详情与文档', () => {
 
   it('文档面板使用插件自带 changelog 且支持拖拽与空内容', async () => {
     const plugin = makePlugin('test.emoji', 'Emoji Plugin')
-    plugin.changelog = '  内置日志  '
+    documentMocks.changelog.mockResolvedValue('  内置日志  ')
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([plugin] as never)
     documentMocks.readme.mockResolvedValue('')
     const user = userEvent.setup()
@@ -1856,7 +1854,7 @@ describe('PluginConfigPage 详情与文档', () => {
 
     await user.click(screen.getByRole('button', { name: /更新日志/ }))
     expect(await screen.findByText('内置日志')).toBeInTheDocument()
-    expect(pluginApi.fetchPluginDocument).not.toHaveBeenCalledWith('test.emoji', 'changelog', expect.anything())
+    expect(pluginApi.fetchPluginDocument).toHaveBeenCalledWith('test.emoji', 'changelog', { preferLocal: true })
 
     const handle = screen.getByRole('button', { name: '移动插件文档窗口' })
     const panel = handle.parentElement as HTMLElement
@@ -2534,7 +2532,6 @@ describe('PluginConfigPage 覆盖补全', () => {
 
   it('文档面板空白 changelog 走远程并展示空态，切回可视化模式', async () => {
     const plugin = makePlugin('test.emoji', 'Emoji Plugin')
-    plugin.changelog = '   '
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([plugin] as never)
     documentMocks.readme.mockResolvedValue('# r')
     documentMocks.changelog.mockResolvedValue('')

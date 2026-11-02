@@ -1209,8 +1209,9 @@ describe('BotConfigPage 特征化', () => {
       const defaultSubtabNames = within(subtabList)
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-      // 回复风格的基础提示词已迁至人格配置，其余字段以「聊天流prompt」子页默认显示，不再折叠在高级子页中。
-      expect(defaultSubtabNames).toEqual(['总览', '时机子页', '聊天流prompt'])
+      // 回复风格提示词使用独立配置弹窗，其余聊天子页保持默认展示。
+      expect(defaultSubtabNames).toEqual(['总览', '时机子页'])
+      expect(screen.getByRole('button', { name: /聊天流prompt/ })).toBeInTheDocument()
       // 不再以「回复风格」原名列为聊天子页。
       expect(within(subtabList).queryByRole('tab', { name: '回复风格' })).not.toBeInTheDocument()
 

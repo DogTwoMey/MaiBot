@@ -61,6 +61,7 @@ def reply_context(monkeypatch):
         log_prefix="test",
         _update_stage_status=lambda *args: None,
         record_planner_reply=lambda: None,
+        build_retro_reply_history=AsyncMock(return_value=[]),
     )
     return BuiltinToolRuntimeContext(SimpleNamespace(), runtime)
 
