@@ -102,6 +102,7 @@ vi.mock('@tanstack/react-virtual', () => ({
         }
       })
     return {
+      elementsCache: new Map(),
       getTotalSize: () => count * estimateSize(),
       getVirtualItems: buildItems,
       getVirtualItemForOffset: (offset: number) => buildItems().find((item) => item.end > offset),
@@ -711,6 +712,7 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 100 })
+    fireEvent.wheel(viewport)
     fireEvent.scroll(viewport)
 
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
@@ -737,6 +739,7 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 100 })
+    fireEvent.wheel(viewport)
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
 
@@ -768,6 +771,7 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, writable: true, value: 150 })
+    fireEvent.wheel(viewport)
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).not.toHaveClass('text-primary'))
 
@@ -896,6 +900,7 @@ describe('阶段状态栏与工具条', () => {
     Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 840 })
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 })
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 640 })
+    fireEvent.wheel(viewport)
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).toHaveClass('text-primary'))
 
@@ -918,6 +923,7 @@ describe('阶段状态栏与工具条', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 1800))
     Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 640 })
+    fireEvent.wheel(viewport)
     fireEvent.scroll(viewport)
     await waitFor(() => expect(getBackToBottomIcon()).toHaveClass('text-primary'))
   })

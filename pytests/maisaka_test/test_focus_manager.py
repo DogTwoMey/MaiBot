@@ -15,12 +15,13 @@ def test_focus_scope_requires_existing_session(monkeypatch):
 def test_focus_default_group_uses_real_session(monkeypatch):
     monkeypatch.setattr(chat_manager, "get_session_by_session_id", lambda _: SimpleNamespace(is_group_session=True))
     monkeypatch.setattr(global_config.experimental, "focus_groups", [])
-    assert FocusModeManager().get_focus_scope_key("existing-session") == "global"
+    assert FocusModeManager().get_focus_scope_key("existing-session") is None
 
 
 def test_focus_private_chat_respects_configuration(monkeypatch):
     monkeypatch.setattr(global_config.experimental, "focus_mode", True)
     monkeypatch.setattr(global_config.experimental, "focus_on_private", False)
     manager = FocusModeManager()
-    assert manager.is_enabled_for_chat(is_group_chat=True)
-    assert not manager.is_enabled_for_chat(is_group_chat=False)
+    monkeypatch.setattr(manager, "get_focus_scope_key", lambda session_id: "explicit-group")
+    assert manager.is_enabled_for_session("group-session", is_group_chat=True)
+    assert not manager.is_enabled_for_session("private-session", is_group_chat=False)

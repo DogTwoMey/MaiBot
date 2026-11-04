@@ -5,6 +5,7 @@ from src.common.i18n import use_locale
 from src.common.prompt_i18n import load_prompt
 from src.config.config import global_config
 from src.maisaka.chat_loop_service import MaisakaChatLoopService
+from src.maisaka.scenes.factory import get_scene
 
 
 def test_planner_context_includes_personality_and_behavior_style(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -43,10 +44,10 @@ def test_attention_drift_follows_live_config_in_planner_and_replyer(
         generator = object.__new__(BaseMaisakaReplyGenerator)
         generator._load_prompt = load_prompt
         monkeypatch.setattr(
-            "src.chat.replyer.maisaka_generator_base.get_chat_type_and_target_info",
-            lambda session_id: (is_group_chat, None),
+            generator, "_get_reply_scene",
+            lambda session_id: get_scene(is_group_chat),
         )
-        monkeypatch.setattr(generator, "_build_group_chat_attention_block", lambda session_id: "")
+        monkeypatch.setattr(generator, "_build_chat_attention_block", lambda session_id: "")
         monkeypatch.setattr(generator, "_build_personality_prompt", lambda: "测试人设")
         monkeypatch.setattr(generator, "_select_reply_style", lambda: "测试回复风格")
 

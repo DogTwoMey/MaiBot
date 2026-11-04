@@ -67,6 +67,7 @@ def engine(monkeypatch) -> MaisakaReasoningEngine:
         log_prefix="[test]",
         _chat_history=[_history(_message("original"))],
         chat_stream=SimpleNamespace(platform="test", is_group_session=True, group_id="group", user_id=""),
+        _has_pending_messages=lambda: False,
         _end_planner_continuation=Mock(),
         _reset_consecutive_wait_count=Mock(),
         _consecutive_wait_count=0,
@@ -307,7 +308,7 @@ def test_prompt_and_tail_reminder_follow_experimental_switch(monkeypatch, locale
         reminder = service._build_planner_final_user_reminder()
     assert ("reply_reference" in prompt) is (not enabled)
     assert "set_reply_options" not in prompt
-    assert "stop()" in prompt and "wait()" in prompt
+    assert "- stop" in prompt and "- wait" in prompt
     if enabled:
         assert "stop" in reminder and "wait" in reminder
     else:
@@ -544,6 +545,6 @@ async def test_supplement_resources_are_bounded_and_quote_disable_is_enforced(mo
     supplement = await resolve_supplement(ReplySupplementPlan(msg_id=None, parts=[{"type": "reply"}]), resources, {})
     body = [PostProcessedReplyMessage(MessageSequence([TextComponent("body")]))]
     assert supplement.compose(body) == body
-    assert supplement.quote_message is None
+    assert supplement.target_message is None
     with pytest.raises(ValueError, match="不存在或编号有歧义"):
         resources.resolve_id("foreign", resources.messages)

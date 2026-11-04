@@ -22,7 +22,7 @@ def test_stop_prompt_is_always_available(monkeypatch: pytest.MonkeyPatch, locale
     with use_locale(locale):
         prompt = service._build_chat_system_prompt()
 
-    stop_lines = [line for line in prompt.splitlines() if line.startswith("- stop()")]
+    stop_lines = [line for line in prompt.splitlines() if line.startswith("- stop")]
     assert len(stop_lines) == 1
     assert "{stop_rule}" not in prompt
 
@@ -38,7 +38,9 @@ async def test_stop_ends_thinking_like_no_tools() -> None:
         is_action_tool_currently_available=lambda name: True,
         expand_message_id_aliases=lambda arguments: arguments,
         _update_stage_status=Mock(),
+        _focus_group=None,
         _reset_consecutive_wait_count=Mock(),
+        _has_pending_messages=lambda: False,
         _end_planner_continuation=Mock(),
         _enter_stop_state=Mock(),
         log_prefix="[test]",
@@ -78,7 +80,9 @@ async def test_stop_ends_thinking_like_no_tools() -> None:
 async def test_empty_no_tool_response_ends_without_retry(content: str | None) -> None:
     runtime = SimpleNamespace(
         _chat_history=[],
+        _has_pending_messages=lambda: False,
         _end_planner_continuation=Mock(),
+        _focus_group=None,
         _reset_consecutive_wait_count=Mock(),
         _enter_stop_state=Mock(),
         log_prefix="[test]",
@@ -108,3 +112,18 @@ async def test_empty_no_tool_response_ends_without_retry(content: str | None) ->
     assert state.planner_extra_lines[-1] == "状态：已结束本轮思考"
     runtime._end_planner_continuation.assert_called_once_with()
     runtime._enter_stop_state.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_focus", [False, True])
+async def test_stop_respects_shared_loop_ownership(is_focus: bool) -> None:
+    from src.core.tooling import ToolAvailabilityContext, ToolExecutionContext, ToolInvocation
+    from src.maisaka.builtin_tool import get_builtin_tools, stop
+    from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
+
+    engine = SimpleNamespace(_end_planner_no_tool_cycle=Mock())
+    ctx = SimpleNamespace(engine=engine, build_success_result=BuiltinToolRuntimeContext.build_success_result)
+    result = await stop.handle_tool(ctx, ToolInvocation(tool_name="stop", arguments={}), ToolExecutionContext(is_focus=is_focus))
+    assert result.success and result.metadata["pause_execution"] is True
+    assert engine._end_planner_no_tool_cycle.call_count == (0 if is_focus else 1)
+    assert any(tool["name"] == "stop" for tool in get_builtin_tools(ToolAvailabilityContext(is_focus=is_focus)))

@@ -56,7 +56,7 @@ def reply_context(monkeypatch):
         find_source_message_by_id=lambda message_id: source if message_id == "msg-1" else None,
         get_active_turn_trigger_message=lambda: source,
         session_id="session-1",
-        chat_stream=SimpleNamespace(platform="qq", is_group_session=True, account_id="bot", scope="group"),
+        chat_stream=SimpleNamespace(platform="qq", is_group_session=True, account_id="bot", scope="group", group_id="group", user_id=""),
         get_reply_quote_context=lambda target: None,
         log_prefix="test",
         _update_stage_status=lambda *args: None,
@@ -137,6 +137,7 @@ async def test_reply_sends_selected_picture_separately_from_at_text(reply_contex
     assert len(image_components) == 1
     assert isinstance(image_components[0], ImageComponent) and image_components[0].binary_data == b"second"
     assert generator.generate_reply_with_context.call_args.kwargs["reply_tool_args"] == {
+        "_plugin_reply_prompt": "",
         "reply_reference": "展示第二张图片",
         "attach_at": ["msg-1"], "attach_pic": [{"msg_id": "msg-1", "index": 1}],
     }

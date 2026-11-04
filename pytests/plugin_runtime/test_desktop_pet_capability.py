@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 import asyncio
 import json
 
@@ -134,7 +134,10 @@ async def test_only_internal_owner_reply_is_displayed(monkeypatch):
     assert not service._notifications
     await service.notify_reply(message("internal", "owner"))
     await asyncio.gather(*service._notifications)
-    command.assert_awaited_once_with({"type": "reply", "parts": [{"kind": "text", "text": "你好"}]})
+    assert command.await_args_list == [
+        call({"type": "show"}),
+        call({"type": "reply", "parts": [{"kind": "text", "text": "你好"}]}),
+    ]
 
 
 @pytest.mark.asyncio

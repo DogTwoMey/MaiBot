@@ -8,7 +8,7 @@ import pytest
 
 from src.maisaka.reasoning_engine import MaisakaReasoningEngine
 from src.maisaka.runtime import MaisakaHeartFlowChatting
-from src.maisaka.turn_trigger.scheduler import MessageTurnScheduler
+from src.maisaka.scenes.group.scheduling import GroupTurnScheduler
 
 
 def _runtime() -> MaisakaHeartFlowChatting:
@@ -69,7 +69,7 @@ def test_scheduler_queues_forced_reply_at_zero_frequency(monkeypatch: pytest.Mon
     runtime._get_message_quiet_period_remaining_seconds = lambda: 0.0
     log = Mock()
     monkeypatch.setattr("src.maisaka.turn_trigger.scheduler.logger", log)
-    MessageTurnScheduler(runtime).schedule_message_turn()
+    GroupTurnScheduler(runtime).schedule_message_turn()
     assert runtime._internal_turn_queue.get_nowait() == "message"
     assert "强制触发" in log.info.call_args.args[0]
 

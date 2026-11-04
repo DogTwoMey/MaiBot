@@ -221,6 +221,7 @@ describe('AuthPage URL token 自动登录', () => {
         errorMessage: 'auth.verifyFailed',
       })
     )
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/' }))
     expect(window.location.hash).toBe('#/login')
   })
 

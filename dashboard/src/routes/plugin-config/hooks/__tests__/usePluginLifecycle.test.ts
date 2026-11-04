@@ -173,6 +173,9 @@ describe('usePluginLifecycle 缺口', () => {
     expect(result.current.deleteProgress).toBeNull()
     expect(result.current.updateProgress).toBeNull()
 
+    const pending = createDeferred<{ success: boolean; message: string }>()
+    vi.mocked(uninstallPlugin).mockReturnValueOnce(pending.promise)
+    await act(async () => { void result.current.handleConfirmDeletePlugin() })
     act(() => {
       progressClient.emit(
         makeProgress({
@@ -187,6 +190,7 @@ describe('usePluginLifecycle 缺口', () => {
       operation: 'uninstall',
       progress: 30,
     })
+    await act(async () => { pending.resolve({ success: true, message: 'done' }) })
   })
 
   it('仓库地址为空字符串时按缺仓库处理，不调用更新接口', async () => {

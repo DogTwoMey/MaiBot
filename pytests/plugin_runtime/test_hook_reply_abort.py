@@ -67,7 +67,7 @@ def reply_context(monkeypatch):
     target = SimpleNamespace(message_id="m1")
     runtime = SimpleNamespace(
         session_id="test-session", log_prefix="[test]", _chat_history=[],
-        chat_stream=SimpleNamespace(platform="qq", is_group_session=True),
+        chat_stream=SimpleNamespace(platform="qq", is_group_session=True, group_id="group-1", user_id="", account_id="bot"),
         find_source_message_by_id=lambda message_id: target,
         get_active_turn_trigger_message=lambda: None,
         _update_stage_status=Mock(), record_planner_reply=Mock(),
@@ -84,7 +84,7 @@ def reply_context(monkeypatch):
     )
     monkeypatch.setattr(reply.replyer_manager, "get_replyer", lambda **kwargs: generator)
     extension = SimpleNamespace(
-        prepare=AsyncMock(), targets=[], reply_id="reply-1", parameters={},
+        prepare=AsyncMock(), targets=[], reply_id="reply-1", parameters={}, extra_prompt="",
     )
     monkeypatch.setattr(reply, "ReplyExtensionExecution", lambda **kwargs: extension)
     return generator, context

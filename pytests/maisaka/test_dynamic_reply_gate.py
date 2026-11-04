@@ -177,7 +177,7 @@ def test_messages_are_counted_once() -> None:
 
 
 def _build_runtime(*, is_group: bool, history: list) -> SimpleNamespace:
-    return SimpleNamespace(chat_stream=SimpleNamespace(is_group_session=is_group), _chat_history=history)
+    return SimpleNamespace(chat_stream=SimpleNamespace(is_group_session=is_group), _chat_history=history, log_prefix="[test]")
 
 
 def _build_message(message_id: str, text: str, *, is_mentioned: bool = False, is_at: bool = False) -> SimpleNamespace:
@@ -231,10 +231,16 @@ def test_turn_gate_counts_each_message_once_and_reads_history() -> None:
 
 
 def test_turn_gate_passes_private_chat_and_ignores_empty_batches() -> None:
-    private_gate = DynamicReplyTurnGate(_build_runtime(is_group=False, history=[]))
+    from src.maisaka.scenes.private.scheduling import PrivateTurnScheduler
+
+    private_runtime = _build_runtime(is_group=False, history=[])
+    private_runtime.message_cache = [_build_message("m1", "在吗")]
+    private_runtime._last_processed_index = 0
+    private_runtime._has_forced_turn_trigger = lambda: False
+    private_gate = PrivateTurnScheduler(private_runtime)
     group_gate = DynamicReplyTurnGate(_build_runtime(is_group=True, history=[]))
 
-    assert private_gate.evaluate(pending_messages=[_build_message("m1", "在吗")], frequency=0.1).should_trigger is True
+    assert private_gate._evaluate_scene(1, 0.1).should_trigger is True
     assert group_gate.evaluate(pending_messages=[], frequency=1.0).should_trigger is False
 
 

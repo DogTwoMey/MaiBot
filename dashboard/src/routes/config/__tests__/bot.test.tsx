@@ -411,6 +411,9 @@ async function enterDetailMode(
   if (formTestId === 'form-personality' && !screen.queryByTestId(formTestId)) {
     await selectConfigPage(user, '人格')
   }
+  if (formTestId === 'form-ChatSectionRoot' && !screen.queryByTestId(formTestId)) {
+    await selectConfigPage(user, '聊天')
+  }
   await screen.findByTestId(formTestId)
 }
 

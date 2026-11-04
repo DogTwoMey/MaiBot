@@ -1000,7 +1000,7 @@ describe('usePluginLifecycle', () => {
   })
 
   it('进度订阅只写入匹配的更新/卸载插件，卸载后忽略后续事件', async () => {
-    const plugin = makePlugin('test.emoji', { manifest: { name: 'Emoji Plugin' } })
+    const plugin = makePlugin('test.emoji', { manifest: { name: 'Emoji Plugin', repository_url: 'https://example.com/plugin.git' } })
     const other = makePlugin('other.plugin')
     const { result, unmount } = renderLifecycle()
     await waitFor(() => expect(progressClient.subscribe).toHaveBeenCalled())
@@ -1008,6 +1008,14 @@ describe('usePluginLifecycle', () => {
     act(() => result.current.openUpdatePluginDialog(plugin, makeClickEvent()))
     act(() => result.current.openDeletePluginDialog(plugin, makeClickEvent()))
     await waitFor(() => expect(progressClient.listener).toBeTruthy())
+    const update = createDeferred<{ success: boolean }>()
+    const remove = createDeferred<{ success: boolean; message: string }>()
+    vi.mocked(updatePlugin).mockReturnValueOnce(update.promise as never)
+    vi.mocked(uninstallPlugin).mockReturnValueOnce(remove.promise)
+    await act(async () => {
+      void result.current.handleConfirmUpdatePlugin()
+      void result.current.handleConfirmDeletePlugin()
+    })
 
     act(() => {
       progressClient.emit(
@@ -1040,6 +1048,10 @@ describe('usePluginLifecycle', () => {
       plugin_id: 'test.emoji',
     })
 
+    await act(async () => {
+      update.resolve({ success: true })
+      remove.resolve({ success: true, message: 'done' })
+    })
     unmount()
     expect(progressClient.cleanup).toHaveBeenCalled()
     expect(() =>

@@ -2273,8 +2273,11 @@ describe('PluginConfigPage 列表操作与状态', () => {
 
   it('卸载进度订阅写入删除对话框', async () => {
     const user = userEvent.setup()
+    let finish!: (value: { success: boolean; message: string }) => void
+    vi.mocked(pluginApi.uninstallPlugin).mockReturnValueOnce(new Promise(resolve => { finish = resolve }) as never)
     renderPage()
     await user.click(await screen.findByRole('button', { name: '删除' }))
+    await user.click(screen.getByRole('button', { name: '确认删除' }))
     act(() => {
       progressClient.emit({
         operation: 'uninstall',
@@ -2288,6 +2291,7 @@ describe('PluginConfigPage 列表操作与状态', () => {
     })
     expect(await screen.findByText('正在移除文件')).toBeInTheDocument()
     expect(screen.getByText('55%')).toBeInTheDocument()
+    await act(async () => { finish({ success: true, message: 'done' }) })
   })
 })
 

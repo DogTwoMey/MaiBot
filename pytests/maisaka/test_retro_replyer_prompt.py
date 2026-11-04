@@ -335,7 +335,7 @@ def read_item_text(item: Any) -> str:
 def isolate_retro_blocks(generator: BaseMaisakaReplyGenerator, monkeypatch: pytest.MonkeyPatch) -> None:
     """隔离注意事项块和关键词反应块，避免测试依赖聊天流与关键词配置。"""
 
-    monkeypatch.setattr(generator, "_build_group_chat_attention_block", lambda session_id: "")
+    monkeypatch.setattr(generator, "_build_chat_attention_block", lambda session_id: "")
     monkeypatch.setattr(generator, "_build_keyword_reaction_prompt", lambda **kwargs: "")
 
 
@@ -399,7 +399,7 @@ def test_retro_keeps_persona_in_system_and_reply_style_in_user(
     set_locale(locale)
     monkeypatch.setattr(generator, "_select_retro_prompt_name", lambda **kwargs: prompt_name)
     monkeypatch.setattr(generator, "_build_personality_prompt", lambda: "PERSONA_BLOCK")
-    monkeypatch.setattr(generator, "_build_group_chat_attention_block", lambda session_id: "GUIDELINES_BLOCK")
+    monkeypatch.setattr(generator, "_build_chat_attention_block", lambda session_id: "GUIDELINES_BLOCK")
     monkeypatch.setattr(generator, "_select_temporary_reply_style", lambda: "REPLY_STYLE_BLOCK")
     items = generator._build_retro_request_messages(
         mai_replier=True,

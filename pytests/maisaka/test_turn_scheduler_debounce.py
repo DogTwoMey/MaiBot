@@ -8,9 +8,12 @@ from src.common.utils import utils_config
 from src.common.utils.utils_config import ChatConfigUtils
 from src.config.official_configs import PrivateReplyPauseRule
 from src.maisaka.focus.manager import FocusModeManager
+from src.maisaka.focus import manager as focus_manager_module
+from src.maisaka.scenes.group import behavior as group_behavior
+from src.maisaka.scenes.private import behavior as private_behavior
+from src.maisaka.scenes.group.scheduling import GroupTurnScheduler
 from src.maisaka import runtime as runtime_module
 from src.maisaka.runtime import MaisakaHeartFlowChatting
-from src.maisaka.turn_trigger import scheduler as scheduler_module
 from src.maisaka.turn_trigger.scheduler import MessageTurnScheduler
 
 
@@ -20,7 +23,10 @@ def test_group_and_private_debounce_waits_and_hot_reload_are_independent(
     monkeypatch: pytest.MonkeyPatch, group_mode: str, private_mode: str
 ) -> None:
     timing = SimpleNamespace(message_debounce_mode=group_mode, private_message_debounce_mode=private_mode)
-    monkeypatch.setattr(runtime_module, "global_config", SimpleNamespace(chat=SimpleNamespace(reply_timing=timing)))
+    config = SimpleNamespace(chat=SimpleNamespace(reply_timing=timing))
+    monkeypatch.setattr(runtime_module, "global_config", config)
+    monkeypatch.setattr(group_behavior, "global_config", config)
+    monkeypatch.setattr(private_behavior, "global_config", config)
     monkeypatch.setattr(runtime_module.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(runtime_module.time, "time", lambda: 1000.0)
     monkeypatch.setattr(runtime_module, "is_bot_self", lambda platform, user_id: False)
@@ -64,14 +70,10 @@ def _build_scheduler(
     agent_state: str = "running",
     steering: bool = False,
 ) -> tuple[MessageTurnScheduler, SimpleNamespace]:
-    monkeypatch.setattr(
-        scheduler_module,
-        "global_config",
-        SimpleNamespace(chat=SimpleNamespace(reply_timing=SimpleNamespace(planner_message_steering=steering))),
-    )
     runtime = SimpleNamespace(
         _agent_state=agent_state,
         _STATE_WAIT="wait",
+        _pending_wait_started_at=100.0,
         _message_turn_scheduled=False,
         chat_stream=SimpleNamespace(is_group_session=True),
         _get_pending_message_count=lambda: 1,
@@ -88,7 +90,10 @@ def _build_scheduler(
         _last_processed_index=0,
         log_prefix="[test]",
     )
-    scheduler = MessageTurnScheduler(runtime)
+    scheduler = GroupTurnScheduler(runtime)
+    scheduler._idle_backoff = runtime._idle_backoff
+    if steering:
+        scheduler._resume_wait_on_message = Mock(return_value=True)
     scheduler._dynamic_reply_gate = Mock()
     scheduler._dynamic_reply_gate.evaluate.return_value = SimpleNamespace(decision="trigger", detail="")
     return scheduler, runtime
@@ -212,7 +217,9 @@ def test_paused_private_consumes_messages_without_forced_or_dynamic_gate(monkeyp
 
 def test_paused_private_cannot_bypass_pause_through_focus(monkeypatch: pytest.MonkeyPatch) -> None:
     manager = FocusModeManager()
-    monkeypatch.setattr(manager, "is_enabled_for_chat", lambda **kwargs: True)
+    monkeypatch.setattr(focus_manager_module.global_config.experimental, "focus_mode", True)
+    monkeypatch.setattr(private_behavior.global_config.experimental, "focus_on_private", True)
+    monkeypatch.setattr(manager, "get_focus_scope_key", lambda session_id: "shared")
     pause_check = Mock(return_value=True)
     monkeypatch.setattr(ChatConfigUtils, "is_private_reply_paused", pause_check)
 

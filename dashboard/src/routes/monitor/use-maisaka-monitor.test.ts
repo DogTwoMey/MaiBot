@@ -580,9 +580,8 @@ describe('阶段状态', () => {
     expect(view.result.current.stageStatuses.size).toBe(2)
     expect(view.result.current.stageStatuses.get('session-a')?.stage).toBe('回复中')
     expect(view.result.current.stageStatuses.get('session-b')?.stage).toBe('思考中')
-    // 快照事件不进时间线也不更新会话
     expect(view.result.current.allTimeline).toHaveLength(0)
-    expect(view.result.current.sessions.size).toBe(0)
+    expect([...view.result.current.sessions.keys()]).toEqual(['session-a', 'session-b'])
   })
 
   it('stage.removed 移除对应会话的阶段状态', async () => {
@@ -1230,7 +1229,9 @@ describe('子代理任务', () => {
       taskId: 'subagent-1',
       callId: 'call-1',
       status: 'running',
-      background: true,
+      startedAt: 110,
+      maxRounds: 5,
+      grantedTools: ['docs_search'],
       toolUsage: { docs_search: 1 },
     })
     expect(runningTask.rounds[0].toolCalls[0].result).toEqual({

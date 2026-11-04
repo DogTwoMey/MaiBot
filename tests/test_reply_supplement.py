@@ -75,12 +75,12 @@ async def test_failed_supplement_keeps_body_generation_running(monkeypatch):
         raise ValueError("重生成后仍无效")
 
     runtime = SimpleNamespace(
-        session_id="test", chat_stream=SimpleNamespace(platform="test"), _chat_history=[], log_prefix="test",
+        session_id="test", chat_stream=SimpleNamespace(platform="test", is_group_session=True, group_id="group", user_id=""), _chat_history=[], log_prefix="test",
         get_active_turn_trigger_message=lambda: None,
         _update_stage_status=Mock(), build_retro_reply_history=Mock(),
     )
     tool_ctx = SimpleNamespace(runtime=runtime, build_failure_result=Mock())
-    extension = SimpleNamespace(prepare=AsyncMock(), targets=[], reply_id="test")
+    extension = SimpleNamespace(prepare=AsyncMock(), targets=[], reply_id="test", extra_prompt="")
     monkeypatch.setattr(reply, "ReplyExtensionExecution", Mock(return_value=extension))
     monkeypatch.setattr(reply.replyer_manager, "get_replyer", Mock(return_value=SimpleNamespace(
         generate_reply_with_context=generate_body,
