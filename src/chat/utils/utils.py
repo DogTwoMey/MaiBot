@@ -1,11 +1,7 @@
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List, Optional, Tuple
 
-import ast
 import asyncio
-import json
-import os
 import random
 import re
 import time
@@ -20,7 +16,6 @@ from src.services.bot_account_service import get_bot_accounts
 from src.services.embedding_service import EmbeddingServiceClient
 
 from .llm_sentence_splitter import split_text_with_llm
-from .typo_generator import ChineseTypoGenerator
 
 if TYPE_CHECKING:
     from src.common.data_models.chat_target_info_data_model import ChatTargetInfo
@@ -37,6 +32,8 @@ class ProcessedResponseSegment:
     quote_previous: bool = False
     # 原始文本中紧跟本段的分隔符；多条消息被压缩合并为一条时，用它恢复句间的停顿
     separator: str = ""
+    # 纠正内容始终独占一条消息，不依赖是否启用引用。
+    is_correction: bool = False
 
 
 def is_english_letter(char: str) -> bool:
@@ -65,7 +62,7 @@ def parse_platform_accounts(platforms: list[str]) -> dict[str, str]:
 
 
 def _get_configured_qq_account() -> str:
-    qq_account = str(getattr(global_config.bot, "qq_account", "")).strip()
+    qq_account = global_config.bot.qq_account.strip()
     if qq_account in {"", "0"}:
         return ""
     return qq_account
@@ -94,11 +91,11 @@ def get_configured_bot_accounts() -> dict[str, str]:
         primary_platform = str(global_config.bot.platform or "qq").strip().lower()
         bot_accounts[primary_platform] = qq_account
 
-    platforms_list = getattr(global_config.bot, "platforms", []) or []
+    platforms_list = global_config.bot.platforms
     platform_accounts = parse_platform_accounts(platforms_list)
 
     for platform_name, account in platform_accounts.items():
-        if platform_name in {"qq", "webui"}:
+        if platform_name in {"qq", "webui", "internal"}:
             continue
         bot_accounts[platform_name] = account
 
@@ -146,118 +143,11 @@ def _has_at_component_targeting_bot(message: SessionMessage, platform: str) -> b
     return False
 
 
-def is_mentioned_bot_in_message(message: SessionMessage) -> tuple[bool, bool, float]:
-    """检查消息是否提到了机器人（统一多平台实现）"""
-    text = message.processed_plain_text or ""
-    platform = str(message.platform or "").strip().lower()
+def is_mentioned_bot_in_message(message: SessionMessage, *, is_group_chat: bool = True) -> Tuple[bool, bool, float]:
+    """兼容统一多平台入口，识别行为由对应聊天场景负责。"""
+    from src.maisaka.scenes.factory import get_scene
 
-    current_accounts = get_bot_accounts(platform)
-
-    nickname = str(global_config.bot.nickname or "")
-    alias_names = list(getattr(global_config.bot, "alias_names", []) or [])
-    keywords = [nickname] + alias_names
-
-    reply_probability = 0.0
-    is_at = False
-    is_mentioned = False
-
-    # 1) 直接的 additional_config 标记
-    add_cfg = getattr(message.message_info, "additional_config", None) or {}
-    if isinstance(add_cfg, dict):
-        if add_cfg.get("at_bot") or add_cfg.get("is_mentioned"):
-            is_mentioned = True
-            if add_cfg.get("at_bot"):
-                is_at = True
-            # 当提供数值型 is_mentioned 时，当作概率提升；布尔提及标记只负责标记命中。
-            raw_mention_boost = add_cfg.get("is_mentioned")
-            if raw_mention_boost not in (None, "") and not isinstance(raw_mention_boost, bool):
-                reply_probability = float(raw_mention_boost)
-
-    # 2) 已经在上游设置过的 message.is_at / message.is_mentioned
-    if getattr(message, "is_at", False):
-        is_at = True
-        is_mentioned = True
-    if getattr(message, "is_mentioned", False):
-        is_mentioned = True
-
-    # 3) 扫描分段：是否包含 mention_bot（适配器插入）
-    def _has_mention_bot(seg) -> bool:
-        try:
-            if seg is None:
-                return False
-            if getattr(seg, "type", None) == "mention_bot":
-                return True
-            if getattr(seg, "type", None) == "seglist":
-                for s in getattr(seg, "data", []) or []:
-                    if _has_mention_bot(s):
-                        return True
-            return False
-        except Exception:
-            return False
-
-    if _has_mention_bot(getattr(message, "message_segment", None)):
-        is_at = True
-        is_mentioned = True
-
-    # 4) 结构化 @ 组件检测。处理后的文本可能只剩群名片，不能依赖文本里的显示名判断。
-    if not is_at and _has_at_component_targeting_bot(message, platform):
-        is_at = True
-        is_mentioned = True
-
-    # 5) 统一的 @ 检测逻辑
-    if current_accounts and not is_at and not is_mentioned:
-        for current_account in current_accounts:
-            pattern = (
-                rf"@<(.+?):{re.escape(current_account)}>"
-                if platform == "qq"
-                else rf"@{re.escape(current_account)}(\b|$)"
-            )
-            if re.search(pattern, text, flags=re.IGNORECASE):
-                is_at = True
-                is_mentioned = True
-                break
-
-    # 6) 统一的回复检测逻辑
-    if not is_mentioned:
-        # 通用回复格式：包含 "(你)" 或 "（你）"
-        if re.search(r"\[回复 .*?\(你\)：", text) or re.search(r"\[回复 .*?（你）：", text):
-            is_mentioned = True
-        # ID 形式的回复检测
-        elif current_accounts:
-            for current_account in current_accounts:
-                if re.search(rf"\[回复 (.+?)\({re.escape(current_account)}\)：(.+?)\]，说：", text):
-                    is_mentioned = True
-                    break
-                if re.search(
-                    rf"\[回复<(.+?)(?=:{re.escape(current_account)}>)\:{re.escape(current_account)}>：(.+?)\]，说：",
-                    text,
-                ):
-                    is_mentioned = True
-                    break
-
-    # 7) 名称/别名 提及（去除 @/回复标记后再匹配）
-    if not is_mentioned and keywords:
-        msg_content = text
-        # 去除各种 @ 与 回复标记，避免误判
-        msg_content = re.sub(r"@(.+?)（(\d+)）", "", msg_content)
-        msg_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", msg_content)
-        msg_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id|你)\)：(.+?)\]，说：", "", msg_content)
-        msg_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", msg_content)
-        for kw in keywords:
-            if kw and kw in msg_content:
-                is_mentioned = True
-                break
-
-    # 8) 概率设置
-    reply_timing_config = global_config.chat.reply_timing
-    if is_at and reply_timing_config.inevitable_at_reply:
-        reply_probability = 1.0
-        logger.debug("被@，回复概率设置为100%")
-    elif is_mentioned and reply_timing_config.mentioned_bot_reply:
-        reply_probability = max(reply_probability, 1.0)
-        logger.debug("被提及，回复概率设置为100%")
-
-    return is_mentioned, is_at, reply_probability
+    return get_scene(is_group_chat).detect_mentions(message)
 
 
 async def get_embedding(text: str, request_type: str = "embedding") -> Optional[List[float]]:
@@ -278,7 +168,6 @@ async def get_embedding(text: str, request_type: str = "embedding") -> Optional[
         logger.error(f"获取embedding失败: {str(e)}")
         embedding = None
     return embedding
-
 
 def _split_into_sentence_segments(text: str) -> list[tuple[str, str]]:
     """将文本分割成 (句子, 尾随分隔符) 元组，并根据概率合并
@@ -469,10 +358,10 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
 
 
 def _merge_processed_segments_to_max_count(
-    segments: list[ProcessedResponseSegment],
+    segments: List[ProcessedResponseSegment],
     max_count: int,
-) -> list[ProcessedResponseSegment]:
-    """压缩回复段数量，并优先让需要引用的纠正内容保持在消息开头。"""
+) -> List[ProcessedResponseSegment]:
+    """压缩回复段数量；纠正内容独占消息所需的边界优先于条数上限。"""
 
     if len(segments) <= max_count:
         return segments
@@ -480,11 +369,16 @@ def _merge_processed_segments_to_max_count(
         return []
 
     segment_count = len(segments)
-    required_starts = [index for index, segment in enumerate(segments) if index > 0 and segment.quote_previous]
-    group_starts = {0, *required_starts[: max_count - 1]}
+    group_starts = {0}
+    for index, segment in enumerate(segments):
+        if segment.is_correction or segment.quote_previous:
+            # 同时保留纠正段前后的边界，避免它吞入后续正文；上限不足时也不能舍弃。
+            group_starts.add(index)
+            if index + 1 < segment_count:
+                group_starts.add(index + 1)
 
     # 在保留纠正消息边界后，沿用原来的均匀分组策略填充其余可用分组。
-    evenly_spaced_starts: list[int] = []
+    evenly_spaced_starts: List[int] = []
     start_index = 0
     for group_index in range(max_count):
         remaining_segments = segment_count - start_index
@@ -499,12 +393,12 @@ def _merge_processed_segments_to_max_count(
         group_starts.add(candidate_start)
 
     sorted_starts = sorted(group_starts)
-    merged_segments: list[ProcessedResponseSegment] = []
+    merged_segments: List[ProcessedResponseSegment] = []
     for group_index, group_start in enumerate(sorted_starts):
         group_end = sorted_starts[group_index + 1] if group_index + 1 < len(sorted_starts) else segment_count
         group = segments[group_start:group_end]
         # 组内多段被压缩为一条消息时，补回各段尾随的分隔符，避免多句硬拼接成无标点的一整坨
-        merged_text_parts: list[str] = []
+        merged_text_parts: List[str] = []
         for position, segment in enumerate(group):
             merged_text_parts.append(segment.text)
             if position < len(group) - 1:
@@ -514,37 +408,11 @@ def _merge_processed_segments_to_max_count(
                 text="".join(merged_text_parts),
                 quote_previous=group[0].quote_previous,
                 separator=group[-1].separator,
+                is_correction=group[0].is_correction,
             )
         )
 
     return merged_segments
-
-
-def random_remove_punctuation(text: str) -> str:
-    """随机处理标点符号，模拟人类打字习惯
-
-    Args:
-        text: 要处理的文本
-
-    Returns:
-        str: 处理后的文本
-    """
-    result = ""
-    text_len = len(text)
-
-    for i, char in enumerate(text):
-        if char == "。" and i == text_len - 1:  # 结尾的句号
-            if random.random() > 0.1:  # 90%概率删除结尾句号
-                continue
-        elif char == "，":
-            rand = random.random()
-            if rand < 0.05:  # 5%概率删除逗号
-                continue
-            elif rand < 0.25:  # 20%概率把逗号变成空格
-                result += " "
-                continue
-        result += char
-    return result
 
 
 def _get_random_default_reply() -> str:
@@ -561,50 +429,16 @@ def _get_random_default_reply() -> str:
     return random.choice(default_replies)
 
 
-def _apply_response_post_processing(
-    split_sentences: list[tuple[str, str]],
-    enable_chinese_typo: bool,
-) -> list[ProcessedResponseSegment]:
-    """对已完成断句的文本执行错别字注入和纠正段处理。"""
-    # 两种断句模式共用此入口：关闭功能时不构建生成器，启用时复用共享数据。
-    typo_generator = None
-    if global_config.chinese_typo.enable and enable_chinese_typo:
-        typo_generator = ChineseTypoGenerator(
-            error_rate=global_config.chinese_typo.error_rate,
-            min_freq=global_config.chinese_typo.min_freq,
-            tone_error_rate=global_config.chinese_typo.tone_error_rate,
-            word_replace_rate=global_config.chinese_typo.word_replace_rate,
-        )
-    segments: list[ProcessedResponseSegment] = []
-    for sentence, sentence_separator in split_sentences:
-        if typo_generator is not None:
-            typoed_text, typo_corrections = typo_generator.create_typo_sentence(sentence)
-            if typo_corrections:
-                if random.random() < 0.5:
-                    quote_previous = (
-                        global_config.chinese_typo.enable_correction_quote
-                        and random.random() < global_config.chinese_typo.correction_quote_probability
-                    )
-                    segments.append(ProcessedResponseSegment(typoed_text, separator=sentence_separator))
-                    segments.append(ProcessedResponseSegment(typo_corrections, quote_previous=quote_previous))
-                else:
-                    segments.append(ProcessedResponseSegment(sentence, separator=sentence_separator))
-            else:
-                segments.append(ProcessedResponseSegment(typoed_text, separator=sentence_separator))
-        else:
-            segments.append(ProcessedResponseSegment(sentence, separator=sentence_separator))
-    return segments
+@dataclass(frozen=True)
+class _PreparedResponse:
+    segments: List[ProcessedResponseSegment]
+    overflow_text: Optional[str] = None
+    kaomoji_mapping: Optional[Dict[str, str]] = None
 
 
-def process_llm_response_segments(
-    text: str,
-    enable_splitter: bool = True,
-    enable_chinese_typo: bool = True,
-) -> list[ProcessedResponseSegment]:
-    """处理回复文本，并保留错别字纠正消息的引用提示。"""
-
+def _prepare_rule_response(text: str, enable_splitter: bool) -> _PreparedResponse:
     if not global_config.response_post_process.enable_response_post_process:
-        return [ProcessedResponseSegment(text)]
+        return _PreparedResponse([ProcessedResponseSegment(text)])
 
     # 先保护颜文字
     if global_config.response_splitter.enable_kaomoji_protection:
@@ -620,94 +454,102 @@ def process_llm_response_segments(
     cleaned_text = pattern.sub("", protected_text)
 
     if cleaned_text == "":
-        return [ProcessedResponseSegment("呃呃")]
+        return _PreparedResponse([ProcessedResponseSegment("呃呃")])
 
     logger.debug(f"{text}去除括号处理后的文本: {cleaned_text}")
 
     # 对清理后的文本进行进一步处理
     max_length = global_config.response_splitter.max_length * 2
-    max_sentence_num = global_config.response_splitter.max_sentence_num
-    max_split_num = global_config.response_splitter.max_split_num
     # 如果基本上是中文，则进行长度过滤
     if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
         logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
-        return [ProcessedResponseSegment(_get_random_default_reply())]
+        return _PreparedResponse([ProcessedResponseSegment(_get_random_default_reply())])
 
     if global_config.response_splitter.enable and enable_splitter:
         split_sentences = _split_into_sentence_segments(cleaned_text)
     else:
         split_sentences = [(cleaned_text, "")]
 
-    segments = _apply_response_post_processing(split_sentences, enable_chinese_typo)
+    return _PreparedResponse(
+        [ProcessedResponseSegment(sentence, separator=separator) for sentence, separator in split_sentences],
+        overflow_text=cleaned_text,
+        kaomoji_mapping=kaomoji_mapping,
+    )
 
-    if len(segments) > max_sentence_num:
-        if global_config.response_splitter.enable_overflow_return_all:
-            logger.warning(f"分割后消息数量过多 ({len(segments)} 条)，直接返回原文")
-            segments = [ProcessedResponseSegment(cleaned_text)]
-        else:
-            logger.warning(f"分割后消息数量过多 ({len(segments)} 条)，返回默认回复")
+
+def _finish_response(
+    prepared: _PreparedResponse, segments: List[ProcessedResponseSegment]
+) -> List[ProcessedResponseSegment]:
+    if prepared.overflow_text is None:
+        return segments
+    splitter = global_config.response_splitter
+    if len(segments) > splitter.max_sentence_num:
+        if not splitter.enable_overflow_return_all:
+            logger.warning("分割后消息数量过多 (%s 条)，返回默认回复", len(segments))
             return [ProcessedResponseSegment(_get_random_default_reply())]
+        logger.warning("分割后消息数量过多 (%s 条)，直接返回原文", len(segments))
+        segments = [ProcessedResponseSegment(prepared.overflow_text)]
 
-    segments = _merge_processed_segments_to_max_count(segments, max_split_num)
+    segments = _merge_processed_segments_to_max_count(segments, splitter.max_split_num)
 
-    # if extracted_contents:
-    #     for content in extracted_contents:
-    #         sentences.append(content)
-
-    # 在所有句子处理完毕后，对包含占位符的列表进行恢复
-    if global_config.response_splitter.enable_kaomoji_protection:
-        recovered_sentences = recover_kaomoji([segment.text for segment in segments], kaomoji_mapping)
+    # 保留尾随分隔符和纠正标记，只恢复各段中的颜文字占位符。
+    if prepared.kaomoji_mapping:
+        recovered_sentences = recover_kaomoji([segment.text for segment in segments], prepared.kaomoji_mapping)
         segments = [
             ProcessedResponseSegment(
                 text=recovered_text,
                 quote_previous=segment.quote_previous,
                 separator=segment.separator,
+                is_correction=segment.is_correction,
             )
             for segment, recovered_text in zip(segments, recovered_sentences, strict=True)
         ]
-
     return segments
+
+
+def process_llm_response_segments(text: str, enable_splitter: bool = True) -> List[ProcessedResponseSegment]:
+    """同步处理文本分段及压缩。"""
+    prepared = _prepare_rule_response(text, enable_splitter)
+    return _finish_response(prepared, prepared.segments)
 
 
 async def process_llm_response_segments_async(
     text: str,
     enable_splitter: bool = True,
-    enable_chinese_typo: bool = True,
-) -> list[ProcessedResponseSegment]:
-    """异步处理回复文本，支持使用 LLM 按语义断句。"""
-    if global_config.response_splitter.mode != "llm":
-        return await asyncio.to_thread(process_llm_response_segments, text, enable_splitter, enable_chinese_typo)
-
-    if not global_config.response_post_process.enable_response_post_process or not enable_splitter:
-        return await asyncio.to_thread(process_llm_response_segments, text, enable_splitter, enable_chinese_typo)
-
-    try:
-        split_sentences = await split_text_with_llm(text)
-    except Exception:
-        logger.exception("LLM 断句失败")
-        raise
-
-    # 数据首次加载和错别字计算交给线程执行，避免占住聊天事件循环。
-    segments = await asyncio.to_thread(_apply_response_post_processing, split_sentences, enable_chinese_typo)
-    max_sentence_num = global_config.response_splitter.max_sentence_num
-    if len(segments) > max_sentence_num:
-        if global_config.response_splitter.enable_overflow_return_all:
-            return [ProcessedResponseSegment(text)]
-        return [ProcessedResponseSegment(_get_random_default_reply())]
-    return _merge_processed_segments_to_max_count(segments, global_config.response_splitter.max_split_num)
-
-
-def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese_typo: bool = True) -> list[str]:
-    """处理回复文本，并返回兼容旧调用链的纯文本列表。"""
-
-    return [
-        segment.text
-        for segment in process_llm_response_segments(
-            text,
-            enable_splitter=enable_splitter,
-            enable_chinese_typo=enable_chinese_typo,
+    *,
+    transform_segments: Optional[
+        Callable[[List[ProcessedResponseSegment]], Awaitable[List[ProcessedResponseSegment]]]
+    ] = None,
+) -> List[ProcessedResponseSegment]:
+    """分段后允许异步处理器修改回复，再执行条数限制和压缩。"""
+    splitter = global_config.response_splitter
+    if (
+        splitter.mode == "llm"
+        and global_config.response_post_process.enable_response_post_process
+        and splitter.enable
+        and enable_splitter
+    ):
+        try:
+            split_sentences = await split_text_with_llm(text)
+        except Exception as exc:
+            logger.warning(f"LLM 断句失败，本次回复不断句：{exc}")
+            split_sentences = [(text, "")]
+        prepared = _PreparedResponse(
+            [ProcessedResponseSegment(sentence, separator=separator) for sentence, separator in split_sentences],
+            overflow_text=text,
         )
-    ]
+    else:
+        prepared = await asyncio.to_thread(_prepare_rule_response, text, enable_splitter)
+
+    segments = prepared.segments
+    if transform_segments is not None and prepared.overflow_text is not None and segments:
+        segments = await transform_segments(segments)
+    return await asyncio.to_thread(_finish_response, prepared, segments)
+
+
+def process_llm_response(text: str, enable_splitter: bool = True) -> List[str]:
+    """处理回复文本，并返回兼容旧调用链的纯文本列表。"""
+    return [segment.text for segment in process_llm_response_segments(text, enable_splitter)]
 
 
 def calculate_typing_time(
@@ -716,6 +558,7 @@ def calculate_typing_time(
     chinese_time: float = 0.3,
     english_time: float = 0.15,
     is_emoji: bool = False,
+    is_image: bool = False,
 ) -> float:
     """
     计算输入字符串所需的时间，中文和英文字符有不同的输入时间
@@ -723,11 +566,12 @@ def calculate_typing_time(
         chinese_time (float): 中文字符的输入时间，默认为0.2秒
         english_time (float): 英文字符的输入时间，默认为0.1秒
         is_emoji (bool): 是否为emoji，默认为False
+        is_image (bool): 是否为纯图片消息，默认为False
 
     特殊情况：
     - 如果只有一个中文字符，将使用3倍的中文输入时间
     - 在所有输入结束后，额外加上回车时间0.3秒
-    - 如果is_emoji为True，将使用固定1秒的输入时间
+    - 如果is_emoji或is_image为True，将使用固定1秒的输入时间，再应用打字速度配置
     """
     # chinese_time *= 1 / typing_speed_multiplier
     # english_time *= 1 / typing_speed_multiplier
@@ -735,14 +579,14 @@ def calculate_typing_time(
     chinese_chars = sum("\u4e00" <= char <= "\u9fff" for char in input_string)
 
     # 如果只有一个中文字符，使用3倍时间
-    if chinese_chars == 1 and len(input_string.strip()) == 1:
+    if not (is_emoji or is_image) and chinese_chars == 1 and len(input_string.strip()) == 1:
         return chinese_time * 3 + 0.3  # 加上回车时间
 
     # 正常计算所有字符的输入时间
     total_time = 0.0
     for char in input_string:
         total_time += chinese_time if "\u4e00" <= char <= "\u9fff" else english_time
-    if is_emoji:
+    if is_emoji or is_image:
         total_time = 1
 
     typing_speed = global_config.response_post_process.typing_speed
@@ -945,145 +789,3 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional["ChatTar
         logger.error(f"获取聊天类型和目标信息时出错 for {chat_id}: {e}", exc_info=True)
 
     return is_group_chat, chat_target_info
-
-
-def record_replyer_action_temp(chat_id: str, reason: str, think_level: int) -> None:
-    """
-    临时记录replyer动作被选择的信息（仅群聊）
-
-    Args:
-        chat_id: 聊天ID
-        reason: 选择理由
-        think_level: 思考深度等级
-    """
-    try:
-        # 确保data/temp目录存在
-        temp_dir = "data/temp"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # 创建记录数据
-        record_data = {
-            "chat_id": chat_id,
-            "reason": reason,
-            "think_level": think_level,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        # 生成文件名（使用时间戳避免冲突）
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"replyer_action_{timestamp_str}.json"
-        filepath = os.path.join(temp_dir, filename)
-
-        # 写入文件
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(record_data, f, ensure_ascii=False, indent=2)
-
-        logger.debug(f"已记录replyer动作选择: chat_id={chat_id}, think_level={think_level}")
-    except Exception as e:
-        logger.warning(f"记录replyer动作选择失败: {e}")
-
-
-def assign_message_ids(messages: List[SessionMessage]) -> List[Tuple[str, SessionMessage]]:
-    """
-    为消息列表中的每个消息分配唯一的简短随机ID
-
-    Args:
-        messages: 消息列表
-
-    Returns:
-        List[SessionMessage]: 分配了唯一ID的消息列表
-    """
-    result: List[Tuple[str, SessionMessage]] = []  # 复制原始消息列表
-    used_ids = set()
-    len_i = len(messages)
-    if len_i > 100:
-        a = 10
-        b = 99
-    else:
-        a = 1
-        b = 9
-
-    for i, message in enumerate(messages):
-        # 生成唯一的简短ID
-        while True:
-            # 使用索引+随机数生成简短ID
-            random_suffix = random.randint(a, b)
-            message_id = f"m{i + 1}{random_suffix}"
-
-            if message_id not in used_ids:
-                used_ids.add(message_id)
-                break
-        result.append((message_id, message))
-
-    return result
-
-
-#                 break
-#         result.append((message_id, message))
-
-#     return result
-
-
-def parse_keywords_string(keywords_input) -> list[str]:
-    # sourcery skip: use-contextlib-suppress
-    """
-    统一的关键词解析函数，支持多种格式的关键词字符串解析
-
-    支持的格式：
-    1. 字符串列表格式：'["utils.py", "修改", "代码", "动作"]'
-    2. 斜杠分隔格式：'utils.py/修改/代码/动作'
-    3. 逗号分隔格式：'utils.py,修改,代码,动作'
-    4. 空格分隔格式：'utils.py 修改 代码 动作'
-    5. 已经是列表的情况：["utils.py", "修改", "代码", "动作"]
-    6. JSON格式字符串：'{"keywords": ["utils.py", "修改", "代码", "动作"]}'
-
-    Args:
-        keywords_input: 关键词输入，可以是字符串或列表
-
-    Returns:
-        list[str]: 解析后的关键词列表，去除空白项
-    """
-    if not keywords_input:
-        return []
-
-    # 如果已经是列表，直接处理
-    if isinstance(keywords_input, list):
-        return [str(k).strip() for k in keywords_input if str(k).strip()]
-
-    # 转换为字符串处理
-    keywords_str = str(keywords_input).strip()
-    if not keywords_str:
-        return []
-
-    try:
-        # 尝试作为JSON对象解析（支持 {"keywords": [...]} 格式）
-        json_data = json.loads(keywords_str)
-        if isinstance(json_data, dict) and "keywords" in json_data:
-            keywords_list = json_data["keywords"]
-            if isinstance(keywords_list, list):
-                return [str(k).strip() for k in keywords_list if str(k).strip()]
-        elif isinstance(json_data, list):
-            # 直接是JSON数组格式
-            return [str(k).strip() for k in json_data if str(k).strip()]
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    try:
-        # 尝试使用 ast.literal_eval 解析（支持Python字面量格式）
-        parsed = ast.literal_eval(keywords_str)
-        if isinstance(parsed, list):
-            return [str(k).strip() for k in parsed if str(k).strip()]
-    except (ValueError, SyntaxError):
-        pass
-
-    # 尝试不同的分隔符
-    separators = ["/", ",", " ", "|", ";"]
-
-    for separator in separators:
-        if separator in keywords_str:
-            keywords_list = [k.strip() for k in keywords_str.split(separator) if k.strip()]
-            if len(keywords_list) > 1:  # 确保分割有效
-                return keywords_list
-
-    # 如果没有分隔符，返回单个关键词
-    return [keywords_str] if keywords_str else []

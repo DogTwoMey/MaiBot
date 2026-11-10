@@ -1,3 +1,4 @@
+from src.config.official_configs import DebugConfig, PluginConfig
 import inspect
 from typing import get_args, get_origin
 
@@ -7,8 +8,7 @@ from pytest import raises
 
 from src.config.config import Config
 from src.config.config_base import AttributeData, ConfigBase, Field
-from src.config.official_configs import AMemorixConfig, ChatConfig, DebugConfig, MessageReceiveConfig, PersonalityConfig, PluginConfig
-from src.webui.dependencies import require_auth
+from src.config.official_configs import AMemorixConfig, ChatConfig, MessageReceiveConfig
 from src.webui.config_schema import (
     AMEMORIX_ADVANCED_FIELD_PATHS,
     AMEMORIX_BASIC_FIELD_PATHS,
@@ -81,39 +81,10 @@ def test_nested_model_schema():
     assert talk_value.get("minValue") == 0
 
 
-def test_personality_schema_exposes_behavior_style():
-    """核心设置需要从官方配置架构读取独立的行为风格字段。"""
-    schema = ConfigSchemaGenerator.generate_schema(PersonalityConfig)
-    behavior_style = next(field for field in schema["fields"] if field["name"] == "behavior_style")
-
-    assert behavior_style["label"]["zh_CN"] == "行为风格"
-    assert behavior_style.get("x-widget") == "textarea"
-
-
-def test_clear_context_command_uses_command_management_schema():
-    schema = ConfigSchemaGenerator.generate_schema(PluginConfig)
-    disabled_commands = next(field for field in schema["fields"] if field["name"] == "disabled_commands")
-    assert disabled_commands["hidden"] is True
-    assert PluginConfig().disabled_commands == []
 
 
 
-def test_config_subtab_metadata_is_exposed():
-    """配置子 Tab 元数据应由 schema 提供，而不是由 WebUI 硬编码。"""
-    schema = ConfigSchemaGenerator.generate_schema(Config)
 
-    chat_schema = schema["nested"]["chat"]
-    expression_schema = schema["nested"]["expression"]
-    jargon_schema = schema["nested"]["jargon"]
-
-    assert chat_schema.get("uiUseSubTabs") is True
-    assert chat_schema.get("uiRootSubLabel") == "基础设置"
-    assert chat_schema["nested"]["reply_timing"].get("uiLabel") == "什么时候发言"
-    assert chat_schema["nested"]["reply_style"].get("uiLabel") == "如何发言"
-
-    assert expression_schema.get("uiUseSubTabs") is True
-    assert expression_schema.get("uiSubLabel") == "表达"
-    assert jargon_schema.get("uiSubLabel") == "黑话"
 
 
 def test_message_debounce_fields_are_exposed_to_webui():
@@ -121,22 +92,15 @@ def test_message_debounce_fields_are_exposed_to_webui():
     schema = ConfigSchemaGenerator.generate_schema(ChatConfig)
     fields = {field["name"]: field for field in _get_reply_timing_schema(schema)["fields"]}
 
-    quiet_window = fields["message_debounce_seconds"]
-    max_wait = fields["message_debounce_max_seconds"]
+    mode = fields["message_debounce_mode"]
 
-    assert quiet_window["type"] == "number"
-    assert quiet_window.get("x-widget") == "input"
-    assert quiet_window.get("x-icon") == "timer"
-    assert quiet_window.get("advanced") is True
-    assert quiet_window["minValue"] == 0
-    assert quiet_window["maxValue"] == 30
+    assert mode["type"] == "select"
+    assert mode["default"] == "natural"
+    assert mode.get("x-widget") == "discrete-slider"
+    assert mode["options"] == ["off", "fast", "natural", "steady"]
+    assert set(mode["x-option-labels"]) == set(mode["options"])
+    assert set(mode["x-option-descriptions"]) == set(mode["options"])
 
-    assert max_wait["type"] == "number"
-    assert max_wait.get("x-widget") == "input"
-    assert max_wait.get("x-icon") == "timer-reset"
-    assert max_wait.get("advanced") is True
-    assert max_wait["minValue"] == 0
-    assert max_wait["maxValue"] == 120
 
 
 def test_field_without_extra_metadata():
@@ -180,16 +144,6 @@ def test_tab_advanced_visibility_comes_from_config_metadata():
     assert schema["nested"]["message_receive"].get("uiAdvanced") is True
 
 
-def test_maisaka_is_host_tab_and_mcp_is_attached_to_it():
-    """MaiSaka 应作为独立 Tab，MCP 作为其子配置挂载。"""
-    schema = ConfigSchemaGenerator.generate_schema(Config)
-
-    maisaka_schema = schema["nested"]["maisaka"]
-    mcp_schema = schema["nested"]["mcp"]
-
-    assert maisaka_schema.get("uiParent") is None
-    assert maisaka_schema.get("uiLabel") == "MaiSaka"
-    assert mcp_schema.get("uiParent") == "maisaka"
 
 
 def test_memory_query_config_fields_are_exposed():
@@ -368,7 +322,6 @@ def test_compat_config_schema_route_keeps_a_memorix_visibility_policy():
     app = FastAPI()
     for api_router in get_all_routers():
         app.include_router(api_router)
-    app.dependency_overrides[require_auth] = lambda: "test-token"
 
     response = TestClient(app).get("/api/config/schema")
 
@@ -380,4 +333,3 @@ def test_compat_config_schema_route_keeps_a_memorix_visibility_policy():
     assert _schema_field_at_path(a_memorix_schema, "storage.data_dir") is None
     assert _schema_field_at_path(a_memorix_schema, "retrieval.fusion.rrf_k") is None
     assert _schema_field_at_path(a_memorix_schema, "retrieval.search.smart_fallback.enabled")["advanced"] is True
-

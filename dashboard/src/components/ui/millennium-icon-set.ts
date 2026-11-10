@@ -100,7 +100,12 @@ export const MILLENNIUM_ICON_SET: MillenniumIconDef[] = [
     path: 'M4 4h11v11H4zM15 15l6 6',
   },
   {
-    lucide: ['globe', 'earth', 'languages'],
+    lucide: ['globe', 'earth'],
+    path: 'M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18',
+    strokeWidth: 2,
+  },
+  {
+    lucide: ['languages'],
     path: 'M12 3v4M4 7h16M16 8L5 20M8 11l11 9',
   },
   {
@@ -149,6 +154,10 @@ export const MILLENNIUM_ICON_SET: MillenniumIconDef[] = [
     path: 'M4 4h16v16H4zM12 8v5h4',
   },
   {
+    lucide: ['calendar', 'calendar-days', 'calendar-clock'],
+    path: 'M4 5h16v16H4zM8 3v4M16 3v4M4 10h16M8 14h2M14 14h2M8 18h2M14 18h2',
+  },
+  {
     lucide: ['eye'],
     path: 'M2 12l5-5h10l5 5-5 5H7zM10 10h4v4h-4z',
   },
@@ -159,6 +168,10 @@ export const MILLENNIUM_ICON_SET: MillenniumIconDef[] = [
   {
     lucide: ['message-circle', 'message-square'],
     path: 'M4 4h16v12H10l-4 4v-4H4z',
+  },
+  {
+    lucide: ['box'],
+    path: 'M12 3 3 8v9l9 5 9-5V8zM3 8l9 5 9-5M12 13v9',
   },
   {
     lucide: ['user', 'circle-user', 'user-circle', 'circle-user-round', 'user-circle-2', 'user-round'],

@@ -90,9 +90,9 @@ def fetch_message_count_by_chat_since(start_time: datetime) -> list[dict[str, An
                             ELSE 'u' || user_id
                         END AS chat_id,
                         COUNT(*) AS message_count,
-                        MAX(timestamp) AS latest_timestamp
+                        MAX(COALESCE(received_at, timestamp)) AS latest_timestamp
                     FROM mai_messages
-                    WHERE timestamp >= :start_time
+                    WHERE COALESCE(received_at, timestamp) >= :start_time
                       AND (
                           (group_id IS NOT NULL AND group_id != '')
                           OR (user_id IS NOT NULL AND user_id != '')
@@ -119,10 +119,10 @@ def fetch_message_count_by_chat_since(start_time: datetime) -> list[dict[str, An
                                     WHEN group_id IS NOT NULL AND group_id != '' THEN 'g' || group_id
                                     ELSE 'u' || user_id
                                 END
-                                ORDER BY timestamp DESC, id DESC
+                                ORDER BY COALESCE(received_at, timestamp) DESC, id DESC
                             ) AS row_num
                         FROM mai_messages
-                        WHERE timestamp >= :start_time
+                        WHERE COALESCE(received_at, timestamp) >= :start_time
                           AND (
                               (group_id IS NOT NULL AND group_id != '')
                               OR (user_id IS NOT NULL AND user_id != '')
@@ -144,6 +144,47 @@ def fetch_message_count_by_chat_since(start_time: datetime) -> list[dict[str, An
         }
         for row in rows
     ]
+
+
+def count_chat_messages_between(start_time: datetime, end_time: datetime) -> int:
+    """按 fetch_message_count_by_chat_since 的口径统计 [start_time, end_time) 内的消息数。"""
+
+    with get_db_session(auto_commit=False) as session:
+        row = session.exec(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM mai_messages
+                WHERE COALESCE(received_at, timestamp) >= :start_time
+                  AND COALESCE(received_at, timestamp) < :end_time
+                  AND (
+                      (group_id IS NOT NULL AND group_id != '')
+                      OR (user_id IS NOT NULL AND user_id != '')
+                  )
+                """
+            ),
+            params={"start_time": start_time, "end_time": end_time},
+        ).one()
+    return int(row[0])
+
+
+def count_tool_records_between(start_time: datetime, end_time: datetime, tool_name: str) -> int:
+    """统计 [start_time, end_time) 内的工具调用次数。"""
+
+    with get_db_session(auto_commit=False) as session:
+        row = session.exec(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM tool_records
+                WHERE timestamp >= :start_time
+                  AND timestamp < :end_time
+                  AND tool_name = :tool_name
+                """
+            ),
+            params={"start_time": start_time, "end_time": end_time, "tool_name": tool_name},
+        ).one()
+    return int(row[0])
 
 
 def count_tool_records_since(start_time: datetime, tool_name: str) -> int:
@@ -168,6 +209,7 @@ def count_tool_records_since(start_time: datetime, tool_name: str) -> int:
 
 
 def _aggregate_messages(session) -> None:
+    # 接收时间只影响新入站消息的统计桶，未记录接收时间的历史和出站继续计入原消息时间。
     last_id = _get_cursor(session, "messages")
     session.exec(
         text(
@@ -178,7 +220,7 @@ def _aggregate_messages(session) -> None:
             WITH message_source AS (
                 SELECT
                     id,
-                    datetime(strftime('%Y-%m-%d %H:00:00', timestamp)) AS bucket_time,
+                    datetime(strftime('%Y-%m-%d %H:00:00', COALESCE(received_at, timestamp))) AS bucket_time,
                     CASE
                         WHEN group_id IS NOT NULL AND group_id != '' THEN 'g' || group_id
                         ELSE 'u' || user_id
@@ -191,7 +233,7 @@ def _aggregate_messages(session) -> None:
                         END
                     ) AS chat_name,
                     CASE WHEN group_id IS NOT NULL AND group_id != '' THEN 'group' ELSE 'private' END AS chat_type,
-                    timestamp
+                    COALESCE(received_at, timestamp) AS timestamp
                 FROM mai_messages
                 WHERE id > :last_id
                   AND timestamp IS NOT NULL

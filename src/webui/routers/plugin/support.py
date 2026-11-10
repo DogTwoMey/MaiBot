@@ -1,18 +1,20 @@
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, get_origin
+
+from fastapi import HTTPException
+
 import json
 import os
 import re
 import shutil
 import stat
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast, get_origin
-
-from fastapi import HTTPException, Request
 
 from src.common.logger import get_logger
+from src.common.paths import resolve_plugin_config_path
+from src.common.paths import PACKAGE_ROOT
 from src.core.config_types import ConfigField
 from src.plugin_runtime.runner.manifest_validator import is_reserved_plugin_directory
-from src.webui.core import get_auth_cookie_value, get_token_manager
 
 logger = get_logger("webui.plugin_routes")
 
@@ -20,14 +22,6 @@ PLUGIN_CHANGELOG_FILENAMES = ("CHANGELOG.md", "Changelog.md", "changelog.md", "C
 PLUGIN_README_FILENAMES = ("README.md", "Readme.md", "readme.md", "README.MD")
 MAX_PLUGIN_CHANGELOG_CHARS = 500000
 MAX_PLUGIN_README_CHARS = 500000
-
-
-def require_plugin_token(auth_source: Optional[str] | Request) -> str:
-    token_manager = get_token_manager()
-    maibot_session = get_auth_cookie_value(auth_source) if isinstance(auth_source, Request) else auth_source
-    if not maibot_session or not token_manager.verify_token(maibot_session):
-        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
-    return maibot_session
 
 
 def validate_safe_path(user_path: str, base_path: Path) -> Path:
@@ -203,6 +197,9 @@ def get_plugins_dir() -> Path:
     return plugins_dir
 
 def get_plugin_config_path(plugin_id: str, plugin_path: Path) -> Path:
+    config_path = resolve_plugin_config_path(plugin_path)
+    if config_path != plugin_path / "config.toml":
+        return config_path
     return resolve_plugin_file_path(plugin_path, "config.toml")
 
 
@@ -228,8 +225,12 @@ def is_plugin_install_residue(plugin_path: Path) -> bool:
         return False
 
 
-def resolve_installed_plugin_path(plugin_id: str) -> Optional[Path]:
-    return find_plugin_path_by_id(plugin_id)
+def resolve_mutable_plugin_path(plugin_id: str) -> Optional[Path]:
+    """解析文件变更操作的目标；内置插件明确拒绝，未安装返回 None。"""
+    path = find_plugin_path_by_id(plugin_id)
+    if path is not None and path.is_relative_to((PACKAGE_ROOT / "plugins" / "built_in").resolve()):
+        raise HTTPException(status_code=403, detail="内置插件随本体维护，不允许单独更新或卸载；可在管理页启用或停用")
+    return path
 
 
 def parse_repository_url(repository_url: str) -> Tuple[str, str, str]:
@@ -256,58 +257,29 @@ def load_manifest_json(manifest_path: Path) -> Optional[Dict[str, Any]]:
 
     try:
         with open(manifest_path, "r", encoding="utf-8") as file_obj:
-            return cast(dict[str, Any], json.load(file_obj))
-    except Exception:
+            manifest = json.load(file_obj)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        logger.warning(f"读取插件 manifest 失败: {manifest_path}", exc_info=True)
         return None
-
-
-def read_plugin_changelog(plugin_path: Path) -> Optional[str]:
-    """读取插件根目录中的更新日志；缺失或不可读时返回 None，不影响插件加载。"""
-    for changelog_name in PLUGIN_CHANGELOG_FILENAMES:
-        changelog_path = resolve_plugin_file_path(plugin_path, changelog_name)
-        if not changelog_path.exists():
-            continue
-        if not changelog_path.is_file():
-            continue
-
-        try:
-            with open(changelog_path, "r", encoding="utf-8") as file_obj:
-                return file_obj.read(MAX_PLUGIN_CHANGELOG_CHARS + 1)[:MAX_PLUGIN_CHANGELOG_CHARS]
-        except Exception as exc:
-            logger.warning(f"读取插件更新日志失败: {changelog_path} ({exc})")
-            return None
-
-    return None
-
-
-def read_plugin_readme(plugin_path: Path) -> Optional[str]:
-    """读取插件根目录中的 README；缺失或不可读时返回 None，不影响插件加载。"""
-    for readme_name in PLUGIN_README_FILENAMES:
-        readme_path = resolve_plugin_file_path(plugin_path, readme_name)
-        if not readme_path.exists():
-            continue
-        if not readme_path.is_file():
-            continue
-
-        try:
-            with open(readme_path, "r", encoding="utf-8") as file_obj:
-                return file_obj.read(MAX_PLUGIN_README_CHARS + 1)[:MAX_PLUGIN_README_CHARS]
-        except Exception as exc:
-            logger.warning(f"读取插件 README 失败: {readme_path} ({exc})")
-            return None
-
-    return None
+    if not isinstance(manifest, dict):
+        logger.warning(f"插件 manifest 顶层必须是 JSON 对象: {manifest_path}")
+        return None
+    return manifest
 
 
 def iter_plugin_directories() -> List[Path]:
-    plugins_dir = get_plugins_dir()
+    """枚举内置与外部插件；可见性和依赖解析使用相同的目录范围。"""
+    roots = [PACKAGE_ROOT / "plugins" / "built_in", get_plugins_dir()]
     plugin_directories: List[Path] = []
-    for path in plugins_dir.iterdir():
-        if is_reserved_plugin_directory(path):
+    for plugins_dir in roots:
+        if not plugins_dir.is_dir():
             continue
-        safe_path = _resolve_safe_plugin_directory(path, plugins_dir, strict=False)
-        if safe_path is not None:
-            plugin_directories.append(safe_path)
+        for path in plugins_dir.iterdir():
+            if is_reserved_plugin_directory(path):
+                continue
+            safe_path = _resolve_safe_plugin_directory(path, plugins_dir, strict=False)
+            if safe_path is not None:
+                plugin_directories.append(safe_path)
     return plugin_directories
 
 

@@ -142,6 +142,7 @@ describe('loadPersonalityConfig', () => {
       config: {
         personality: {
           personality: '活泼开朗',
+          behavior_style: '自然参与聊天',
           reply_style: '简短口语',
           multiple_reply_style: ['风格A'],
           multiple_probability: 0,
@@ -151,6 +152,7 @@ describe('loadPersonalityConfig', () => {
 
     await expect(loadPersonalityConfig()).resolves.toEqual({
       personality: '活泼开朗',
+      behavior_style: '自然参与聊天',
       reply_style: '简短口语',
       multiple_reply_style: ['风格A'],
       multiple_probability: 0,
@@ -165,6 +167,7 @@ describe('loadPersonalityConfig', () => {
 
     await expect(loadPersonalityConfig()).resolves.toEqual({
       personality: '',
+      behavior_style: '',
       reply_style: '',
       multiple_reply_style: [],
       multiple_probability: 0.2,
@@ -216,6 +219,8 @@ describe('loadModelSetupConfig', () => {
     })
 
     await expect(loadModelSetupConfig()).resolves.toEqual({
+      planner_reasoning_effort: 'high',
+      replyer_reasoning_effort: 'high',
       planner_model_name: 'planner-model',
       planner_model_identifier: 'deepseek-v4',
       planner_visual: true,
@@ -262,6 +267,8 @@ describe('loadModelSetupConfig', () => {
     getMock.mockResolvedValue({ config: {} })
 
     await expect(loadModelSetupConfig()).resolves.toEqual({
+      planner_reasoning_effort: 'high',
+      replyer_reasoning_effort: 'high',
       planner_model_name: '',
       planner_model_identifier: '',
       planner_visual: false,
@@ -324,6 +331,7 @@ describe('saveBotBasicConfig / savePersonalityConfig', () => {
     postMock.mockResolvedValue({ success: true })
     const config = {
       personality: '活泼开朗',
+      behavior_style: '自然参与聊天',
       reply_style: '简短口语',
       multiple_reply_style: [],
       multiple_probability: 0.2,
@@ -430,13 +438,14 @@ describe('saveModelSetupConfig', () => {
   }
 
   it('空配置下新建 planner/replyer 模型并同步任务模型列表', async () => {
-    getMock.mockResolvedValue({ config: {} })
+    getMock.mockResolvedValue({ config: { api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }] } })
     postMock.mockResolvedValue({ success: true })
 
     await saveModelSetupConfig(setupConfig, ' DeepSeek ')
 
     expect(postMock).toHaveBeenCalledWith('/api/webui/config/model', {
       body: {
+        api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }],
         models: [
           {
             price_in: 0,
@@ -447,6 +456,7 @@ describe('saveModelSetupConfig', () => {
             extra_params: { thinking: { type: 'enabled' }, reasoning_effort: 'high' },
             visual: true,
             model_identifier: 'deepseek-v4',
+            model_type: 'llm',
             name: 'deepseek-v4',
             api_provider: 'DeepSeek',
           },
@@ -459,6 +469,7 @@ describe('saveModelSetupConfig', () => {
             extra_params: { thinking: { type: 'disabled' } },
             visual: false,
             model_identifier: 'glm-5',
+            model_type: 'llm',
             name: 'glm-5',
             api_provider: 'DeepSeek',
           },
@@ -476,6 +487,7 @@ describe('saveModelSetupConfig', () => {
   it('已有同名模型时保留价格等既有字段并清理旧的 enable_thinking', async () => {
     getMock.mockResolvedValue({
       config: {
+        api_providers: [{ name: 'DeepSeek', base_url: 'https://api.deepseek.com' }],
         models: [
           {
             model_identifier: 'deepseek-v4-old',
@@ -535,17 +547,17 @@ describe('saveModelSetupConfig', () => {
 
 describe('completeSetup', () => {
   it('调用标记设置完成接口', async () => {
-    postMock.mockResolvedValue({ success: true })
+    authPostMock.mockResolvedValue({ success: true })
 
     await completeSetup()
 
-    expect(postMock).toHaveBeenCalledWith('/api/webui/setup/complete', {
+    expect(authPostMock).toHaveBeenCalledWith('/api/webui/setup/complete', {
       errorMessage: '标记设置完成失败',
     })
   })
 
   it('标记完成失败时向上抛出', async () => {
-    postMock.mockRejectedValue(new ApiError('标记设置完成失败', { status: 500 }))
+    authPostMock.mockRejectedValue(new ApiError('标记设置完成失败', { status: 500 }))
     await expect(completeSetup()).rejects.toMatchObject({ status: 500 })
   })
 })

@@ -1,17 +1,22 @@
+[text_learning_expression]
+display_name = "Expressions from passages"
+advanced = true
+description = "Extracts expressions grounded in pasted passages for the user to select and import."
+
+[text_learning_jargon]
+display_name = "Jargon from passages"
+advanced = true
+description = "Extracts jargon and meanings from pasted passages for the user to select and import."
+
 [a_memorix_chat_summary]
-display_name = "Incremental Memory Summary"
-advanced = true
-description = "Extracts new facts, entity relations, and image evidence from chat for long-term memory."
+display_name = "Long-term Memory Chat Summary"
+advanced = false
+description = "Extracts incremental information and important knowledge from the current chat window for long-term memory."
 
-[behavior_scene_analyze]
-display_name = "Behavior Scene Analysis"
+[maisaka_chat_passive]
+display_name = "Planner (Passive replyer)"
 advanced = true
-description = "Splits recent chat context into reusable behavior-scene segments and extracts domain tags, behavior needs, and interaction traits."
-
-[consolidate_behavior]
-display_name = "Behavior Consolidation"
-advanced = true
-description = "Finds semantically duplicated behavior patterns and outputs keeper and merge plans for consolidation."
+description = "Used when experimental passive replyer is enabled; final planner text guides a reply, while tool calls perform actions."
 
 [maisaka_chat]
 display_name = "Planner"
@@ -38,25 +43,35 @@ display_name = "Reply attachments"
 advanced = true
 description = "Explains that the system sends reply images, mentions and emojis, preventing attachment information from being repeated in the reply text."
 
-[retro_replyer]
-display_name = "Retro reply"
+[reply_group]
+display_name = "Group chat reply"
 advanced = true
-description = "Group chat reply template for retro mode (experimental.replyer_retro_prompt), which puts all reply instructions into a single template sent as one message."
+description = "Default group chat reply template in Creative mode."
 
-[retro_replyer_light]
-display_name = "Retro reply (short)"
+[reply_group_mai_replier]
+display_name = "Mai Replier group chat reply"
 advanced = true
-description = "Short group chat reply template for retro mode, matching the legacy light reply used when think_level=0."
+description = "Group chat reply template for Mai Replier, using the wording from training."
 
-[retro_private_replyer]
-display_name = "Retro private reply"
+[reply_private]
+display_name = "Private chat reply"
 advanced = true
-description = "Private chat reply template for retro mode, organizing all reply instructions the legacy way."
+description = "Default private chat reply template in Creative mode."
 
-[retro_private_replyer_self]
-display_name = "Retro private follow-up reply"
+[reply_private_mai_replier]
+display_name = "Mai Replier private chat reply"
 advanced = true
-description = "Private chat follow-up template for retro mode, used to keep adding to a message Mai just sent."
+description = "Private chat reply template for Mai Replier."
+
+[reply_private_followup]
+display_name = "Private chat follow-up"
+advanced = true
+description = "Used in Creative mode when Mai adds to a message it just sent in a private chat."
+
+[reply_private_followup_mai_replier]
+display_name = "Mai Replier private chat follow-up"
+advanced = true
+description = "Used when Mai Replier adds to a message it just sent in a private chat."
 
 [default_expressor]
 display_name = "Default Expressor"
@@ -68,6 +83,11 @@ display_name = "Emoji Content Analysis"
 advanced = true
 description = "Template for analyzing the visual content of emoji or sticker images."
 
+[emoji_grouped_tags]
+display_name = "Grouped Sticker Tags"
+advanced = true
+description = "Identifies the sticker's emotion and visible content separately."
+
 [emoji_content_filtration]
 display_name = "Emoji Content Filtration"
 advanced = true
@@ -77,16 +97,6 @@ description = "Template for judging whether emoji or sticker content meets filtr
 display_name = "Emoji Replacement"
 advanced = true
 description = "Template for selecting or replacing emojis or stickers based on text context."
-
-[emoji_selection]
-display_name = "Emoji Selection"
-advanced = true
-description = "Template for choosing the most suitable emoji or sticker from a grid according to context and tone."
-
-[evaluate_behavior_feedback]
-display_name = "Behavior Feedback Evaluation"
-advanced = true
-description = "Template for evaluating whether a selected behavior was actually adopted and what conversational outcome it produced."
 
 [expression_evaluation]
 display_name = "Expression Evaluation"
@@ -138,30 +148,30 @@ display_name = "Jargon Learning"
 advanced = true
 description = "Extracts group-specific jargon candidates from real chat and lets the jargon miner update meanings and co-occurrence profiles."
 
-[learn_behavior]
-display_name = "Behavior Learning"
-advanced = true
-description = "Extracts reusable scene-behavior-outcome patterns from real chat, covering both observed behavior and self feedback."
-
 [maisaka_chat_focus]
 display_name = "Focus Planner"
 advanced = true
-description = "Maisaka planner template for Focus mode, choosing the next action from the active chat and cross-chat overview."
+description = "Shared Focus planner for all chats in a group, selecting each tool's target through session_id."
 
-[maisaka_timing_gate]
-display_name = "Timing Gate"
-advanced = false
-description = "Maisaka timing control template that decides whether to wait, stop, or continue into thinking and replying before each main-loop turn."
+[maisaka_chat_optimized]
+display_name = "Planner (Optimized)"
+advanced = true
+description = "Main Maisaka planning template used when the experimental feature experimental.planner_optimized_prompt is enabled. It addresses the bot in the second person and trims the task description; Focus mode keeps using the Focus planner."
 
 [memory_fuzzy_modify_plan]
 display_name = "Memory Fuzzy Modification Plan"
 advanced = true
 description = "Template for planning which old memories to supersede and which new memories to write from a natural-language modification request."
 
-[mid_term_memory_summary]
-display_name = "Mid-term Chat Summary"
+[context_compaction]
+display_name = "Ordinary Chat Rolling Context State"
 advanced = true
-description = "Used during context trimming to summarize removed chat history into long_summary, brief, and keywords."
+description = "Reuses the ordinary chat Planner request to summarize history and prior state as topics, background, progress, pending matters, and agreements."
+
+[context_compaction_focus]
+display_name = "Focus Rolling Context State"
+advanced = true
+description = "Reuses the Focus Planner request to produce a five-category rolling summary for the shared group while preserving chat ownership."
 
 [memory_retrieval_react_prompt_head_memory]
 display_name = "Memory Retrieval ReAct Header"
@@ -172,6 +182,31 @@ description = "Advanced memory retrieval prompt header used by the ReAct-style m
 display_name = "WebUI AI Search"
 advanced = true
 description = "Selects relevant results from real WebUI page and configuration candidates based on natural-language intent."
+
+[webui_help_skill_setup]
+display_name = "Setup and configuration workflow"
+advanced = true
+description = "Locates configuration, checks current values, and gives verifiable setup steps."
+
+[webui_help_skill_troubleshoot]
+display_name = "Troubleshooting workflow"
+advanced = true
+description = "Uses observed errors and settings to narrow the cause and identify the next check."
+
+[webui_help_skill_plugin]
+display_name = "Plugin selection and operations workflow"
+advanced = true
+description = "Checks plugin compatibility and uses the appropriate tools for installation or configuration."
+
+[webui_help_skill_develop]
+display_name = "Plugin development workflow"
+advanced = true
+description = "Uses version-relevant SDK docs for a minimal implementation and verification path."
+
+[webui_ai_search_input]
+display_name = "WebUI Help Conversation Input"
+advanced = true
+description = "Formats the current question and prior answers as untrusted context for the WebUI help agent."
 
 [webui_ai_search_final]
 display_name = "WebUI AI Search Final Instruction"
@@ -187,3 +222,103 @@ description = "Asks the model to remove unsupported content and rewrite the fina
 display_name = "WebUI AI Search Evidence Message"
 advanced = true
 description = "Wraps read-only tool results from AI search as evidence messages usable in requests without tools."
+
+[a_memorix_fact_deduplication]
+display_name = "Long-term memory fact deduplication"
+advanced = true
+description = "Compare new facts with existing memories while preserving distinct events, state changes, and conflicting information."
+
+[agent_acp]
+display_name = "External agent policy"
+advanced = true
+description = "External agent policy。"
+
+[agent_acp_environment]
+display_name = "External agent environment"
+advanced = true
+description = "External agent environment。"
+
+[agent_acp_failure]
+display_name = "External agent failure report"
+advanced = true
+description = "External agent failure report。"
+
+[agent_planner]
+display_name = "External planner policy"
+advanced = true
+description = "External planner policy。"
+
+[agent_planner_resume]
+display_name = "External planner recovery"
+advanced = true
+description = "External planner recovery。"
+
+[agent_planner_continue]
+display_name = "External planner continuation"
+advanced = true
+description = "External planner continuation。"
+
+[planner_reply_capabilities]
+display_name = "Planner reply capabilities"
+advanced = true
+description = "Available plugin reply capabilities for the current chat."
+
+[reply_cache]
+display_name = "Cached reply task"
+advanced = true
+description = "Switches to creative Replyer generation at the end of the Planner context."
+
+[desktop_pet_proactive_wake]
+display_name = "Desktop pet periodic reflection"
+advanced = false
+description = "Internal prompt for periodic reflection, autonomous exploration, and optional conversation."
+
+[desktop_pet_screen_read]
+display_name = "Desktop pet screen reading"
+advanced = false
+description = "Understand a local primary-screen capture, once or continuously."
+
+[desktop_pet_todo_context]
+display_name = "Resident owner todos"
+advanced = false
+description = "Refresh todos every turn and guide condition-based triggering."
+
+[desktop_pet_exploration]
+display_name = "Desktop pet exploration"
+advanced = false
+description = "Explore tool combinations for a human-defined goal and save evidence-backed candidate workflows."
+
+[desktop_pet_exploration_reuse]
+display_name = "Everyday exploration reuse"
+advanced = false
+description = "Retrieve and reuse exploration products as needed in ordinary owner chats."
+
+[desktop_pet_thinking_caption]
+display_name = "Desktop pet thinking caption"
+advanced = false
+description = "Summarizes the current run stage as a short, playful desktop pet status line."
+
+[maisaka_expression_selector]
+display_name = "Expression selection"
+advanced = true
+description = "Picks the expressions that fit this reply from the candidates, based on the chat context."
+
+[maisaka_replyer_document]
+display_name = "Long-form writing"
+advanced = false
+description = "Writes a complete article or community post in the bot's own identity and voice."
+
+[maisaka_wait_reminder]
+display_name = "Repeated wait reminder"
+advanced = true
+description = "After several consecutive waits, suggests waiting longer or ending this round to avoid an endless loop."
+
+[reply_supplement]
+display_name = "Reply supplement planning"
+advanced = true
+description = "While the reply body is generated in parallel, plans quotes, attachments and sending order."
+
+[reply_supplement_retry]
+display_name = "Reply supplement retry"
+advanced = true
+description = "Regenerates the reply supplement plan from the error of the previous failed attempt."

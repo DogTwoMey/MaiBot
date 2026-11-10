@@ -1,4 +1,4 @@
-import type { PluginInfo, PluginReleaseCatalog, PluginType } from '@/types/plugin'
+import type { PluginInfo, PluginReleaseCatalog } from '@/types/plugin'
 
 import { ApiError, backendApi } from '@/lib/http'
 import { pluginProgressClient } from '@/lib/plugin-progress-client'
@@ -6,29 +6,10 @@ import { pluginProgressClient } from '@/lib/plugin-progress-client'
 import type { GitStatus, MaimaiVersion } from './types'
 
 /**
- * 插件仓库配置
+ * 插件市场展示缓存
  */
-const PLUGIN_REPO_OWNER = 'Mai-with-u'
-const PLUGIN_REPO_NAME = 'plugin-repo'
-const PLUGIN_REPO_BRANCH = 'main'
-const PLUGIN_DETAILS_FILE = 'plugin_details.json'
 const PLUGIN_LIST_CACHE_TTL = 5 * 60 * 1000
-const PLUGIN_LIST_STORAGE_KEY = 'maibot-plugin-market-list-cache-v3'
-const PLUGIN_TYPES = new Set<PluginType>([
-  'adapter',
-  'chat',
-  'creative',
-  'provider',
-  'management',
-  'search',
-  'knowledge',
-  'media',
-  'game',
-  'security',
-  'automation',
-  'extension',
-  'other',
-])
+const PLUGIN_LIST_STORAGE_KEY = 'maibot-plugin-market-list-cache-v6'
 
 const pluginListCaches = new Map<boolean, { timestamp: number; result: PluginInfo[] }>()
 const pluginListRequests = new Map<boolean, Promise<PluginInfo[]>>()
@@ -42,6 +23,21 @@ export function invalidatePluginMarketCache(): void {
   localStorage.removeItem(`${PLUGIN_LIST_STORAGE_KEY}-compatible`)
 }
 
+/** 互动只使带有旧统计的官方快照失效，镜像清单继续复用。 */
+export function invalidatePluginMarketStats(): void {
+  cacheGeneration += 1
+  // 在途官方快照也可能带旧统计，后续调用不能继续复用它；镜像清单缓存保留。
+  pluginListRequests.clear()
+  for (const compatibleOnly of [false, true]) {
+    const cached = pluginListCaches.get(compatibleOnly)?.result
+      ?? readPluginListStorageCache(compatibleOnly)?.data
+    if (cached?.some((plugin) => plugin.market_data_source === 'official')) {
+      pluginListCaches.delete(compatibleOnly)
+      localStorage.removeItem(compatibleOnly ? `${PLUGIN_LIST_STORAGE_KEY}-compatible` : PLUGIN_LIST_STORAGE_KEY)
+    }
+  }
+}
+
 interface PluginListStorageCache {
   timestamp: number
   data: PluginInfo[]
@@ -51,7 +47,13 @@ interface PluginListStorageCache {
  * 插件列表 API 响应类型（只包含我们需要的字段）
  */
 interface PluginApiResponse {
-  id?: string
+  id: string
+  marketplace_id: string
+  releases: PluginReleaseCatalog
+  stats: import('@/lib/plugin-stats').PluginStatsData | null
+  published_at?: string | number | null
+  updated_at?: string | number | null
+  changelog?: string | null
   assets?: PluginInfo['assets']
   manifest: {
     manifest_version: number
@@ -79,9 +81,11 @@ interface PluginApiResponse {
     }
     keywords: string[]
     plugin_type?: string
+    type?: string
     display?: PluginInfo['manifest']['display']
     changelog?: string
-    default_locale: string
+    default_locale?: string
+    i18n?: { default_locale: string; locales_path?: string }
     locales_path?: string
   }
   // 可能还有其他字段,但我们不关心
@@ -90,25 +94,6 @@ interface PluginApiResponse {
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
-}
-
-function uniqueNonEmptyValues(values: Array<string | undefined>): string[] {
-  return Array.from(
-    new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))
-  )
-}
-
-function normalizePluginType(value: unknown): PluginType {
-  if (typeof value !== 'string' || !value.trim()) {
-    return 'extension'
-  }
-
-  const normalizedValue = value.trim()
-  if (PLUGIN_TYPES.has(normalizedValue as PluginType)) {
-    return normalizedValue as PluginType
-  }
-
-  return 'other'
 }
 
 function normalizePluginManifest(manifest: PluginApiResponse['manifest']): PluginInfo['manifest'] {
@@ -129,42 +114,11 @@ function normalizePluginManifest(manifest: PluginApiResponse['manifest']): Plugi
     repository_url: repositoryUrl,
     urls: manifest.urls,
     keywords: manifest.keywords || [],
-    plugin_type: normalizePluginType(manifest.plugin_type),
+    plugin_type: normalizeOptionalString(manifest.plugin_type ?? manifest.type),
     display: manifest.display,
     changelog: normalizeOptionalString(manifest.changelog),
-    default_locale: manifest.default_locale || 'zh-CN',
-    locales_path: manifest.locales_path,
-  }
-}
-
-function normalizePluginAssetUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !value.trim()) {
-    return undefined
-  }
-
-  const normalizedValue = value.trim()
-  if (/^https?:\/\//.test(normalizedValue)) {
-    return normalizedValue
-  }
-
-  const normalizedPath = normalizedValue.replace(/^\/+/, '')
-  if (!normalizedPath || normalizedPath.includes('..')) {
-    return undefined
-  }
-
-  return `https://raw.githubusercontent.com/${PLUGIN_REPO_OWNER}/${PLUGIN_REPO_NAME}/${PLUGIN_REPO_BRANCH}/${normalizedPath}`
-}
-
-function normalizePluginAssets(
-  assets: PluginApiResponse['assets']
-): PluginInfo['assets'] | undefined {
-  const icon64 = normalizePluginAssetUrl(assets?.icon_64)
-  if (!icon64) {
-    return undefined
-  }
-
-  return {
-    icon_64: icon64,
+    default_locale: manifest.i18n?.default_locale || manifest.default_locale || 'zh-CN',
+    locales_path: manifest.i18n?.locales_path || manifest.locales_path,
   }
 }
 
@@ -242,101 +196,33 @@ export function getCachedPluginList(compatibleOnly = false): PluginInfo[] | null
 /**
  * 从远程获取插件列表(通过后端代理避免 CORS)
  */
-async function fetchPluginListUncached(compatibleOnly: boolean): Promise<PluginInfo[]> {
+async function fetchPluginListUncached(compatibleOnly: boolean, forceRefresh: boolean): Promise<PluginInfo[]> {
   const market = await backendApi.get<{
-    source: 'github' | 'service'
-    details: PluginApiResponse[]
-    catalog: { plugins: PluginReleaseCatalog[] }
-    stats: Record<string, import('@/lib/plugin-stats').PluginStatsData>
+    source: 'official' | 'cnb' | 'github'
+    plugins: PluginApiResponse[]
   }>('/api/webui/plugins/marketplace', {
-    query: { compatible_only: compatibleOnly }, errorMessage: '获取插件市场数据失败',
+    query: { compatible_only: compatibleOnly, force_refresh: forceRefresh }, errorMessage: '获取插件市场数据失败',
   })
-  let data: PluginApiResponse[]
-  let catalog: { plugins: PluginReleaseCatalog[] }
-  if (market.source === 'github') {
-    const result = await backendApi.post<{ success: boolean; data: string; error?: string }>(
-      '/api/webui/plugins/fetch-raw',
-      {
-        body: {
-          owner: PLUGIN_REPO_OWNER,
-          repo: PLUGIN_REPO_NAME,
-          branch: PLUGIN_REPO_BRANCH,
-          file_path: PLUGIN_DETAILS_FILE,
-        },
-        errorMessage: '获取插件列表失败',
-      }
-    )
-
-    // 业务级失败：该 endpoint 的错误字段是 error 而非 message，不走 requireSuccess
-    if (!result.success || !result.data) {
-      throw new ApiError(result.error || '获取插件列表失败', { detail: result })
-    }
-
-    data = JSON.parse(result.data)
-    catalog = await backendApi.get<{ plugins: PluginReleaseCatalog[] }>('/api/webui/plugins/releases', {
-      errorMessage: '获取插件发布版本失败',
-    })
-  } else {
-    data = market.details
-    catalog = market.catalog
-  }
-  // 部分插件只在 Tag 中保留有效清单，即使分支详情同步失败也要保留发布版本入口。
-  for (const entry of catalog.plugins) {
-    if (data.some((item) => item.id === entry.id || item.manifest?.id === entry.manifest_id)) continue
-    const release = entry.versions.find((item) => item.version === entry.recommended_version) || entry.versions[0]
-    if (release) data.push({ id: entry.id, manifest: release.manifest })
-  }
-
-  const pluginList = data
-    .filter((item) => {
-      if (!item?.manifest) {
-        console.warn('跳过无效插件数据:', item)
-        return false
-      }
-      const pluginId = item.manifest.id || item.id
-      if (!pluginId) {
-        console.warn('跳过缺少 ID 的插件:', item)
-        return false
-      }
-      if (!item.manifest.name || !item.manifest.version) {
-        console.warn('跳过缺少必需字段的插件:', item.id)
-        return false
-      }
-      return true
-    })
-    .map((item, index) => {
-      const manifestId = item.manifest.id?.trim()
-      const marketplaceId = item.id?.trim()
-      const pluginId = manifestId || marketplaceId!
-      const releases = catalog.plugins.find((entry) => entry.id === marketplaceId || entry.manifest_id === pluginId) || {
-        id: marketplaceId || pluginId, repositoryUrl: item.manifest.urls?.repository || item.manifest.repository_url || '',
-        mode: 'branch' as const, versions: [], recommended_version: null,
-        sync_error: '插件尚未收录到版本索引，请先同步插件中心',
-      }
-      const recommended = releases?.versions.find((release) => release.version === releases.recommended_version)
-
-      return {
-        market_data_source: market.source,
-        marketplace_stats: market.source === 'service' ? market.stats[pluginId] : undefined,
-        id: pluginId,
-        marketplace_id: marketplaceId,
-        marketplace_order: index,
-        stats_ids: uniqueNonEmptyValues([manifestId]),
-        manifest: normalizePluginManifest({ ...(recommended?.manifest || item.manifest), id: pluginId }),
-        releases,
-        assets: normalizePluginAssets(item.assets),
-        downloads: market.source === 'service' ? market.stats[pluginId]?.downloads ?? 0 : 0,
-        rating: market.source === 'service' ? market.stats[pluginId]?.rating ?? 0 : 0,
-        review_count: market.source === 'service' ? market.stats[pluginId]?.comment_count ?? 0 : 0,
-        installed: false,
-        source: 'market' as const,
-        changelog: normalizeOptionalString(item.changelog),
-        published_at: normalizeDateString(item.published_at ?? item.created_at ?? item.added_at),
-        updated_at: normalizeDateString(item.updated_at ?? item.modified_at),
-      }
-    })
-
-  return pluginList
+  // 选源、清单与发布版本合并均由公共市场服务完成；这里只转换展示模型。
+  return market.plugins.map((item, index) => ({
+    market_data_source: market.source,
+    marketplace_stats: item.stats ?? undefined,
+    id: item.id,
+    marketplace_id: item.marketplace_id,
+    marketplace_order: index,
+    stats_ids: [item.id],
+    manifest: normalizePluginManifest(item.manifest),
+    releases: item.releases,
+    assets: item.assets ?? undefined,
+    downloads: item.stats?.downloads,
+    rating: item.stats?.rating,
+    review_count: item.stats?.comment_count,
+    installed: false,
+    source: 'market' as const,
+    changelog: normalizeOptionalString(item.changelog),
+    published_at: normalizeDateString(item.published_at),
+    updated_at: normalizeDateString(item.updated_at),
+  }))
 }
 
 export async function fetchPluginList(
@@ -364,7 +250,7 @@ export async function fetchPluginList(
   if (!pluginListRequest || options.forceRefresh) {
     const generation = cacheGeneration
     // 仅在成功（fetchPluginListUncached 未抛错）时写入内存/本地缓存
-    const request: Promise<PluginInfo[]> = fetchPluginListUncached(compatibleOnly)
+    const request: Promise<PluginInfo[]> = fetchPluginListUncached(compatibleOnly, Boolean(options.forceRefresh))
       .then((result) => {
         if (generation === cacheGeneration && pluginListRequests.get(compatibleOnly) === request) {
           pluginListCaches.set(compatibleOnly, { timestamp: Date.now(), result })
@@ -384,9 +270,9 @@ export async function fetchPluginList(
 
 /** 插件中心仅在打开详情时拉取完整历史版本。 */
 export async function fetchPluginDetail(plugin: PluginInfo): Promise<PluginInfo> {
-  if (plugin.market_data_source !== 'service') return plugin
+  if (plugin.source === 'local') return plugin
   const detail = await backendApi.get<{
-    manifest: PluginApiResponse['manifest']
+    plugin: PluginApiResponse
     releases: PluginReleaseCatalog
   }>(`/api/webui/plugins/marketplace/${encodeURIComponent(plugin.id)}`, {
     errorMessage: '获取插件详情失败',
@@ -396,9 +282,23 @@ export async function fetchPluginDetail(plugin: PluginInfo): Promise<PluginInfo>
   )
   return {
     ...plugin,
-    manifest: normalizePluginManifest(recommended?.manifest ?? detail.manifest),
+    manifest: normalizePluginManifest(recommended?.manifest ?? detail.plugin.manifest),
     releases: detail.releases,
+    marketplace_stats: detail.plugin.stats ?? undefined,
   }
+}
+
+/** 读取插件文档；本地路径、仓库、分支及信息源均由公共市场服务解析。 */
+export async function fetchPluginDocument(
+  pluginId: string, kind: 'readme' | 'changelog',
+  options: { preferLocal?: boolean; branch?: string; signal?: AbortSignal } = {}
+): Promise<string> {
+  const result = await backendApi.get<{ content: string }>(
+    `/api/webui/plugins/marketplace/${encodeURIComponent(pluginId)}/${kind}`,
+    { query: { prefer_local: options.preferLocal ?? true, branch: options.branch ?? 'main' },
+      signal: options.signal, errorMessage: '获取插件文档失败' }
+  )
+  return result.content
 }
 
 /**
@@ -497,15 +397,32 @@ export function isPluginCompatible(
     const maxVersion = parseVersionTuple(pluginMaxVersion)
     const isHigherThanMax = compareVersionTuple(currentVersion, maxVersion) > 0
 
-    // 与运行时 manifest 校验保持一致：仅修订号高于声明上限时，以兼容模式允许。
-    const isSameMajorMinor =
-      currentVersion[0] === maxVersion[0] && currentVersion[1] === maxVersion[1]
-    if (isHigherThanMax && !isSameMajorMinor) {
+    // 与运行时 manifest 校验保持一致：同主版本内，修订号超出上限或次版本高 1 时允许兼容模式。
+    const isWithinCompatibilityWindow =
+      currentVersion[0] === maxVersion[0] &&
+      currentVersion[1] - maxVersion[1] >= 0 &&
+      currentVersion[1] - maxVersion[1] <= 1
+    if (isHigherThanMax && !isWithinCompatibilityWindow) {
       return false
     }
   }
 
   return true
+}
+
+/** 已超出声明上限、但仍在运行时允许的兼容窗口内。 */
+export function isPluginCompatibilityMode(
+  pluginMinVersion: string,
+  pluginMaxVersion: string | undefined,
+  maimaiVersion: MaimaiVersion
+): boolean {
+  if (!pluginMaxVersion || !isPluginCompatible(pluginMinVersion, pluginMaxVersion, maimaiVersion)) {
+    return false
+  }
+  return compareVersionTuple(
+    [maimaiVersion.version_major, maimaiVersion.version_minor, maimaiVersion.version_patch],
+    parseVersionTuple(pluginMaxVersion)
+  ) > 0
 }
 
 /**

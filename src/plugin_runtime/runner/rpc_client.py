@@ -1,5 +1,6 @@
 """Runner 端 RPC 客户端。"""
 
+from importlib.metadata import version
 from typing import Any, Awaitable, Callable, Dict, Optional, Set, cast
 
 import asyncio
@@ -7,6 +8,7 @@ import contextlib
 import uuid
 
 from src.common.logger import get_logger
+from src.common.startup_diagnostics import diagnostic_stage
 from src.plugin_runtime.local_sdk import read_local_sdk_version
 from src.plugin_runtime.protocol.codec import Codec, MsgPackCodec
 from src.plugin_runtime.protocol.envelope import (
@@ -29,18 +31,13 @@ def _get_sdk_version() -> str:
     """读取 SDK 版本号。
 
     Returns:
-        str: SDK 版本；读取失败时回退到 ``1.0.0``。
+        str: 本地开发 SDK 或已安装 SDK 的真实版本；读取失败时保留原始异常。
     """
     local_sdk_version = read_local_sdk_version()
     if local_sdk_version:
         return local_sdk_version
 
-    try:
-        from importlib.metadata import version
-
-        return version("maibot-plugin-sdk")
-    except Exception:
-        return "1.0.0"
+    return version("maibot-plugin-sdk")
 
 
 SDK_VERSION = _get_sdk_version()
@@ -110,7 +107,8 @@ class RPCClient:
             bool: 是否握手成功。
         """
         client = create_transport_client(self._host_address)
-        self._connection = await client.connect()
+        with diagnostic_stage("runner.ipc_connect"):
+            self._connection = await client.connect()
         connection = self._require_connection()
 
         hello = HelloPayload(
@@ -126,9 +124,11 @@ class RPCClient:
             payload=hello.model_dump(),
         )
 
-        await connection.send_frame(self._codec.encode_envelope(envelope))
+        with diagnostic_stage("runner.send_hello"):
+            await connection.send_frame(self._codec.encode_envelope(envelope))
 
-        resp_data = await asyncio.wait_for(connection.recv_frame(), timeout=10.0)
+        with diagnostic_stage("runner.wait_hello_response:timeout=30s"):
+            resp_data = await asyncio.wait_for(connection.recv_frame(), timeout=30.0)
         response = self._codec.decode_envelope(resp_data)
         resp_payload = HelloResponsePayload.model_validate(response.payload)
 
@@ -208,13 +208,16 @@ class RPCClient:
             await connection.send_frame(self._codec.encode_envelope(envelope))
             return await asyncio.wait_for(future, timeout=timeout_ms / 1000.0)
         except asyncio.TimeoutError:
-            self._pending_requests.pop(request_id, None)
             raise RPCError(ErrorCode.E_TIMEOUT, f"请求 {method} 超时 ({timeout_ms}ms)") from None
         except Exception as exc:
-            self._pending_requests.pop(request_id, None)
             if isinstance(exc, RPCError):
                 raise
             raise RPCError(ErrorCode.E_UNKNOWN, str(exc)) from exc
+        finally:
+            # 卸载取消业务协程时也必须回收等待表，迟到响应不再持有失效 Future。
+            self._pending_requests.pop(request_id, None)
+            if not future.done():
+                future.cancel()
 
     async def send_event(
         self,

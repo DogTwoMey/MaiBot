@@ -4,6 +4,7 @@ import time
 
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.config.official_configs import PrivateReplyPauseRule, get_active_talk_rule_group
 
 logger = get_logger("config_utils")
 
@@ -44,64 +45,6 @@ class ExpressionConfigUtils:
         chat_type = "group" if is_group else "private"
         session_ids = ChatConfigUtils.resolve_existing_session_ids(platform, id_str, chat_type)
         return next(iter(session_ids), None)
-
-
-class BehaviorConfigUtils:
-    @staticmethod
-    def _find_behavior_config_item(session_id: Optional[str] = None):
-        return ChatConfigUtils.find_learning_config_item(
-            global_config.experimental.behavior_learning_list,
-            session_id,
-        )
-
-    @staticmethod
-    def get_behavior_config_for_chat(session_id: Optional[str] = None) -> tuple[bool, bool]:
-        """
-        根据聊天会话 ID 获取行为表现配置。
-
-        没有任何匹配配置的新聊天流会自动启用行为表现调用，学习总开关由 experimental.enable_behavior_learning 控制。
-        """
-
-        enable_behavior_learning = bool(global_config.experimental.enable_behavior_learning)
-        config_item = BehaviorConfigUtils._find_behavior_config_item(session_id)
-        if config_item is None:
-            return True, enable_behavior_learning
-
-        return (
-            config_item.use,
-            config_item.learn and enable_behavior_learning,
-        )
-
-    @staticmethod
-    def resolve_behavior_group_scope(session_id: Optional[str]) -> tuple[set[str], bool]:
-        """解析当前会话可共享行为经验的会话范围，以及是否命中全平台全目标通配。"""
-        related_session_ids = {session_id} if session_id else set()
-        has_global_share = False
-        if not session_id:
-            return related_session_ids, has_global_share
-
-        for behavior_group in global_config.experimental.behavior_groups:
-            target_items = behavior_group.targets
-            group_session_ids: set[str] = set()
-            contains_current_session = False
-
-            for target_item in target_items:
-                platform = str(target_item.platform or "").strip()
-                item_id = str(target_item.item_id or "").strip()
-                if not platform or not item_id:
-                    continue
-
-                target_session_ids = ChatConfigUtils.get_target_session_ids_with_wildcards(target_item)
-                group_session_ids.update(target_session_ids)
-                if ChatConfigUtils.target_matches_session_with_wildcards(target_item, session_id):
-                    contains_current_session = True
-                    if platform == "*" and item_id == "*":
-                        has_global_share = True
-
-            if contains_current_session:
-                related_session_ids.update(group_session_ids)
-
-        return related_session_ids, has_global_share
 
 
 class JargonConfigUtils:
@@ -521,22 +464,48 @@ class ChatConfigUtils:
         return bool(chat_stream.is_group_session)
 
     @staticmethod
+    def find_private_reply_pause_rule(session_id: Optional[str]) -> Optional[PrivateReplyPauseRule]:
+        """只匹配已存在私聊的具体平台和用户，不使用旧频率规则。"""
+        if not session_id:
+            return None
+        chat_stream = ChatConfigUtils._get_chat_stream(session_id)
+        if chat_stream is None or chat_stream.is_group_session:
+            return None
+        return next(
+            (
+                rule
+                for rule in global_config.chat.reply_timing.private_reply_pause_rules
+                if rule.platform == chat_stream.platform and rule.item_id == chat_stream.user_id
+            ),
+            None,
+        )
+
+    @staticmethod
+    def is_private_reply_paused(session_id: Optional[str]) -> bool:
+        """返回单个私聊覆盖后的暂停状态；没有覆盖时跟随全局开关。"""
+        rule = ChatConfigUtils.find_private_reply_pause_rule(session_id)
+        return rule.paused if rule is not None else global_config.chat.reply_timing.private_reply_paused
+
+    @staticmethod
     def get_talk_value(session_id: Optional[str], is_group_chat: Optional[bool] = None) -> float:
         if is_group_chat is None:
             is_group_chat = ChatConfigUtils._resolve_is_group_chat(session_id)
 
-        result = (
-            global_config.chat.reply_timing.talk_value
-            if is_group_chat is not False
-            else global_config.chat.reply_timing.private_talk_value
-        ) or 0.0
-        if not global_config.chat.reply_timing.enable_talk_value_rules or not global_config.chat.reply_timing.talk_value_rules:
+        if is_group_chat is False:
+            return 0.0 if ChatConfigUtils.is_private_reply_paused(session_id) else 1.0
+
+        reply_timing = global_config.chat.reply_timing
+        result = reply_timing.talk_value
+        rules = get_active_talk_rule_group(reply_timing.talk_rule_groups).rules
+        if not rules:
             return result
         local_time = time.localtime()
         now_min = local_time.tm_hour * 60 + local_time.tm_min
 
         matched_rules = []
-        for rule in global_config.chat.reply_timing.talk_value_rules:
+        for rule in rules:
+            if not rule.enabled or rule.rule_type != "group":
+                continue
             target_priority = ChatConfigUtils._talk_rule_target_priority(rule, session_id, is_group_chat)
             if target_priority is None:
                 continue
@@ -659,10 +628,10 @@ class AMemorixConfigUtils:
         if not clean_session_id:
             return set()
 
-        shared_groups = getattr(global_config.a_memorix, "shared_memory_groups", []) or []
+        shared_groups = global_config.a_memorix.shared_memory_groups
         resolved_session_ids: set[str] = set()
         for group in shared_groups:
-            targets = getattr(group, "targets", []) or []
+            targets = group.targets
             group_session_ids: set[str] = set()
             for target in targets:
                 group_session_ids.update(ChatConfigUtils.get_target_session_ids(target))

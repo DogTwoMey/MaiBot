@@ -1,9 +1,9 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from threading import Lock
-from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, ParamSpec, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, ParamSpec, Set, Tuple, TypeVar
 
 import asyncio
 import json
@@ -14,25 +14,22 @@ import tomlkit
 
 from src.common.runtime_loop import run_on_main_loop
 from src.common.logger import get_logger
+from src.plugin_market import service as market_service
+from src.plugin_market.errors import MarketError
+from src.plugin_market.releases import PluginRelease, PluginReleaseEntry
 from src.webui.services.git_mirror_service import get_git_mirror_service
 
 from .progress import update_progress
 from .release_install import install_release, read_release_receipt
-from .releases import resolve_release
 from .schemas import InstallPluginRequest, UninstallPluginRequest, UpdatePluginRequest
 from .support import (
-    find_plugin_path_by_id,
     get_plugin_candidate_paths,
     get_plugin_config_path,
     is_plugin_install_residue,
-    iter_plugin_directories,
     load_manifest_json,
     parse_repository_url,
-    read_plugin_changelog,
-    read_plugin_readme,
     remove_tree,
-    require_plugin_token,
-    resolve_installed_plugin_path,
+    resolve_mutable_plugin_path,
     resolve_plugin_file_path,
     validate_plugin_id,
 )
@@ -53,28 +50,25 @@ _PLUGIN_OPERATION_LABELS = {
 }
 
 
-def _get_plugin_operation_keys(plugin_id: str) -> set[str]:
-    """生成插件操作资源键，使清单 ID、目录名和新旧目录格式指向同一把锁。"""
+def _get_plugin_operation_resources(plugin_id: str) -> Tuple[List[Path], Set[str]]:
+    """定位操作目录并生成资源键，使清单 ID、目录名和新旧目录格式指向同一把锁。"""
 
     keys = {f"id:{plugin_id.casefold()}"}
     target_path, old_format_path = get_plugin_candidate_paths(plugin_id)
-    keys.update(
-        {
-            f"path:{str(target_path.resolve()).casefold()}",
-            f"path:{str(old_format_path.resolve()).casefold()}",
-        }
-    )
-    installed_path = resolve_installed_plugin_path(plugin_id)
+    paths = [target_path, old_format_path]
+    installed_path = resolve_mutable_plugin_path(plugin_id)
     if installed_path is not None:
-        keys.add(f"path:{str(installed_path.resolve()).casefold()}")
-    return keys
+        paths.append(installed_path)
+    paths = list(dict.fromkeys(paths))
+    keys.update(f"path:{str(path).casefold()}" for path in paths)
+    return paths, keys
 
 
 @contextmanager
-def _reserve_plugin_operation(plugin_id: str, operation: str) -> Iterator[None]:
+def _reserve_plugin_operation(plugin_id: str, operation: str) -> Iterator[List[Path]]:
     """为单个插件保留操作权；冲突操作立即返回 409，不等待也不覆盖原进度。"""
 
-    operation_keys = _get_plugin_operation_keys(plugin_id)
+    paths, operation_keys = _get_plugin_operation_resources(plugin_id)
     with _PLUGIN_OPERATION_MUTEX:
         conflicting_operation = next(
             (
@@ -95,12 +89,22 @@ def _reserve_plugin_operation(plugin_id: str, operation: str) -> Iterator[None]:
             _ACTIVE_PLUGIN_OPERATIONS[key] = operation
 
     try:
-        yield
+        yield paths
     finally:
         with _PLUGIN_OPERATION_MUTEX:
             for key in operation_keys:
                 if _ACTIVE_PLUGIN_OPERATIONS.get(key) == operation:
                     _ACTIVE_PLUGIN_OPERATIONS.pop(key, None)
+
+
+async def resolve_release(plugin_id: str, version: str) -> Tuple[PluginReleaseEntry, Optional[PluginRelease]]:
+    """安装路由只映射公共服务的错误，不另行获取或筛选版本。"""
+    try:
+        return await market_service.resolve_release(plugin_id, version)
+    except MarketError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail=f"获取插件发布版本失败：{exc}") from exc
 
 
 def _exclusive_plugin_operation(
@@ -127,13 +131,18 @@ def _exclusive_plugin_operation(
 
             plugin_id = validate_plugin_id(request.plugin_id)
             if isinstance(request, (InstallPluginRequest, UpdatePluginRequest)) and request.version is not None:
+                # 版本请求先验证本地目标，再用市场登记的规范 ID 预留操作目录。
+                await asyncio.to_thread(resolve_mutable_plugin_path, plugin_id)
                 # 登记 ID 和 manifest ID 必须共用同一把锁，防止别名请求并发替换同一目录。
-                token = kwargs.get("maibot_session") if "maibot_session" in kwargs else args[1] if len(args) > 1 else None
-                require_plugin_token(token)
                 entry, _ = await resolve_release(plugin_id, request.version)
                 plugin_id = validate_plugin_id(entry.manifest_id or entry.id)
-            with _reserve_plugin_operation(plugin_id, operation):
-                return await func(*args, **kwargs)
+            with _reserve_plugin_operation(plugin_id, operation) as paths:
+                try:
+                    return await func(*args, **kwargs)
+                finally:
+                    from src.plugin_runtime.integration import get_plugin_runtime_manager
+
+                    await run_on_main_loop(get_plugin_runtime_manager().refresh_plugin_catalog(paths))
 
         return wrapper
 
@@ -149,28 +158,6 @@ def _require_manifest_plugin_id(manifest: Dict[str, Any]) -> str:
     if not plugin_id:
         raise HTTPException(status_code=400, detail="无效的插件：_manifest.json 缺少 id")
     return plugin_id
-
-
-def _coerce_enabled_value(value: Any) -> bool:
-    if isinstance(value, str):
-        return value.strip().lower() not in {"false", "0", "no", "off", "disabled"}
-    return bool(value)
-
-
-def _read_plugin_enabled(plugin_id: str, plugin_path: Path) -> bool:
-    try:
-        config_path = get_plugin_config_path(plugin_id, plugin_path)
-        if not config_path.exists():
-            return True
-        with open(config_path, "r", encoding="utf-8") as file_obj:
-            config = tomlkit.load(file_obj).unwrap()
-    except Exception as exc:
-        raise ValueError(f"读取插件 {plugin_id} 启用配置失败：{exc}") from exc
-
-    plugin_config = config.get("plugin") if isinstance(config, dict) else None
-    if not isinstance(plugin_config, dict):
-        return True
-    return _coerce_enabled_value(plugin_config.get("enabled", True))
 
 
 def _build_update_work_path(plugin_path: Path, plugin_id: str, directory_name: str) -> Path:
@@ -311,16 +298,17 @@ async def _update_non_git_plugin(
             "update_mode": "reinstall_from_backup",
             "backup_path": str(backup_path),
         }
-    except Exception:
+    except (Exception, asyncio.CancelledError):
         if candidate_path.exists():
-            _remove_path(candidate_path)
+            await asyncio.to_thread(_remove_path, candidate_path)
         if old_moved and backup_path.exists() and not plugin_path.exists():
-            backup_path.rename(plugin_path)
+            await asyncio.to_thread(backup_path.rename, plugin_path)
         raise
 
 
 def _write_plugin_disabled_for_uninstall(plugin_path: Path) -> None:
-    config_path = resolve_plugin_file_path(plugin_path, "config.toml")
+    config_path = get_plugin_config_path("", plugin_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as file_obj:
             config_doc = tomlkit.load(file_obj)
@@ -352,8 +340,7 @@ async def _release_plugin_runtime_before_delete(plugin_id: str, plugin_path: Pat
 
 @router.post("/install")
 @_exclusive_plugin_operation("install")
-async def install_plugin(request: InstallPluginRequest, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def install_plugin(request: InstallPluginRequest) -> Dict[str, Any]:
     logger.info(f"收到安装插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -455,16 +442,12 @@ async def install_plugin(request: InstallPluginRequest, http_request: Request) -
         try:
             with open(manifest_path, "r", encoding="utf-8") as file_obj:
                 manifest = json.load(file_obj)
-            for field in ["manifest_version", "name", "version", "author"]:
+            for field in ["manifest_version", "id", "name", "version", "author"]:
                 if field not in manifest:
                     raise ValueError(f"缺少必需字段: {field}")
-            manifest_plugin_id = _read_manifest_plugin_id(manifest)
-            if not manifest_plugin_id:
-                manifest["id"] = plugin_id
-                manifest_plugin_id = plugin_id
-                with open(manifest_path, "w", encoding="utf-8") as file_obj:
-                    json.dump(manifest, file_obj, ensure_ascii=False, indent=2)
-                    file_obj.write("\n")
+            manifest_plugin_id = _require_manifest_plugin_id(manifest)
+            if manifest_plugin_id != plugin_id:
+                raise ValueError("插件 ID 不匹配")
             validate_plugin_id(manifest_plugin_id)
         except Exception as e:
             remove_tree(target_path)
@@ -506,9 +489,7 @@ async def install_plugin(request: InstallPluginRequest, http_request: Request) -
 @router.post("/uninstall")
 @_exclusive_plugin_operation("uninstall")
 async def uninstall_plugin(
-    request: UninstallPluginRequest, http_request: Request
-) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+    request: UninstallPluginRequest) -> Dict[str, Any]:
     logger.info(f"收到卸载插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -521,7 +502,7 @@ async def uninstall_plugin(
             operation="uninstall",
             plugin_id=plugin_id,
         )
-        plugin_path = resolve_installed_plugin_path(plugin_id)
+        plugin_path = resolve_mutable_plugin_path(plugin_id)
         if plugin_path is None:
             await update_progress(
                 stage="error",
@@ -590,9 +571,46 @@ async def uninstall_plugin(
 
 
 @router.post("/update")
+async def update_plugin(
+    request: UpdatePluginRequest,
+    http_request: Request = None,
+) -> Dict[str, Any]:
+    if http_request is None:
+        return await _perform_update_plugin(request)
+
+    async def watch_disconnect() -> None:
+        # 请求体已由 FastAPI 解析完毕，此处直接等待 ASGI 断开事件。
+        while True:
+            message = await http_request.receive()
+            if message["type"] == "http.disconnect":
+                return
+
+    update_task = asyncio.create_task(_perform_update_plugin(request))
+    disconnect_task = asyncio.create_task(watch_disconnect())
+    try:
+        done, _ = await asyncio.wait({update_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED)
+        if update_task in done:
+            return await update_task
+        await disconnect_task
+        update_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await update_task
+        await update_progress(
+            stage="error", progress=0, message="更新已取消", operation="update",
+            plugin_id=request.plugin_id, error="更新已取消",
+        )
+        raise HTTPException(status_code=499, detail="更新已取消")
+    finally:
+        # 必须等待更新清理完成才释放资源，避免后台继续克隆或占用操作锁。
+        for task in (disconnect_task, update_task):
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+
 @_exclusive_plugin_operation("update")
-async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def _perform_update_plugin(request: UpdatePluginRequest) -> Dict[str, Any]:
     logger.info(f"收到更新插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -609,7 +627,7 @@ async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> 
         await update_progress(
             stage="loading", progress=5, message=f"开始更新插件: {plugin_id}", operation="update", plugin_id=plugin_id
         )
-        plugin_path = resolve_installed_plugin_path(plugin_id)
+        plugin_path = resolve_mutable_plugin_path(plugin_id)
         if plugin_path is None:
             await update_progress(
                 stage="error",
@@ -649,10 +667,16 @@ async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> 
             stage="loading", progress=30, message="正在通过 Git 拉取新版本...", operation="update", plugin_id=plugin_id
         )
         service = get_git_mirror_service()
+        source_url = request.repository_url
+        if not source_url:
+            urls = manifest.get("urls")
+            source_url = urls.get("repository") if isinstance(urls, dict) else None
+            source_url = source_url or manifest.get("repository_url")
         result = await service.pull_repository(
             repository_path=plugin_path,
             branch=request.branch,
-            remote_url=request.repository_url,
+            remote_url=source_url,
+            mirror_id=request.mirror_id,
         )
 
         if not result.get("success"):
@@ -734,142 +758,58 @@ async def update_plugin(request: UpdatePluginRequest, http_request: Request) -> 
 
 
 @router.get("/installed")
-async def get_installed_plugins(http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
+async def get_installed_plugins() -> Dict[str, Any]:
     from src.plugin_runtime.integration import get_plugin_runtime_manager
 
     snapshot = await run_on_main_loop(get_plugin_runtime_manager().get_plugin_state_snapshot())
-    return await asyncio.to_thread(_collect_installed_plugins, snapshot)
+    return _collect_installed_plugins(snapshot)
+
+
+@router.get("/usage")
+async def get_plugin_usage() -> Dict[str, Dict[str, float]]:
+    """只读取主循环内的累计时长，供列表刷新提醒；不扫描插件目录。"""
+    from src.plugin_runtime.integration import get_plugin_runtime_manager
+
+    async def read_usage() -> Dict[str, float]:
+        return get_plugin_runtime_manager().get_plugin_usage_seconds()
+
+    return {"usage_seconds": await run_on_main_loop(read_usage())}
 
 
 def _collect_installed_plugins(snapshot: Dict[str, Any]) -> Dict[str, Any]:
-    """在线程池读取磁盘元数据；运行状态只使用管理器提供的同一份快照。"""
-    logger.info("收到获取已安装插件列表请求")
-
-    try:
-        installed_plugins: List[Dict[str, Any]] = []
-        runtime_statuses = snapshot["statuses"]
-        runtime_failure_reasons = snapshot["failure_reasons"]
-        circuit_statuses = snapshot["circuit_statuses"]
-        for plugin_path in iter_plugin_directories():
-            folder_name = plugin_path.name
-            if folder_name.startswith(".") or folder_name.startswith("__"):
-                continue
-
-            manifest_path = resolve_plugin_file_path(plugin_path, "_manifest.json")
-            if not manifest_path.exists():
-                logger.warning(f"插件文件夹 {folder_name} 缺少 _manifest.json，跳过")
-                continue
-
-            try:
-                manifest = load_manifest_json(manifest_path)
-                if manifest is None:
-                    logger.warning(f"插件文件夹 {folder_name} 的 _manifest.json 不安全或无效，跳过")
-                    continue
-                if "name" not in manifest or "version" not in manifest:
-                    logger.warning(f"插件文件夹 {folder_name} 的 _manifest.json 格式无效，跳过")
-                    continue
-                plugin_id = _read_manifest_plugin_id(manifest)
-                if not plugin_id:
-                    logger.warning(f"插件文件夹 {folder_name} 的 _manifest.json 缺少 id，跳过")
-                    continue
-                config_error = ""
-                try:
-                    enabled = _read_plugin_enabled(plugin_id, plugin_path)
-                except ValueError as exc:
-                    enabled = None
-                    config_error = str(exc)
-                load_status = runtime_statuses.get(plugin_id, "not_loaded" if snapshot["running"] else "stopped")
-                circuit_status = circuit_statuses.get(plugin_id)
-                load_error = runtime_failure_reasons.get(plugin_id, "")
-                if config_error:
-                    load_status = "failed"
-                    load_error = config_error
-                # 扫描阶段的兼容性/依赖检查失败不代表禁用插件启动失败；
-                # 仅保留实际运行或正在启停的状态，避免掩盖尚未完成的禁用操作。
-                effective_load_status = (
-                    "disabled" if enabled is False and load_status not in {"success", "loading", "stopping"}
-                    else load_status
-                )
-                changelog = read_plugin_changelog(plugin_path)
-                installed_plugins.append(
-                    {
-                        "id": plugin_id,
-                        "manifest": manifest,
-                        "path": str(plugin_path.absolute()),
-                        "enabled": enabled,
-                        "disabled": enabled is False,
-                        "loaded": effective_load_status == "success",
-                        "load_status": effective_load_status,
-                        "load_error": load_error if effective_load_status == "failed" else "",
-                        "circuit_status": circuit_status,
-                        "changelog": changelog,
-                        "release": read_release_receipt(plugin_path),
-                    }
-                )
-            except json.JSONDecodeError as e:
-                logger.warning(f"插件 {folder_name} 的 _manifest.json 解析失败: {e}")
-            except Exception as e:
-                logger.error(f"读取插件 {folder_name} 信息时出错: {e}")
-
-        seen_ids: Dict[str, str] = {}
-        unique_plugins: List[Dict[str, Any]] = []
-        duplicates: List[Dict[str, Any]] = []
-        for plugin in installed_plugins:
-            plugin_id = str(plugin["id"])
-            plugin_path = str(plugin["path"])
-            if plugin_id not in seen_ids:
-                seen_ids[plugin_id] = plugin_path
-                unique_plugins.append(plugin)
-            else:
-                duplicates.append(plugin)
-                logger.warning(f"重复插件 {plugin_id}: 保留 {seen_ids[plugin_id]}, 跳过 {plugin_path}")
-
-        if duplicates:
-            logger.warning(f"共检测到 {len(duplicates)} 个重复插件已去重")
-
-        logger.info(f"找到 {len(unique_plugins)} 个已安装插件")
-        return {"success": True, "plugins": unique_plugins, "total": len(unique_plugins)}
-    except Exception as e:
-        logger.error(f"获取已安装插件列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
-
-
-@router.get("/local-readme/{plugin_id}")
-def get_local_plugin_readme(plugin_id: str, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
-    logger.info(f"获取本地插件 README: {plugin_id}")
-
-    try:
-        plugin_path = find_plugin_path_by_id(plugin_id)
-        if plugin_path is None:
-            return {"success": False, "error": "插件未安装"}
-
-        readme = read_plugin_readme(plugin_path)
-        if readme:
-            return {"success": True, "data": readme}
-
-        return {"success": False, "error": "本地未找到 README 文件"}
-    except Exception as e:
-        logger.error(f"获取本地 README 失败: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
-
-
-@router.get("/local-changelog/{plugin_id}")
-def get_local_plugin_changelog(plugin_id: str, http_request: Request) -> Dict[str, Any]:
-    require_plugin_token(http_request)
-    logger.info(f"获取本地插件更新日志: {plugin_id}")
-
-    try:
-        plugin_path = find_plugin_path_by_id(plugin_id)
-        if plugin_path is None:
-            return {"success": False, "error": "插件未安装"}
-
-        changelog = read_plugin_changelog(plugin_path)
-        if changelog:
-            return {"success": True, "data": changelog}
-
-        return {"success": False, "error": "本地未找到 CHANGELOG.md 文件"}
-    except Exception as e:
-        logger.error(f"获取本地插件更新日志失败: {e}", exc_info=True)
-        return {"success": False, "error": str(e)}
+    """将静态索引与运行状态快照合并；不读取文件或重新校验插件。"""
+    plugins: List[Dict[str, Any]] = []
+    seen_ids: Set[str] = set()
+    for entry in snapshot["plugins"]:
+        plugin_id = entry.plugin_id
+        if plugin_id in seen_ids:
+            continue
+        seen_ids.add(plugin_id)
+        load_status = snapshot["statuses"].get(plugin_id, "not_loaded" if snapshot["running"] else "stopped")
+        load_error = snapshot["failure_reasons"].get(plugin_id, "")
+        if entry.metadata_error:
+            load_status = "failed"
+            load_error = entry.metadata_error
+        # 扫描阶段的兼容性/依赖检查失败不代表禁用插件启动失败；
+        # 仅保留实际运行或正在启停的状态，避免掩盖尚未完成的禁用操作。
+        if (
+            entry.enabled is False and not entry.metadata_error
+            and load_status not in {"success", "loading", "timed_out", "stopping"}
+        ):
+            load_status = "disabled"
+        plugins.append({
+            "id": plugin_id,
+            "manifest": entry.manifest,
+            "builtin": entry.builtin,
+            "path": str(entry.path),
+            "enabled": entry.enabled,
+            "disabled": entry.enabled is False,
+            "loaded": load_status == "success",
+            "load_status": load_status,
+            "status_badges": snapshot.get("status_badges", {}).get(plugin_id, []) if load_status == "success" else [],
+            "usage_seconds": snapshot["usage_seconds"].get(plugin_id, 0.0),
+            "load_error": load_error if load_status in {"failed", "timed_out"} else "",
+            "circuit_status": snapshot["circuit_statuses"].get(plugin_id),
+            "release": entry.release,
+        })
+    return {"success": True, "plugins": plugins, "total": len(plugins)}

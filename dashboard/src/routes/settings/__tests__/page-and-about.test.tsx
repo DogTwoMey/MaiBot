@@ -7,6 +7,7 @@ import { SettingsPage } from '../index'
 
 const { navigateMock, routerState } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
+  // 设置页同时读取 searchStr 与 hash（hash 作为 tab 的后备来源）
   routerState: { searchStr: '', hash: '' },
 }))
 vi.mock('@tanstack/react-router', () => ({
@@ -18,9 +19,12 @@ vi.mock('@tanstack/react-router', () => ({
   }) => select({ location: routerState }),
 }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('../GeneralTab', () => ({ GeneralTab: () => <div>通用页内容</div> }))
 vi.mock('../AppearanceTab', () => ({ AppearanceTab: () => <div>外观页内容</div> }))
 vi.mock('../SecurityTab', () => ({ SecurityTab: () => <div>安全页内容</div> }))
 vi.mock('../OtherTab', () => ({ OtherTab: () => <div>其他页内容</div> }))
+vi.mock('../MobileAccountCard', () => ({ MobileAccountCard: () => null }))
+vi.mock('@/host/HostUpdateSection', () => ({ HostUpdateSection: () => null }))
 
 beforeEach(() => {
   navigateMock.mockClear()
@@ -29,8 +33,8 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-describe('WebUI 设置与关于页', () => {
-  it('切换标签时保留独立设置页的查询参数', async () => {
+describe('独立 WebUI 设置页与关于页', () => {
+  it('读取路由查询参数，切换时保留其他参数并移除旧版 mode 参数', async () => {
     routerState.searchStr = '?mode=webui&tab=security&extra=keep'
     const view = render(<SettingsPage />)
     expect(screen.getByText('安全页内容')).toBeInTheDocument()
@@ -39,24 +43,24 @@ describe('WebUI 设置与关于页', () => {
       href: '/settings?tab=other&extra=keep',
       replace: true,
     })
-    routerState.searchStr = '?mode=webui&tab=other&extra=keep'
+    routerState.searchStr = '?tab=other&extra=keep'
     view.rerender(<SettingsPage />)
     expect(screen.getByText('其他页内容')).toBeInTheDocument()
   })
 
-  it('缺省或未知标签显示外观页', () => {
+  it('缺省或未知标签显示通用页，滚动由主内容区管理', () => {
     const view = render(<SettingsPage />)
-    expect(screen.getByText('外观页内容')).toBeInTheDocument()
+    expect(screen.getByText('通用页内容')).toBeInTheDocument()
     routerState.searchStr = '?tab=unknown'
     view.rerender(<SettingsPage />)
-    expect(screen.getByText('外观页内容')).toBeInTheDocument()
+    expect(screen.getByText('通用页内容')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'settings.title' })).not.toBeInTheDocument()
   })
 
-  it('切回外观页使用独立设置页路径', async () => {
+  it('切回通用页删除 tab 与旧版 mode 参数，回到独立设置页', async () => {
     routerState.searchStr = '?tab=about&mode=webui'
     render(<SettingsPage />)
-    await userEvent.setup().click(screen.getByRole('tab', { name: 'settings.tabs.appearance' }))
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'settings.tabs.general' }))
     expect(navigateMock).toHaveBeenCalledWith({ href: '/settings', replace: true })
   })
 
@@ -68,7 +72,7 @@ describe('WebUI 设置与关于页', () => {
     expect(screen.getByText('TypeScript')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings.about.visitGitHub/ })).toHaveAttribute(
       'href',
-      'https://github.com/Mai-with-u/MaiBot-Dashboard'
+      'https://github.com/Mai-with-u/MaiBot'
     )
     expect(screen.getByRole('link', { name: '@MotricSeven' })).toHaveAttribute(
       'rel',

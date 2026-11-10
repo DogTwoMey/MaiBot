@@ -1,25 +1,34 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from src.common.logger import get_logger
+from src.services.model_task_usage_service import get_model_task_usage
 from src.services.statistics_service import (
     get_dashboard_statistics,
     get_detailed_statistics_snapshot,
     get_model_statistics,
     get_summary_statistics,
 )
-from src.webui.dependencies import require_auth
 from src.webui.schemas.statistics import DashboardData, DetailedStatisticsData
 
 logger = get_logger("webui.statistics")
 
-router = APIRouter(prefix="/statistics", tags=["statistics"], dependencies=[Depends(require_auth)])
+router = APIRouter(prefix="/statistics", tags=["statistics"])
+
+
+@router.get("/task-usage")
+def get_task_usage(
+    task_name: str = Query(..., min_length=1, max_length=100),
+    hours: int = Query(24, ge=1, le=168),
+):
+    """同步端点在线程池查询，避免统计读取阻塞 WebUI 事件循环。"""
+    return get_model_task_usage(task_name, hours)
 
 
 @router.get("/detailed", response_model=DetailedStatisticsData)
 def get_detailed_statistics() -> DetailedStatisticsData:
-    """获取与 HTML 报告同源的详细统计快照。"""
+    """获取详细统计快照。"""
 
     snapshot = get_detailed_statistics_snapshot()
     if snapshot is None:

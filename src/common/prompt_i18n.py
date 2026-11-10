@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Dict
 from tomlkit import parse as parse_toml
 
 import json
@@ -11,18 +11,26 @@ import logging
 import os
 import re
 
+from .paths import get_instance_root, resource_path
 from .i18n import get_locale, t
 from .i18n.loaders import DEFAULT_LOCALE, extract_placeholders, normalize_locale
 
 logger = logging.getLogger("maibot.prompt_i18n")
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROMPTS_ROOT = (PROJECT_ROOT / "prompts").resolve()
+PROJECT_ROOT = get_instance_root()
+PROMPTS_ROOT = resource_path("prompts").resolve()
 CUSTOM_PROMPTS_ROOT = (PROJECT_ROOT / "data" / "custom_prompts").resolve()
 PROMPT_EXTENSIONS = (".prompt",)
 SAFE_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
 STRICT_ENV_KEYS = ("MAIBOT_PROMPT_I18N_STRICT", "MAIBOT_I18N_STRICT")
 STRICT_ENV_VALUES = {"1", "true", "yes", "on"}
+# 内置模板按场景命名，用户覆盖和版本历史沿用原来的存储名。
+_CUSTOM_PROMPT_STORAGE_NAMES = {
+    "reply_group": "retro_replyer",
+    "reply_private": "retro_private_replyer",
+    "reply_private_followup": "retro_private_replyer_self",
+}
+_RENAMED_PROMPTS = {old_name: name for name, old_name in _CUSTOM_PROMPT_STORAGE_NAMES.items()}
 _PROMPT_CACHE_REVISION = 0
 
 extract_prompt_placeholders = extract_placeholders
@@ -64,6 +72,14 @@ def get_custom_prompts_root(
     return CUSTOM_PROMPTS_ROOT
 
 
+def get_builtin_prompt_name(name: str) -> str:
+    return _RENAMED_PROMPTS.get(name, name)
+
+
+def get_custom_prompt_storage_name(name: str) -> str:
+    return _CUSTOM_PROMPT_STORAGE_NAMES.get(name, name)
+
+
 def normalize_prompt_name(name: str) -> str:
     candidate_name = name.strip()
     for suffix in PROMPT_EXTENSIONS:
@@ -73,7 +89,7 @@ def normalize_prompt_name(name: str) -> str:
 
     if candidate_name in {".", ".."} or not candidate_name or not SAFE_SEGMENT_PATTERN.fullmatch(candidate_name):
         raise ValueError(t("prompt.invalid_name", name=name))
-    return candidate_name
+    return get_builtin_prompt_name(candidate_name)
 
 
 def normalize_prompt_category(category: str | None) -> str | None:
@@ -173,7 +189,7 @@ def _extract_template_metadata(metadata: dict[str, Any], prompt_name: str) -> di
     return metadata if any(key in metadata for key in ("display_name", "advanced", "description")) else {}
 
 
-def _load_prompt_metadata(prompt_path: Path) -> PromptMetadata:
+def _load_prompt_metadata(prompt_path: Path, metadata_cache: Dict[Path, Dict[str, Any]]) -> PromptMetadata:
     prompt_name = prompt_path.stem
     metadata_sources = (
         prompt_path.with_name(f"{prompt_name}.meta.toml"),
@@ -184,7 +200,9 @@ def _load_prompt_metadata(prompt_path: Path) -> PromptMetadata:
 
     merged_metadata: dict[str, Any] = {}
     for metadata_path in reversed(metadata_sources):
-        raw_metadata = _read_metadata_file(metadata_path)
+        if metadata_path not in metadata_cache:
+            metadata_cache[metadata_path] = _read_metadata_file(metadata_path)
+        raw_metadata = metadata_cache[metadata_path]
         merged_metadata.update(_extract_template_metadata(raw_metadata, prompt_name))
 
     return _coerce_metadata(merged_metadata)
@@ -192,12 +210,16 @@ def _load_prompt_metadata(prompt_path: Path) -> PromptMetadata:
 
 def _scan_prompt_directory(directory: Path, prompts_root: Path) -> dict[str, PromptTemplateInfo]:
     prompt_paths: dict[str, PromptTemplateInfo] = {}
+    # 同一轮扫描共享解析结果；下次扫描重新读取，确保元信息修改立即生效。
+    metadata_cache: Dict[Path, Dict[str, Any]] = {}
     for prompt_path in iter_prompt_files(directory):
         prompt_name = prompt_path.stem
         existing_info = prompt_paths.get(prompt_name)
         if existing_info is not None:
             _raise_duplicate_prompt_name(prompt_name, existing_info.path, prompt_path, prompts_root)
-        prompt_paths[prompt_name] = PromptTemplateInfo(path=prompt_path, metadata=_load_prompt_metadata(prompt_path))
+        prompt_paths[prompt_name] = PromptTemplateInfo(
+            path=prompt_path, metadata=_load_prompt_metadata(prompt_path, metadata_cache)
+        )
     return prompt_paths
 
 
@@ -263,26 +285,28 @@ def resolve_prompt_path(
     prompts_root: Path | None = None,
     custom_prompts_root: Path | None = None,
     include_legacy_custom: bool = False,
+    include_custom: bool = True,
 ) -> Path:
     resolved_prompts_root = get_prompts_root(prompts_root)
     resolved_custom_prompts_root = get_custom_prompts_root(custom_prompts_root, prompts_root)
     normalized_name = normalize_prompt_name(name)
+    storage_name = get_custom_prompt_storage_name(normalized_name)
     normalized_category = normalize_prompt_category(category)
     requested_locale = normalize_locale(locale or get_locale())
 
     if normalized_category is not None:
         for locale_candidate in _iter_locale_candidates(requested_locale):
             custom_path = _resolve_custom_prompt_path(
-                normalized_name,
+                storage_name,
                 locale_candidate,
                 normalized_category,
                 resolved_custom_prompts_root,
             )
-            if custom_path is not None:
+            if include_custom and custom_path is not None:
                 return custom_path
 
-            if include_legacy_custom:
-                legacy_custom_path = _resolve_legacy_custom_prompt_path(normalized_name, resolved_custom_prompts_root)
+            if include_custom and include_legacy_custom:
+                legacy_custom_path = _resolve_legacy_custom_prompt_path(storage_name, resolved_custom_prompts_root)
                 if legacy_custom_path is not None:
                     return legacy_custom_path
 
@@ -299,16 +323,16 @@ def resolve_prompt_path(
     else:
         for locale_candidate in _iter_locale_candidates(requested_locale):
             custom_path = _resolve_custom_prompt_path(
-                normalized_name,
+                storage_name,
                 locale_candidate,
                 None,
                 resolved_custom_prompts_root,
             )
-            if custom_path is not None:
+            if include_custom and custom_path is not None:
                 return custom_path
 
-            if include_legacy_custom:
-                legacy_custom_path = _resolve_legacy_custom_prompt_path(normalized_name, resolved_custom_prompts_root)
+            if include_custom and include_legacy_custom:
+                legacy_custom_path = _resolve_legacy_custom_prompt_path(storage_name, resolved_custom_prompts_root)
                 if legacy_custom_path is not None:
                     return legacy_custom_path
 
@@ -317,7 +341,7 @@ def resolve_prompt_path(
                 if candidate_path.is_file():
                     return candidate_path
 
-    raise FileNotFoundError(t("prompt.template_not_found", locale=requested_locale, name=normalized_name))
+    raise FileNotFoundError(t("prompt.template_not_found", prompt_locale=requested_locale, name=normalized_name))
 
 
 @lru_cache(maxsize=None)
@@ -341,6 +365,7 @@ def load_prompt_template(
     prompts_root: Path | None = None,
     custom_prompts_root: Path | None = None,
     include_legacy_custom: bool = False,
+    include_custom: bool = True,
 ) -> ResolvedPromptTemplate:
     resolved_prompts_root = get_prompts_root(prompts_root)
     resolved_custom_prompts_root = get_custom_prompts_root(custom_prompts_root, prompts_root)
@@ -352,6 +377,7 @@ def load_prompt_template(
         prompts_root=resolved_prompts_root,
         custom_prompts_root=resolved_custom_prompts_root,
         include_legacy_custom=include_legacy_custom,
+        include_custom=include_custom,
     )
     prompt_locale = _get_locale_from_prompt_path(prompt_path, resolved_prompts_root)
     customized = False
@@ -392,6 +418,7 @@ def load_prompt(
     category: str | None = None,
     prompts_root: Path | None = None,
     custom_prompts_root: Path | None = None,
+    transform_template: Callable[[str], str] | None = None,
     **kwargs: object,
 ) -> str:
     normalized_name = normalize_prompt_name(name)
@@ -402,7 +429,30 @@ def load_prompt(
         prompts_root=prompts_root,
         custom_prompts_root=custom_prompts_root,
     )
-    return _format_prompt_template(normalized_name, resolved_template.template, **kwargs)
+    # 固定文案转换先于材料填充；自定义模板与过期后的内置模板共用此阶段。
+    template = resolved_template.template
+    if transform_template is not None:
+        template = transform_template(template)
+    if resolved_template.customized and kwargs:
+        try:
+            return template.format(**kwargs)
+        except (KeyError, IndexError, ValueError, AttributeError):
+            # 旧自定义模板可能仍引用已移除的参数；保留原文件，改用当前内置模板。
+            default_template = load_prompt_template(
+                name=normalized_name,
+                locale=locale,
+                category=category,
+                prompts_root=prompts_root,
+                custom_prompts_root=custom_prompts_root,
+                include_custom=False,
+            )
+            template = default_template.template
+            if transform_template is not None:
+                template = transform_template(template)
+            rendered = _format_prompt_template(normalized_name, template, **kwargs)
+            logger.warning(t("prompt.template_outdated", name=normalized_name))
+            return rendered
+    return _format_prompt_template(normalized_name, template, **kwargs)
 
 
 def clear_prompt_cache() -> None:

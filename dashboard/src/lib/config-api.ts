@@ -6,7 +6,7 @@
  * 公开函数遵循 throw 契约：成功返回数据，失败抛 ApiError。
  */
 
-import { ApiError, backendApi } from '@/lib/http'
+import { backendApi } from '@/lib/http'
 import type { ConfigSchema } from '@/types/config-schema'
 
 const API_BASE = '/api/webui/config'
@@ -45,9 +45,8 @@ function getCachedSchema(key: string, url: string): Promise<ConfigSchema> {
   const request = backendApi
     .get<ConfigSchema>(url, { cache: 'no-store', errorMessage: '获取配置架构失败' })
     .catch((error: unknown) => {
-      // HTTP 层失败（带 status 的 ApiError）保留被拒绝的 Promise 在缓存中，
-      // 避免对失败的配置接口反复发起请求；请求未到达服务器等瞬时异常则剔除缓存后重抛
-      if (!(error instanceof ApiError) || error.status === undefined) {
+      // 只复用进行中或成功的请求；失败后释放缓存，让后续读取可以重新请求。
+      if (schemaRequestCache.get(key) === request) {
         schemaRequestCache.delete(key)
       }
       throw error
@@ -67,8 +66,8 @@ function getCachedConfigData(key: string, url: string): Promise<Record<string, u
     .get<unknown>(url, { cache: 'no-store', errorMessage: '获取配置失败' })
     .then((data) => unwrapConfigResponse(data))
     .catch((error: unknown) => {
-      // HTTP 层失败保留被拒绝的 Promise 在缓存中，避免反复请求失败接口；瞬时异常则剔除缓存后重抛
-      if (!(error instanceof ApiError) || error.status === undefined) {
+      // 失败后释放缓存，但不能清除过期或失效后已经启动的新请求。
+      if (configDataCache.get(key)?.request === request) {
         configDataCache.delete(key)
       }
       throw error
@@ -187,9 +186,10 @@ export async function updateBotConfigRaw(rawContent: string): Promise<Record<str
  * 更新模型配置
  */
 export async function updateModelConfig(
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  catalogRevision?: string
 ): Promise<Record<string, unknown>> {
-  const result = await backendApi.post<Record<string, unknown>>(`${API_BASE}/model`, {
+  const result = await backendApi.post<Record<string, unknown>>(`${API_BASE}/model${catalogRevision ? `?catalog_revision=${encodeURIComponent(catalogRevision)}` : ""}`, {
     body: config,
     errorMessage: '更新配置失败',
   })
@@ -310,10 +310,11 @@ export async function updateBotConfigSection(
  */
 export async function updateModelConfigSection(
   sectionName: string,
-  sectionData: unknown
+  sectionData: unknown,
+  catalogRevision?: string
 ): Promise<Record<string, unknown>> {
   const result = await backendApi.post<Record<string, unknown>>(
-    `${API_BASE}/model/section/${sectionName}`,
+    `${API_BASE}/model/section/${sectionName}${catalogRevision ? `?catalog_revision=${encodeURIComponent(catalogRevision)}` : ""}`,
     {
       body: sectionData,
       errorMessage: '更新配置失败',
@@ -465,5 +466,35 @@ export async function testModelCapability(modelName: string): Promise<ModelTestR
   return backendApi.post<ModelTestResult>('/api/webui/models/test-model', {
     body: { model_name: modelName },
     errorMessage: '测试模型能力失败',
+  })
+}
+
+export type ThinkingProbeMode = 'thinking_type' | 'enable_thinking' | 'reasoning_effort_nested' | 'reasoning_effort'
+
+export interface ThinkingProbeResult {
+  status: 'matched' | 'inconclusive'
+  matches: ThinkingProbeMode[]
+  attempts: {
+    mode: ThinkingProbeMode
+    status: 'matched' | 'inconclusive' | 'rejected'
+    message: string
+  }[]
+  message: string
+}
+
+/** 使用当前模型草稿测试，凭据由后端从已保存的服务商配置读取。 */
+export async function probeModelThinking(
+  draft: {
+    api_provider: string
+    model_identifier: string
+    extra_params: Record<string, unknown>
+    force_stream_mode: boolean
+  },
+  signal?: AbortSignal,
+): Promise<ThinkingProbeResult> {
+  return backendApi.post<ThinkingProbeResult>('/api/webui/models/probe-thinking', {
+    body: draft,
+    signal,
+    errorMessage: '测试思考参数失败',
   })
 }

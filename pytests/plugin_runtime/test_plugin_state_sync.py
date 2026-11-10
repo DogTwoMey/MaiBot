@@ -1,27 +1,99 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import asyncio
+import json
 
 import pytest
 
 from src.config.file_watcher import FileChange
 from src.plugin_runtime.integration import PluginRuntimeManager
+from src.plugin_runtime.host.status_badges import RuntimeStatusBadges
+from src.plugin_runtime.plugin_catalog import PluginCatalogEntry
+from src.plugin_runtime.protocol.envelope import InspectPluginConfigResultPayload
+from src.plugin_runtime.runner.manifest_validator import ManifestValidator
 from src.webui.routers.websocket import plugin_runtime as runtime_ws
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_cold_enable_requests_host_before_importing_plugin(tmp_path, monkeypatch, enabled):
+    plugin_dir = tmp_path / "demo"
+    plugin_dir.mkdir()
+    (plugin_dir / "config.toml").write_text(f"[plugin]\nenabled = {str(enabled).lower()}\n", encoding="utf-8")
+    (plugin_dir / "plugin.py").write_text("", encoding="utf-8")
+    (plugin_dir / "_manifest.json").write_text(json.dumps({
+        "manifest_version": 2, "id": "test.demo", "version": "1.0.0", "name": "demo",
+        "description": "test", "author": {"name": "test", "url": "https://example.com"},
+        "license": "GPL-v3.0-or-later", "urls": {"repository": "https://example.com/repo"},
+        "host_application": {"min_version": "1.0.0", "max_version": "9.9.9"},
+        "sdk": {"min_version": "2.0.0", "max_version": "9.9.9"},
+        "capabilities": [], "i18n": {"default_locale": "zh-CN", "supported_locales": ["zh-CN"]},
+        "dependencies": [{"type": "python_package", "name": "missing-cold-enable-package", "version_spec": ">=1"}],
+    }), encoding="utf-8")
+    manager = PluginRuntimeManager()
+    manager._started = True
+    loaded = []
+    calls = []
+
+    async def install(requirements):
+        calls.append("install")
+        return True, ""
+
+    async def restart(reason):
+        calls.append("restart")
+        return True
+
+    async def inspect(plugin_id):
+        calls.append("inspect")
+        return InspectPluginConfigResultPayload(
+            success=True, enabled=True, normalized_config={"plugin": {"enabled": True}},
+        )
+
+    async def load(plugin_id, reason):
+        calls.append("load")
+        loaded.append(plugin_id)
+        return True
+
+    supervisor = SimpleNamespace(inspect_plugin_config=inspect, get_loaded_plugin_ids=lambda: loaded)
+    monkeypatch.setattr(manager, "_get_supervisor_for_plugin", lambda plugin_id: supervisor)
+    monkeypatch.setattr(manager, "_get_plugin_path_for_supervisor", lambda sv, plugin_id: plugin_dir)
+    monkeypatch.setattr(manager, "_iter_plugin_dirs", lambda: iter([tmp_path]))
+    monkeypatch.setattr(manager, "_restart_supervisors", restart)
+    monkeypatch.setattr(manager, "load_plugin_globally", load)
+    monkeypatch.setattr(manager, "_refresh_plugin_config_watch_subscriptions", AsyncMock())
+    monkeypatch.setattr(manager._plugin_dependency_pipeline, "install_requirements", install)
+    monkeypatch.setattr(ManifestValidator, "get_installed_package_version", lambda self, name: None)
+
+    request = AsyncMock()
+    monkeypatch.setattr("src.plugin_runtime.dependency_pipeline.request_dependency_preparation", request)
+    assert await manager.apply_plugin_config("test.demo") == ("pending_dependencies" if enabled else "inactive")
+    # 请求已受理时不冷导入插件，也不把正常的依赖准备返回成启用失败。
+    assert request.await_count == int(enabled)
+    assert calls == []
+    if enabled:
+        # 新装插件同样等待宿主准备，不能因为尚未加载而触发安装事务回滚。
+        await manager.activate_installed_plugin("test.demo")
+        assert request.await_count == 2
+        assert calls == []
 
 
 @pytest.mark.asyncio
 async def test_snapshot_only_marks_plugins_in_their_loading_supervisor(tmp_path, monkeypatch):
     manager = PluginRuntimeManager()
     manager._started = True
-    extension = SimpleNamespace(_plugin_dirs=[tmp_path], is_loading=False)
-    core = SimpleNamespace(_plugin_dirs=[tmp_path], is_loading=True)
+    extension = SimpleNamespace(group_name="third_party", is_loading=False, startup_load_status="not_loaded", startup_load_reason="")
+    core = SimpleNamespace(group_name="builtin", is_loading=True, startup_load_status="loading", startup_load_reason="")
+    extension.runtime_status_badges = RuntimeStatusBadges(lambda: None)
+    core.runtime_status_badges = RuntimeStatusBadges(lambda: None)
     manager._builtin_supervisor = core
     manager._third_party_supervisor = extension
-    monkeypatch.setattr(manager, "_iter_discovered_plugin_paths", lambda dirs: iter([
-        ("demo.extension", tmp_path / "extension"), ("demo.adapter", tmp_path / "adapter"),
-    ]))
-    monkeypatch.setattr(manager, "_supervisor_accepts_plugin_path", lambda sv, path:
-                        (sv is core) == (path.name == "adapter"))
+    manager._plugin_catalog._entries = {
+        tmp_path / name: PluginCatalogEntry(f"demo.{name}", tmp_path / name, {"plugin_type": name}, False, True, "", None)
+        for name in ("extension", "adapter")
+    }
+    manager._plugin_catalog._initialized = True
+    monkeypatch.setattr(manager, "_iter_discovered_plugin_paths", lambda dirs: pytest.fail("snapshot scanned disk"))
     monkeypatch.setattr(manager, "get_plugin_load_statuses", lambda: {})
     monkeypatch.setattr(manager, "get_plugin_load_failure_reasons", lambda: {})
     monkeypatch.setattr(manager, "get_plugin_circuit_statuses", lambda: {})
@@ -39,7 +111,7 @@ async def test_explicit_toggle_does_not_depend_on_a_file_event(monkeypatch):
     manager.subscribe_status_changes(lambda: notifications.append(dict(manager._plugin_transitions)))
 
     async def inspect(plugin_id):
-        return SimpleNamespace(enabled=True, normalized_config={"plugin": {"enabled": True}})
+        return InspectPluginConfigResultPayload(success=True, enabled=True, normalized_config={"plugin": {"enabled": True}})
 
     async def load(plugin_id, reason):
         assert manager._plugin_file_update_lock.locked()
@@ -51,7 +123,8 @@ async def test_explicit_toggle_does_not_depend_on_a_file_event(monkeypatch):
         assert manager._plugin_file_update_lock.locked()
         calls.append("save")
 
-    supervisor = SimpleNamespace(inspect_plugin_config=inspect, get_loaded_plugin_ids=lambda: loaded)
+    supervisor = SimpleNamespace(inspect_plugin_config=inspect, get_loaded_plugin_ids=lambda: loaded,
+                                 get_plugin_config_error=lambda plugin_id: "")
     monkeypatch.setattr(manager, "_get_supervisor_for_plugin", lambda plugin_id: supervisor)
     monkeypatch.setattr(manager, "load_plugin_globally", load)
     async def refresh():
@@ -82,6 +155,46 @@ async def test_file_callback_returns_before_slow_plugin_work(tmp_path, monkeypat
     assert not completed.is_set()
     await manager._plugin_change_task
     assert completed.is_set()
+
+
+@pytest.mark.asyncio
+async def test_config_error_pauses_business_and_valid_save_reloads(monkeypatch):
+    manager = PluginRuntimeManager()
+    manager._started = True
+    config_error = "invalid group target"
+    registered_error = ""
+    reload_reasons = []
+
+    async def inspect(plugin_id):
+        return InspectPluginConfigResultPayload(
+            success=True, config_error=config_error, enabled=not config_error,
+            normalized_config={} if config_error else {"plugin": {"enabled": True}},
+        )
+
+    async def reload(plugin_ids, reason):
+        nonlocal registered_error
+        assert manager._plugin_file_update_lock.locked()
+        reload_reasons.append(reason)
+        registered_error = config_error
+        return True
+
+    async def refresh():
+        pass
+
+    supervisor = SimpleNamespace(
+        inspect_plugin_config=inspect, get_loaded_plugin_ids=lambda: ["demo"],
+        get_plugin_config_error=lambda plugin_id: registered_error,
+    )
+    monkeypatch.setattr(manager, "_get_supervisor_for_plugin", lambda plugin_id: supervisor)
+    monkeypatch.setattr(manager, "reload_plugins_globally", reload)
+    monkeypatch.setattr(manager, "_refresh_plugin_config_watch_subscriptions", refresh)
+    assert await manager.apply_plugin_config("demo") == "config_error"
+    assert await manager.apply_plugin_config("demo") == "config_error"
+    assert "demo" not in manager._applied_plugin_configs
+    config_error = ""
+    assert await manager.apply_plugin_config("demo") == "success"
+    assert await manager.apply_plugin_config("demo") == "success"
+    assert reload_reasons == ["config_invalid", "config_repaired"]
 
 
 @pytest.mark.asyncio
@@ -118,7 +231,7 @@ async def test_failed_config_notification_does_not_mark_running_plugin_as_failed
     manager._started = True
 
     async def inspect(plugin_id):
-        return SimpleNamespace(enabled=True, normalized_config={"plugin": {"enabled": True}})
+        return InspectPluginConfigResultPayload(success=True, enabled=True, normalized_config={"plugin": {"enabled": True}})
 
     async def notify(**kwargs):
         return False
@@ -126,11 +239,13 @@ async def test_failed_config_notification_does_not_mark_running_plugin_as_failed
     supervisor = SimpleNamespace(
         inspect_plugin_config=inspect, get_loaded_plugin_ids=lambda: ["demo"],
         notify_plugin_config_updated=notify,
+        get_plugin_config_error=lambda plugin_id: "",
     )
     monkeypatch.setattr(manager, "_get_supervisor_for_plugin", lambda plugin_id: supervisor)
     monkeypatch.setattr(manager, "get_plugin_load_statuses", lambda: {"demo": "success"})
     with pytest.raises(RuntimeError, match="插件配置更新通知失败"):
         await manager.apply_plugin_config("demo")
+    await manager._plugin_catalog.refresh()
     snapshot = await manager.get_plugin_state_snapshot()
     assert snapshot["statuses"]["demo"] == "success"
     assert not manager._plugin_transitions

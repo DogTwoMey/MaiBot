@@ -22,6 +22,7 @@ import {
   togglePlugin,
 } from '@/lib/plugin-api'
 import type { InstalledPlugin, MaimaiVersion } from '@/lib/plugin-api'
+import { refreshPluginWebUI } from '@/lib/plugin-webui'
 import type { PluginInfo } from '@/types/plugin'
 import { useToast } from '@/hooks/use-toast'
 import { unifiedWsClient } from '@/lib/unified-ws'
@@ -127,20 +128,26 @@ export function usePluginList() {
   const [actingPluginId, setActingPluginId] = useState<string | null>(null)
   const [marketPluginsById, setMarketPluginsById] = useState<Record<string, PluginInfo>>({})
   const [maimaiVersion, setMaimaiVersion] = useState<MaimaiVersion | null>(null)
-  const [checkingUpdates, setCheckingUpdates] = useState(!adapterOnly && !initialTarget.pluginId)
+  const [checkingUpdates, setCheckingUpdates] = useState(!initialTarget.pluginId)
   const updateCheckStartedRef = useRef(false)
   const initialTargetHandledRef = useRef(false)
-  const installedRequestRef = useRef(0)
+  const refreshGenerationRef = useRef(0)
+  const refreshRequestRef = useRef<Promise<void> | null>(null)
+  const refreshPendingRef = useRef(false)
   const runtimeSubscriptionRef = useRef(0)
 
   const openPluginConfig = (plugin: InstalledPlugin, tabId?: string | null) => {
     initialTargetHandledRef.current = true
-    setSelectedPlugin(plugin)
-    setSelectedPluginTab(tabId ?? undefined)
     const params = new URLSearchParams({ plugin: plugin.id })
     if (tabId) {
       params.set('tab', tabId)
     }
+    if (getPluginType(plugin) === 'adapter' && !adapterOnly) {
+      window.location.assign(`/adapter-management?${params.toString()}`)
+      return
+    }
+    setSelectedPlugin(plugin)
+    setSelectedPluginTab(tabId ?? undefined)
     window.history.replaceState(null, '', `${getPluginConfigRoutePath()}?${params.toString()}`)
   }
 
@@ -153,7 +160,7 @@ export function usePluginList() {
   }
 
   const checkPluginUpdates = async () => {
-    if (adapterOnly || updateCheckStartedRef.current) {
+    if (updateCheckStartedRef.current) {
       return
     }
     updateCheckStartedRef.current = true
@@ -185,33 +192,50 @@ export function usePluginList() {
     }
   }
 
-  // 加载插件列表（含深链接自动选中）
-  const refreshPlugins = async (background = false) => {
-    const requestId = ++installedRequestRef.current
+  // 首次加载、手动刷新和运行时通知共用队列；请求期间的变化合并为下一轮后台刷新。
+  const refreshPlugins = (background = false): Promise<void> => {
+    refreshPendingRef.current = true
+    if (refreshRequestRef.current) return refreshRequestRef.current
+
+    const generation = refreshGenerationRef.current
     if (!background) setLoading(true)
-    try {
-      const allInstalled = await getInstalledPlugins()
-      if (requestId !== installedRequestRef.current) return
-      const installed = adapterOnly
-        ? allInstalled.filter((plugin) => getPluginType(plugin) === 'adapter')
-        : allInstalled
-      setPlugins(installed)
-      if (!initialTargetHandledRef.current && initialTarget.pluginId) {
-        const targetPlugin = installed.find((plugin) => plugin.id === initialTarget.pluginId)
-        if (targetPlugin) {
-          openPluginConfig(targetPlugin, initialTarget.tabId)
+    const request = (async () => {
+      try {
+        while (refreshPendingRef.current && generation === refreshGenerationRef.current) {
+          refreshPendingRef.current = false
+          // 导航单独刷新，列表不等待其请求结束；运行状态仍须跳过缓存。
+          void refreshPluginWebUI(true)
+          try {
+            const allInstalled = await getInstalledPlugins({ forceRefresh: true })
+            if (generation !== refreshGenerationRef.current) return
+            const installed = adapterOnly
+              ? allInstalled.filter((plugin) => getPluginType(plugin) === 'adapter')
+              : allInstalled
+            setPlugins(installed)
+            // 加载插件列表（含深链接自动选中）；第一轮返回即展示，不等待补刷。
+            if (!initialTargetHandledRef.current && initialTarget.pluginId) {
+              const targetPlugin = installed.find((plugin) => plugin.id === initialTarget.pluginId)
+              if (targetPlugin) {
+                openPluginConfig(targetPlugin, initialTarget.tabId)
+              }
+            }
+          } catch (error) {
+            if (generation !== refreshGenerationRef.current) return
+            toast({
+              title: '加载插件列表失败',
+              description: error instanceof Error ? error.message : '未知错误',
+              variant: 'destructive',
+            })
+          } finally {
+            if (generation === refreshGenerationRef.current) setLoading(false)
+          }
         }
+      } finally {
+        if (generation === refreshGenerationRef.current) refreshRequestRef.current = null
       }
-    } catch (error) {
-      if (requestId !== installedRequestRef.current) return
-      toast({
-        title: '加载插件列表失败',
-        description: error instanceof Error ? error.message : '未知错误',
-        variant: 'destructive',
-      })
-    } finally {
-      if (requestId === installedRequestRef.current) setLoading(false)
-    }
+    })()
+    refreshRequestRef.current = request
+    return request
   }
   const loadPlugins = () => refreshPlugins()
 
@@ -226,26 +250,9 @@ export function usePluginList() {
   useEffect(() => {
     const subscriptionId = ++runtimeSubscriptionRef.current
     let cancelled = false
-    let refreshing = false
-    let pending = false
-
-    // 合并连续注册通知；若请求期间又有变化，完成后再取一次，避免旧响应覆盖新状态。
-    const refreshFromRuntime = async () => {
-      pending = true
-      if (refreshing) return
-      refreshing = true
-      try {
-        while (pending && !cancelled) {
-          pending = false
-          await refreshPlugins(true)
-        }
-      } finally {
-        refreshing = false
-      }
-    }
     const removeListener = unifiedWsClient.addEventListener((message) => {
       if (message.domain === 'plugin_runtime' && message.topic === 'main') {
-        void refreshFromRuntime()
+        void refreshPlugins(true)
       }
     })
     void unifiedWsClient.subscribe('plugin_runtime', 'main').then(() => {
@@ -255,7 +262,9 @@ export function usePluginList() {
     }).catch((error) => console.error('订阅插件运行状态失败:', error))
     return () => {
       cancelled = true
-      installedRequestRef.current += 1
+      refreshGenerationRef.current += 1
+      refreshPendingRef.current = false
+      refreshRequestRef.current = null
       removeListener()
       void unifiedWsClient.unsubscribe('plugin_runtime', 'main').catch((error) => {
         console.error('退订插件运行状态失败:', error)
@@ -293,7 +302,7 @@ export function usePluginList() {
   const isPluginLoadSuccess = (plugin: InstalledPlugin) =>
     plugin.load_status === 'success'
   const isPluginLoading = (plugin: InstalledPlugin) =>
-    plugin.load_status === 'loading' || plugin.load_status === 'stopping'
+    plugin.load_status === 'loading' || plugin.load_status === 'timed_out' || plugin.load_status === 'stopping'
   const isPluginOffline = (plugin: InstalledPlugin) =>
     !isPluginDisabled(plugin) && plugin.load_status === 'offline'
   const isPluginCircuitOpen = (plugin: InstalledPlugin) =>
@@ -320,20 +329,16 @@ export function usePluginList() {
   const disabledCount = plugins.filter(isPluginDisabled).length
   const loadSuccessCount = plugins.filter(isPluginLoadSuccess).length
   const loadingCount = plugins.filter(isPluginLoading).length
+  const timedOutCount = plugins.filter((plugin) => plugin.load_status === 'timed_out').length
   const offlineCount = plugins.filter(isPluginOffline).length
   const circuitOpenCount = plugins.filter(isPluginCircuitOpen).length
   const circuitActiveCount = plugins.filter(isPluginCircuitActive).length
   const loadFailedCount = plugins.filter(isPluginLoadFailed).length
   const enabledCount = installedCount - disabledCount
-  const loadTotalCount = loadSuccessCount + loadFailedCount + loadingCount + circuitActiveCount
-  const loadSuccessPercent = loadTotalCount > 0 ? (loadSuccessCount / loadTotalCount) * 100 : 0
-  const loadFailedPercent = loadTotalCount > 0 ? (loadFailedCount / loadTotalCount) * 100 : 0
-  const loadingPercent = loadTotalCount > 0 ? (loadingCount / loadTotalCount) * 100 : 0
-  const circuitPercent = loadTotalCount > 0 ? (circuitActiveCount / loadTotalCount) * 100 : 0
   const showsCircuitSummary = circuitOpenCount > 0
   const modernLoadSummaryLabel = [
     `加载成功 ${loadSuccessCount} 个`,
-    `加载中 ${loadingCount} 个`,
+    `加载中 ${loadingCount} 个${timedOutCount > 0 ? `（其中超时 ${timedOutCount} 个，仍在等待）` : ''}`,
     offlineCount > 0 ? `已离线 ${offlineCount} 个` : '',
     showsCircuitSummary ? `熔断中 ${circuitOpenCount} 个` : '',
     `加载失败 ${loadFailedCount} 个`,
@@ -344,7 +349,7 @@ export function usePluginList() {
     `已安装 ${installedCount} 个插件`,
     `已启用 ${enabledCount} 个`,
     `已禁用 ${disabledCount} 个`,
-    `加载中 ${loadingCount} 个`,
+    `加载中 ${loadingCount} 个${timedOutCount > 0 ? `（其中超时 ${timedOutCount} 个，仍在等待）` : ''}`,
     offlineCount > 0 ? `已离线 ${offlineCount} 个` : '',
     showsCircuitSummary ? `熔断中 ${circuitOpenCount} 个` : '',
     `启动失败 ${loadFailedCount} 个`,
@@ -375,6 +380,14 @@ export function usePluginList() {
         dotClassName: 'bg-yellow-500',
         label: '半开测试',
         badgeClassName: 'border-yellow-600 text-yellow-700',
+        icon: 'warning' as const,
+      }
+    }
+    if (plugin.load_status === 'timed_out') {
+      return {
+        dotClassName: 'bg-amber-500',
+        label: '加载超时，仍在等待',
+        badgeClassName: 'border-amber-600 text-amber-700',
         icon: 'warning' as const,
       }
     }
@@ -424,6 +437,7 @@ export function usePluginList() {
     )
   }
   const getPluginUpdateState = (plugin: InstalledPlugin): PluginUpdateState => {
+    if (plugin.builtin) return { canUpdate: false, hasUpdate: false, title: '内置插件随本体更新' }
     if (checkingUpdates) {
       return { canUpdate: false, hasUpdate: false, title: '正在检查更新' }
     }
@@ -551,6 +565,7 @@ export function usePluginList() {
     performTogglePlugin,
     // 市场版本 / 更新派生
     checkingUpdates,
+    marketPluginsById,
     getPluginUpdateState,
     getPluginRepositoryUrl,
     // 状态派生
@@ -565,13 +580,10 @@ export function usePluginList() {
     disabledCount,
     loadingCount,
     circuitOpenCount,
+    circuitActiveCount,
     loadFailedCount,
     enabledCount,
     loadSuccessCount,
-    loadSuccessPercent,
-    loadFailedPercent,
-    loadingPercent,
-    circuitPercent,
     showsCircuitSummary,
     modernLoadSummaryLabel,
     futureRetroPluginSummaryLabel,

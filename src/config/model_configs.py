@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Any, List, Tuple
+from typing import Any, List, Literal, Tuple
 
 from src.common.i18n import t
+from src.web_search.config import WebSearchTaskConfig
 
 from .config_base import ConfigBase, Field
 
@@ -59,7 +60,7 @@ class APIProvider(ConfigBase):
             "x-widget": "input",
         },
     )
-    """API密钥。对于不需要鉴权的兼容端点，可将 `auth_type` 设为 `none`。"""
+    """API密钥。留空时使用无鉴权模式，也可显式将 `auth_type` 设为 `none`。"""
 
     client_type: str = Field(
         default="openai",
@@ -186,26 +187,30 @@ class APIProvider(ConfigBase):
     )
     """重试间隔 (如果API调用失败, 重试的间隔时间, 单位: 秒)"""
 
-    def model_post_init(self, context: Any = None) -> None:
-        """执行 API 提供商配置的后置校验。
 
-        Args:
-            context: Pydantic 传入的上下文对象。
+def provider_configuration_errors(provider: APIProvider) -> List[str]:
+    """收集调用所需的供应商配置问题，供启动诊断、WebUI 和请求入口共用。"""
+    errors: List[str] = []
+    if not provider.base_url.strip() and provider.client_type != "gemini":
+        errors.append(t("config.api_base_url_empty"))
+    if not provider.name.strip():
+        errors.append(t("config.api_provider_name_empty"))
+    if not provider.client_type.strip():
+        errors.append("client_type 不能为空")
+    if provider.auth_type == OpenAICompatibleAuthType.HEADER and not provider.auth_header_name.strip():
+        errors.append("当 auth_type=header 时，auth_header_name 不能为空")
+    if provider.auth_type == OpenAICompatibleAuthType.QUERY and not provider.auth_query_name.strip():
+        errors.append("当 auth_type=query 时，auth_query_name 不能为空")
+    if provider.auth_type not in {auth.value for auth in OpenAICompatibleAuthType}:
+        errors.append(f"不支持的 auth_type：{provider.auth_type}")
+    return errors
 
-        Raises:
-            ValueError: 当配置项缺失或组合不合法时抛出。
-        """
-        if self.auth_type != OpenAICompatibleAuthType.NONE and not self.api_key:
-            raise ValueError(t("config.api_key_empty"))
-        if not self.base_url and self.client_type != "gemini":  # TODO: 允许gemini使用base_url
-            raise ValueError(t("config.api_base_url_empty"))
-        if not self.name:
-            raise ValueError(t("config.api_provider_name_empty"))
-        if self.auth_type == OpenAICompatibleAuthType.HEADER and not self.auth_header_name.strip():
-            raise ValueError("当 auth_type=header 时，auth_header_name 不能为空")
-        if self.auth_type == OpenAICompatibleAuthType.QUERY and not self.auth_query_name.strip():
-            raise ValueError("当 auth_type=query 时，auth_query_name 不能为空")
-        super().model_post_init(context)
+
+def validate_provider_for_request(provider: APIProvider) -> None:
+    """创建客户端前拒绝不完整的配置。"""
+    errors = provider_configuration_errors(provider)
+    if errors:
+        raise ValueError(f"供应商 {provider.name} 配置无效：" + "；".join(errors))
 
 
 class ModelPricePeriod(ConfigBase):
@@ -237,6 +242,11 @@ class ModelInfo(ConfigBase):
 
     _validate_any: bool = False
     suppress_any_warning: bool = True
+
+    model_type: Literal["llm", "embedding", "image_embedding"] = Field(
+        json_schema_extra={"x-widget": "select"},
+    )
+    """模型类型：LLM、文本嵌入或图片嵌入；必填，旧配置由版本升级钩子一次性标注。"""
 
     model_identifier: str = Field(
         default="",
@@ -271,11 +281,6 @@ class ModelInfo(ConfigBase):
         },
     )
     """输入价格 (用于API调用统计, 单位：元/ M token) (可选, 若无该字段, 默认值为0)"""
-
-    cache: bool = Field(
-        default=False,
-    )
-    """遗留兼容字段，不参与任何逻辑：是否按缓存价计费由 cache_price_in 决定，统计页是否展示缓存用量由服务商是否在响应中返回缓存字段自动探测。"""
 
     cache_price_in: float = Field(
         default=0.0,
@@ -364,9 +369,6 @@ class ModelInfo(ConfigBase):
             raise ValueError(t("config.model_identifier_empty_generic"))
         if not self.name:
             raise ValueError(t("config.model_name_empty"))
-        if not self.api_provider:
-            raise ValueError(t("config.model_api_provider_empty"))
-
         # 将跨午夜的时段拆开，统一检查半开区间是否重叠。
         intervals: List[Tuple[str, str, int]] = []
         for index, period in enumerate(self.price_periods, start=1):
@@ -439,6 +441,12 @@ class TaskConfig(ConfigBase):
 class ModelTaskConfig(ConfigBase):
     """模型配置类"""
 
+    web_search: WebSearchTaskConfig = Field(
+        default_factory=WebSearchTaskConfig,
+        json_schema_extra={"x-widget": "custom", "label": {"zh_CN": "联网搜索 (web_search)"}},
+    )
+    """选择已定义的联网服务，用于搜索和网页读取；未分配时不开放统一联网工具。"""
+
     replyer: TaskConfig = Field(
         default_factory=TaskConfig,
         json_schema_extra={
@@ -463,15 +471,6 @@ class ModelTaskConfig(ConfigBase):
         },
     )
     """记忆模型配置，用于长期记忆总结、抽取、写回等高记忆任务；留空时由调用方按需回退"""
-
-    mid_memory: TaskConfig = Field(
-        default_factory=TaskConfig,
-        json_schema_extra={
-            "x-widget": "custom",
-            "advanced": True,
-        },
-    )
-    """聊天回想模型配置；留空时自动继用 fast_model 模型，fast_model 留空时使用 utils 模型"""
 
     utils: TaskConfig = Field(
         default_factory=TaskConfig,
@@ -531,7 +530,7 @@ class ModelTaskConfig(ConfigBase):
             "x-widget": "custom",
         },
     )
-    """嵌入模型，需要文本嵌入类型的模型，不可使用LLM"""
+    """嵌入模型；可选择文本或图片嵌入类型，不可使用 LLM，所选模型需支持文本向量化"""
 
     image_embedding: TaskConfig = Field(
         default_factory=TaskConfig,
@@ -540,4 +539,4 @@ class ModelTaskConfig(ConfigBase):
             "advanced": True,
         },
     )
-    """图片嵌入模型；留空时不启用图片嵌入，所选模型必须实现图片输入到向量的协议"""
+    """图片嵌入模型；可选择文本或图片嵌入类型，不可使用 LLM，留空时不启用；所选模型必须实现图片输入到向量的协议"""

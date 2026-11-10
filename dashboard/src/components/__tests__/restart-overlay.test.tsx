@@ -137,7 +137,7 @@ describe('RestartOverlay（Provider 模式）', () => {
   it('showAnimation=false 时不渲染背景动画粒子', () => {
     useRestartMock.mockReturnValue(makeContext(makeState()))
 
-    const { container, rerender } = render(<RestartOverlay />)
+    const { baseElement: container, rerender } = render(<RestartOverlay showAnimation />)
     expect(container.querySelector('.animate-bounce')).not.toBeNull()
 
     rerender(<RestartOverlay showAnimation={false} />)

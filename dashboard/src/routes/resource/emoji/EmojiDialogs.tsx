@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { ArrowLeft, Check, CheckCircle2, ImageIcon, Plus, Upload, X } from 'lucide-react'
 import Dashboard from '@uppy/react/dashboard'
 import Uppy from '@uppy/core'
@@ -59,14 +60,22 @@ function getEmojiStatusVariant(status: EmojiStatus) {
 // ============================
 export function EmojiDetailDialog({
   emoji,
+  emotionTags,
+  contentTags,
   open,
   onOpenChange,
+  actions,
 }: {
   emoji: Emoji | null
+  emotionTags?: string[] | null
+  contentTags?: string[] | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** 详情底部的操作按钮；手机上表情包卡片不再带操作栏，由这里提供 */
+  actions?: ReactNode
 }) {
   if (!emoji) return null
+  const displayedEmotion = emotionTags?.join('、') ?? emoji.emotion
 
   const formatTime = (timestamp: number | null) => {
     if (!timestamp) return '-'
@@ -142,13 +151,20 @@ export function EmojiDetailDialog({
             <div>
               <Label className="text-muted-foreground">情绪</Label>
               <div className="mt-1">
-                {emoji.emotion ? (
-                  <span className="text-sm">{emoji.emotion}</span>
+                {displayedEmotion ? (
+                  <span className="text-sm">{displayedEmotion}</span>
                 ) : (
                   <span className="text-sm text-muted-foreground">-</span>
                 )}
               </div>
             </div>
+
+            {contentTags?.length ? (
+              <div>
+                <Label className="text-muted-foreground">内容标签</Label>
+                <div className="mt-1 text-sm">{contentTags.join('、')}</div>
+              </div>
+            ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -190,6 +206,7 @@ export function EmojiDetailDialog({
             </div>
           </div>
         </DialogBody>
+        {actions && <DialogFooter>{actions}</DialogFooter>}
       </DialogContent>
     </Dialog>
   )

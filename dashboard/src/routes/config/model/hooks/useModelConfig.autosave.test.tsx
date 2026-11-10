@@ -60,6 +60,7 @@ function modelConfig() {
       {
         name: 'model',
         model_identifier: 'model',
+        model_type: 'llm',
         api_provider: 'main',
         price_in: 0,
         price_out: 0,
@@ -92,6 +93,22 @@ afterEach(() => {
 })
 
 describe('useModelConfig provider 自动保存', () => {
+  it('公共模型保存后使用返回的版本继续编辑', async () => {
+    getModelConfigCachedMock.mockResolvedValue({ ...modelConfig(), _shared_catalog: { revision: 'revision-1' } })
+    updateModelConfigSectionMock.mockResolvedValueOnce({ catalog_revision: 'revision-2' })
+      .mockResolvedValueOnce({ catalog_revision: 'revision-3' })
+    const { result, unmount } = renderHook(() => useModelConfig())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => {
+      await result.current.handleSaveProviderEdit({ ...result.current.apiProviders[0], api_key: 'first-key' }, 0)
+    })
+    await act(async () => {
+      await result.current.handleSaveProviderEdit({ ...result.current.apiProviders[0], api_key: 'second-key' }, 0)
+    })
+    expect(updateModelConfigSectionMock.mock.calls.map(call => call[2])).toEqual(['revision-1', 'revision-2'])
+    unmount()
+  })
+
   it('手动保存提供商不会取消模型和任务草稿的待执行自动保存', async () => {
     const config = modelConfig()
     config.models.push({ ...config.models[0], name: 'unused', model_identifier: 'unused' })
@@ -134,7 +151,7 @@ describe('useModelConfig provider 自动保存', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     vi.useFakeTimers()
 
-    let pending: Promise<void> = Promise.resolve()
+    let pending: ReturnType<typeof result.current.handleSaveProviderEdit> = Promise.resolve(undefined)
     await act(async () => {
       pending = result.current.handleSaveProviderEdit({ ...result.current.apiProviders[0], api_key: 'rotated' }, 0)
     })

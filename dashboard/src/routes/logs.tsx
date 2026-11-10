@@ -34,17 +34,34 @@ import { Calendar } from '@/components/ui/calendar'
 import { Card } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
+  DashboardFolderPanel,
+  DashboardFolderTab,
+  DashboardFolderTabBar,
+} from '@/components/ui/dashboard-tabs'
+import { FilterPanel, FilterPanelToggle } from '@/components/ui/filter-panel'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Slider } from '@/components/ui/slider'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { StatusLight } from '@/components/ui/status-light'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { logWebSocket, type LogEntry } from '@/lib/log-websocket'
+import { useVirtualizerUnmountGuard } from '@/lib/use-virtualizer-unmount-guard'
 import { getSetting, setSetting } from '@/lib/settings-manager'
 import { cn } from '@/lib/utils'
 
@@ -63,10 +80,7 @@ const LINE_SPACING_MAX = 12
 const LINE_SPACING_MIN = 0
 const COLUMN_WIDTH_EXTRA_MAX = 96
 const COLUMN_WIDTH_EXTRA_MIN = 0
-const LOG_VIEWER_SWITCH_HINT_DISMISSED_KEY = 'log-viewer-switch-hint-dismissed'
 const LOG_VIEWER_ACTIVE_TAB_KEY = 'log-viewer-active-tab'
-const TOPBAR_SWITCH_COMPACT_GAP = 12
-const TOPBAR_SWITCH_EXPAND_GAP = 72
 
 const fontSizeConfig: Record<FontSize, { label: string; rowHeight: number; class: string }> = {
   xs: { label: '小', rowHeight: 28, class: 'text-[10px] sm:text-xs' },
@@ -209,10 +223,11 @@ function loadStoredLogViewerTab(): LogViewerTab {
 
 interface LogTerminalPaneProps {
   toolbarContainerId: string
+  statusContainerId?: string
   toolbarVisible: boolean
 }
 
-function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPaneProps) {
+function LogTerminalPane({ toolbarContainerId, statusContainerId, toolbarVisible }: LogTerminalPaneProps) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [levelFilter, setLevelFilter] = useState<LogLevelFilter>(() => {
@@ -237,12 +252,21 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
     clampNumber(getSetting('logColumnWidthExtra'), COLUMN_WIDTH_EXTRA_MIN, COLUMN_WIDTH_EXTRA_MAX)
   )
   const [filtersOpen, setFiltersOpen] = useState(() => getSetting('logFiltersOpen'))
+  // 手机上的筛选弹层与桌面端的展开状态分开，避免把弹层的开关记进设置
+  const isMobileViewport = useMediaQuery('(max-width: 1023.98px)')
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
   const [toolbarRoot, setToolbarRoot] = useState<HTMLElement | null>(null)
+  const [statusRoot, setStatusRoot] = useState<HTMLElement | null>(null)
   const parentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setToolbarRoot(document.getElementById(toolbarContainerId))
   }, [toolbarContainerId])
+
+  useEffect(() => {
+    setStatusRoot(statusContainerId ? document.getElementById(statusContainerId) : null)
+  }, [statusContainerId])
 
   // 订阅全局 WebSocket 连接
   useEffect(() => {
@@ -460,6 +484,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
     estimateSize: () => estimatedRowHeight,
     overscan: 50, // 增加预渲染数量以减少快速滚动时的空白
   })
+  useVirtualizerUnmountGuard(rowVirtualizer)
 
   // 用于追踪是否是程序触发的滚动
   const isAutoScrollingRef = useRef(false)
@@ -513,146 +538,16 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
     }
   }, [filteredLogs.length, autoScroll, rowVirtualizer])
 
-  const toolbarContent = (
-    <Collapsible open={filtersOpen} onOpenChange={handleFiltersOpenChange}>
-      <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(620px,760px)]">
-        <div
-          className={cn(
-            'flex min-h-9 min-w-0 flex-wrap content-start items-start gap-1.5',
-            'border-border/80 bg-background/35 overflow-y-auto border p-1.5',
-            '[scrollbar-gutter:stable]',
-            filtersOpen ? 'max-h-[104px] lg:h-0 lg:max-h-none lg:min-h-full' : 'h-10 max-h-10'
-          )}
-          aria-label="模块显示筛选"
-        >
-          {uniqueModules.map(({ id, displayName }) => {
-            const visible = !hiddenModules.has(id)
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={visible}
-                aria-label={`${visible ? '隐藏' : '显示'} ${displayName}`}
-                title={`${visible ? '隐藏' : '显示'} ${displayName}（${id}）`}
-                onClick={() => toggleModuleVisibility(id)}
-                className={cn(
-                  'h-7 max-w-full border px-2 text-xs font-medium transition-colors',
-                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-none',
-                  'active:translate-y-px',
-                  visible
-                    ? 'border-primary/60 bg-primary/10 text-foreground hover:bg-primary/20'
-                    : 'border-border/60 bg-muted/30 text-muted-foreground/45 hover:text-muted-foreground'
-                )}
-              >
-                <span className="block max-w-40 truncate">{displayName}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex w-full flex-wrap items-center gap-1.5 lg:justify-end">
-            <div className="relative min-w-[180px] flex-1 lg:max-w-64">
-              <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
-              <Input
-                placeholder="搜索日志..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                className="h-8 pr-8 pl-8 text-xs sm:text-sm"
-              />
-              {searchQuery && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute top-1/2 right-0.5 h-7 w-7 -translate-y-1/2"
-                  title="清空搜索"
-                  aria-label="清空搜索"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-
-            <Button
-              variant={autoScroll ? 'default' : 'outline'}
-              size="sm"
-              onClick={toggleAutoScroll}
-              className="h-8 px-2"
-              title={autoScroll ? '自动滚动' : '已暂停'}
-            >
-              {autoScroll ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-              <span className="ml-1 text-xs">{autoScroll ? '滚动' : '暂停'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClear}
-              disabled={logs.length === 0}
-              className="h-8 px-2"
-              title="清空日志"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span className="ml-1 text-xs">清空</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              disabled={filteredLogs.length === 0}
-              className="h-8 px-2"
-              title="导出日志"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span className="ml-1 text-xs">导出</span>
-            </Button>
-
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2"
-                title={filtersOpen ? '收起筛选' : '展开筛选'}
-              >
-                <Filter className="h-3.5 w-3.5" />
-                <span className="ml-1 text-xs">筛选</span>
-                {filtersOpen ? (
-                  <ChevronUp className="ml-1 h-3.5 w-3.5" />
-                ) : (
-                  <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-
-            <div className="text-muted-foreground ml-auto flex items-center gap-2 text-xs whitespace-nowrap lg:ml-1">
-              <span className="flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    'h-2 w-2 rounded-full',
-                    connected ? 'animate-pulse bg-green-500' : 'bg-red-500'
-                  )}
-                />
-                {connected ? '已连接' : '未连接'}
-              </span>
-              <span>
-                <span className="font-mono">
-                  {filteredLogs.length} / {logs.length}
-                </span>
-                <span className="ml-1">条日志</span>
-              </span>
-            </div>
-          </div>
-
-          <CollapsibleContent className="w-full space-y-2">
+  // 级别、时间与显示设置：桌面端在工具栏下就地展开，手机上放进底部弹层
+  const filterFields = (
+    <>
             {/* 级别筛选 */}
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:gap-2">
               <Select
                 value={levelFilter}
                 onValueChange={(value) => handleLevelFilterChange(value as LogLevelFilter)}
               >
-                <SelectTrigger className="h-8 w-full text-xs sm:flex-1">
+                <SelectTrigger controlSize="sm" className="w-full text-xs sm:flex-1">
                   <Filter className="mr-1.5 h-3.5 w-3.5" />
                   <SelectValue placeholder="最低级别" />
                 </SelectTrigger>
@@ -686,7 +581,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                     variant="outline"
                     size="sm"
                     className={cn(
-                      'h-8 min-w-0 w-full justify-start px-2 text-left font-normal sm:flex-1 sm:px-3',
+                      'h-8 w-full min-w-0 justify-start px-2 text-left font-normal sm:flex-1 sm:px-3',
                       !dateFrom && 'text-muted-foreground'
                     )}
                   >
@@ -713,7 +608,7 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                     variant="outline"
                     size="sm"
                     className={cn(
-                      'h-8 min-w-0 w-full justify-start px-2 text-left font-normal sm:flex-1 sm:px-3',
+                      'h-8 w-full min-w-0 justify-start px-2 text-left font-normal sm:flex-1 sm:px-3',
                       !dateTo && 'text-muted-foreground'
                     )}
                   >
@@ -797,22 +692,181 @@ function LogTerminalPane({ toolbarContainerId, toolbarVisible }: LogTerminalPane
                 <span className="text-muted-foreground w-9 text-xs">+{columnWidthExtra}</span>
               </div>
             </div>
-          </CollapsibleContent>
+    </>
+  )
+
+  const visibleModuleCount = uniqueModules.filter(({ id }) => !hiddenModules.has(id)).length
+  const selectedModules = useMemo(
+    () => new Set(uniqueModules.filter(({ id }) => !hiddenModules.has(id)).map(({ id }) => id)),
+    [uniqueModules, hiddenModules]
+  )
+
+  const toolbarContent = (
+    <Collapsible open={filtersOpen} onOpenChange={handleFiltersOpenChange}>
+      <div data-log-toolbar="true" className="flex w-full min-w-0 flex-col gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5">
+          <div className="relative w-full min-w-[180px] sm:w-60">
+            <Search className="text-muted-foreground absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2" />
+            <Input
+              placeholder="搜索日志..."
+              aria-label="搜索日志"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="h-8 pr-8 pl-8 text-xs sm:text-sm"
+            />
+            {searchQuery && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSearchQuery('')}
+                className="absolute top-1/2 right-0.5 h-7 w-7 -translate-y-1/2"
+                title="清空搜索"
+                aria-label="清空搜索"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+
+          <FilterPanelToggle
+            label="来源"
+            open={sourcesOpen}
+            selectedCount={visibleModuleCount}
+            total={uniqueModules.length}
+            controls="log-source-panel"
+            onOpenChange={setSourcesOpen}
+          />
+
+          {isMobileViewport ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMobileFilterOpen(true)}
+              data-log-mobile-filter-button="true"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              筛选
+            </Button>
+          ) : (
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-pressed={filtersOpen}
+                title={filtersOpen ? '收起筛选' : '展开筛选'}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                筛选
+                <span aria-hidden="true" className="font-mono font-normal">
+                  {levelFilter === 'all' ? '全部级别' : `${levelFilter}+`}
+                </span>
+                {filtersOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </Button>
+            </CollapsibleTrigger>
+          )}
+
+          <span className="flex-1" />
+
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={autoScroll}
+            onClick={toggleAutoScroll}
+            title={autoScroll ? '正在跟随最新日志，点击暂停' : '已暂停，点击跟随最新日志'}
+          >
+            {autoScroll ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            跟随最新
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={handleExport}
+            disabled={filteredLogs.length === 0}
+            title="导出日志"
+            aria-label="导出"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={handleClear}
+            disabled={logs.length === 0}
+            title="清空日志"
+            aria-label="清空"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
+
+        {sourcesOpen && (
+          <FilterPanel
+            id="log-source-panel"
+            title="来源"
+            options={uniqueModules.map(({ id, displayName }) => ({
+              id,
+              label: displayName,
+              title: `${displayName}（${id}）`,
+            }))}
+            selected={selectedModules}
+            onToggle={toggleModuleVisibility}
+            onSelectAll={() => saveHiddenModules(new Set())}
+            onSelectNone={() => saveHiddenModules(new Set(uniqueModules.map(({ id }) => id)))}
+          />
+        )}
+
+        {/* 手机上筛选改为底部弹层，这里只在桌面端就地展开 */}
+        {!isMobileViewport && (
+          <CollapsibleContent data-filter-panel="true" className="w-full space-y-2">
+            {filterFields}
+          </CollapsibleContent>
+        )}
       </div>
+      <Dialog open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+        <DialogContent data-log-filter-sheet="true">
+          <DialogHeader>
+            <DialogTitle>筛选</DialogTitle>
+            <DialogDescription className="sr-only">日志级别、时间范围与显示设置</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">{filterFields}</div>
+          <DialogFooter>
+            <Button onClick={() => setMobileFilterOpen(false)}>完成</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Collapsible>
   )
 
   const toolbarPortal =
     toolbarVisible && toolbarRoot ? createPortal(toolbarContent, toolbarRoot) : null
+  const statusPortal =
+    toolbarVisible && statusRoot
+      ? createPortal(
+          <span data-log-status="true" className="flex items-center gap-2 text-xs whitespace-nowrap">
+            <StatusLight status={connected ? 'on' : 'error'} decorative />
+            {connected ? '已连接' : '未连接'}
+            <span className="text-muted-foreground">
+              <span className="font-mono">
+                {filteredLogs.length} / {logs.length}
+              </span>{' '}
+              条
+            </span>
+          </span>,
+          statusRoot
+        )
+      : null
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {toolbarPortal}
+      {statusPortal}
 
       {/* 日志终端 - 占据剩余所有空间 */}
-      <div className="min-h-0 flex-1 px-2 pb-2 sm:px-3 sm:pb-3 lg:px-4 lg:pt-2 lg:pb-4">
+      <div className="min-h-0 flex-1">
         <Card
+          data-log-terminal="true"
           className="h-full overflow-hidden border-[#24170f]/70 dark:border-[#1d120c]/80"
           style={{ backgroundColor: '#633312' }}
         >
@@ -960,248 +1014,92 @@ interface LogViewerPageProps {
 }
 
 export function LogViewerPage({ defaultTab }: LogViewerPageProps) {
-  const [activeTab, setActiveTab] = useState<LogViewerTab>(
+  const isMobileViewport = useMediaQuery('(max-width: 1023.98px)')
+  const [desktopActiveTab, setActiveTab] = useState<LogViewerTab>(
     () => defaultTab ?? loadStoredLogViewerTab()
   )
-  const [topbarTabsRoot, setTopbarTabsRoot] = useState<HTMLElement | null>(null)
-  // 千禧顶栏始终用图标模式，初始即取紧凑态，避免先渲染完整文字再收窄造成顶栏跳动。
-  const [topbarTabsCompact, setTopbarTabsCompact] = useState(
-    () => document.documentElement.dataset.dashboardStyle === 'millennium'
-  )
-  const topbarTabsCompactRef = useRef(false)
+  // 手机上三个入口各自展示对应页面，避免上次的桌面页签覆盖入口选择。
+  const activeTab = isMobileViewport ? (defaultTab ?? 'terminal') : desktopActiveTab
   const [reasoningToolbarVisible, setReasoningToolbarVisible] = useState(activeTab === 'reasoning')
-  const [showSwitchHint, setShowSwitchHint] = useState(() =>
-    typeof window === 'undefined'
-      ? false
-      : localStorage.getItem(LOG_VIEWER_SWITCH_HINT_DISMISSED_KEY) !== 'true'
-  )
   const toolbarContainerId = 'log-terminal-toolbar'
-  const topbarTabsContainerId = 'log-viewer-topbar-tabs'
-  const reasoningTopbarActionsContainerId = 'reasoning-topbar-actions'
+  const statusContainerId = 'log-viewer-status'
 
   useEffect(() => {
-    const frameId = requestAnimationFrame(() => {
-      setTopbarTabsRoot(document.getElementById(topbarTabsContainerId))
-    })
-
-    return () => cancelAnimationFrame(frameId)
-  }, [])
-
-  useEffect(() => {
-    topbarTabsCompactRef.current = topbarTabsCompact
-  }, [topbarTabsCompact])
-
-  useEffect(() => {
+    if (isMobileViewport) return
     localStorage.setItem(LOG_VIEWER_ACTIVE_TAB_KEY, activeTab)
-  }, [activeTab])
-
-  useEffect(() => {
-    if (!topbarTabsRoot) return
-
-    let frameId = 0
-    const updateCompactState = () => {
-      cancelAnimationFrame(frameId)
-      frameId = requestAnimationFrame(() => {
-        const workspaceTabs = document.querySelector('[data-dashboard-workspace-tabs="true"]')
-        const workspaceTabsMeasure = document.querySelector(
-          '[data-dashboard-workspace-tabs-measure="true"]'
-        )
-        const measureEl = topbarTabsRoot.querySelector('[data-log-viewer-switcher-measure="true"]')
-        if (
-          !(workspaceTabs instanceof HTMLElement) ||
-          !(workspaceTabsMeasure instanceof HTMLElement) ||
-          !(measureEl instanceof HTMLElement)
-        ) {
-          setTopbarTabsCompact(false)
-          return
-        }
-
-        const rootRect = topbarTabsRoot.getBoundingClientRect()
-        // 千禧顶栏的页签参与正常布局，保持图标模式，不使用绝对定位布局的间距判定。
-        if (document.documentElement.dataset.dashboardStyle === 'millennium') {
-          setTopbarTabsCompact(true)
-          return
-        }
-        const measureRect = measureEl.getBoundingClientRect()
-        const workspaceRect = workspaceTabs.getBoundingClientRect()
-        const workspaceMeasureRect = workspaceTabsMeasure.getBoundingClientRect()
-        const fullWorkspaceTabsLeft = workspaceRect.right - workspaceMeasureRect.width
-        const gap = fullWorkspaceTabsLeft - (rootRect.left + measureRect.width)
-        const threshold = topbarTabsCompactRef.current
-          ? TOPBAR_SWITCH_EXPAND_GAP
-          : TOPBAR_SWITCH_COMPACT_GAP
-        setTopbarTabsCompact(gap < threshold)
-      })
-    }
-
-    updateCompactState()
-    window.addEventListener('resize', updateCompactState)
-
-    const resizeObserver = new ResizeObserver(updateCompactState)
-    resizeObserver.observe(document.body)
-    resizeObserver.observe(topbarTabsRoot)
-
-    const workspaceTabs = document.querySelector('[data-dashboard-workspace-tabs="true"]')
-    if (workspaceTabs instanceof HTMLElement) {
-      resizeObserver.observe(workspaceTabs)
-    }
-    const workspaceTabsMeasure = document.querySelector(
-      '[data-dashboard-workspace-tabs-measure="true"]'
-    )
-    if (workspaceTabsMeasure instanceof HTMLElement) {
-      resizeObserver.observe(workspaceTabsMeasure)
-    }
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      window.removeEventListener('resize', updateCompactState)
-      resizeObserver.disconnect()
-    }
-  }, [activeTab, reasoningToolbarVisible, topbarTabsRoot])
-
-  const renderTopbarSwitcherMeasure = () => {
-    const showReasoningRefresh = activeTab === 'reasoning' && !reasoningToolbarVisible
-
-    return (
-      <div
-        data-log-viewer-switcher-measure="true"
-        aria-hidden="true"
-        className="pointer-events-none invisible absolute top-0 left-0 flex min-w-0 items-center gap-2"
-      >
-        <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
-          <div className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap">
-            <Terminal className="h-4 w-4" />
-            <span>终端</span>
-          </div>
-          <div className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap">
-            <BrainCircuit className="h-4 w-4" />
-            <span>推理过程</span>
-          </div>
-          <div className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap">
-            <BarChart3 className="h-4 w-4" />
-            <span>详细统计</span>
-          </div>
-        </div>
-        {showReasoningRefresh && <div className="h-9 w-9" />}
-      </div>
-    )
-  }
-
-  const renderTabSwitcher = (includeTopbarActions = false, compact = false) => {
-    const labelClassName = compact ? 'sr-only' : undefined
-
-    return (
-      <div className="flex min-w-0 items-center gap-2">
-        <TabsList
-          data-log-viewer-switcher={includeTopbarActions ? 'true' : undefined}
-          data-log-viewer-switcher-compact={includeTopbarActions && compact ? 'true' : undefined}
-        >
-          <TabsTrigger value="terminal" className="gap-1.5" aria-label="终端">
-            <Terminal className="h-4 w-4" />
-            <span className={labelClassName}>终端</span>
-          </TabsTrigger>
-          <TabsTrigger value="reasoning" className="gap-1.5" aria-label="推理过程">
-            <BrainCircuit className="h-4 w-4" />
-            <span className={labelClassName}>推理过程</span>
-          </TabsTrigger>
-          <TabsTrigger value="statistics" className="gap-1.5" aria-label="详细统计">
-            <BarChart3 className="h-4 w-4" />
-            <span className={labelClassName}>详细统计</span>
-          </TabsTrigger>
-        </TabsList>
-        {includeTopbarActions && (
-          <div id={reasoningTopbarActionsContainerId} className="hidden items-center sm:flex" />
-        )}
-      </div>
-    )
-  }
-  const topbarTabsPortal = topbarTabsRoot
-    ? createPortal(
-        <>
-          {renderTabSwitcher(true, topbarTabsCompact)}
-          {renderTopbarSwitcherMeasure()}
-        </>,
-        topbarTabsRoot
-      )
-    : null
-  const dismissSwitchHint = () => {
-    localStorage.setItem(LOG_VIEWER_SWITCH_HINT_DISMISSED_KEY, 'true')
-    setShowSwitchHint(false)
-  }
+  }, [activeTab, isMobileViewport])
 
   return (
     <Tabs
       value={activeTab}
       onValueChange={(value) => setActiveTab(value as LogViewerTab)}
-      className="flex h-full min-h-0 flex-col overflow-hidden"
+      data-log-viewer="true"
+      className="flex h-full min-h-0 flex-col overflow-hidden p-2 sm:p-3 lg:px-4 lg:pt-3 lg:pb-4"
     >
-      {topbarTabsPortal}
-      {/* 移动端：页签单独置顶并只显示图标，避免挤压下方工具栏按钮 */}
-      <div
-        data-log-viewer-mobile-switcher="true"
-        className="flex shrink-0 items-center border-b px-3 py-1 sm:hidden"
-      >
-        {renderTabSwitcher(false, true)}
-      </div>
-      <div
-        className={cn(
-          'flex shrink-0 items-center gap-2 border-b px-3 py-1 lg:px-4',
-          ((activeTab === 'reasoning' && !reasoningToolbarVisible) || activeTab === 'statistics') &&
-            'hidden'
-        )}
-      >
-        <div id={toolbarContainerId} className="flex min-w-0 flex-1 justify-end" />
-      </div>
-      {showSwitchHint && (
-        <div className="shrink-0 border-b px-3 py-2 lg:px-4">
-          <div className="border-primary/30 bg-primary/5 flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-foreground font-medium">小提示</span>
-              <span className="text-muted-foreground">
-                可以在左上角切换「终端」「推理过程」和「详细统计」。
-              </span>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0"
-              onClick={dismissSwitchHint}
-              title="关闭提示"
-              aria-label="关闭提示"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <TabsContent value="terminal" className="m-0 min-h-0 flex-1 overflow-hidden">
-        <LogTerminalPane
-          toolbarContainerId={toolbarContainerId}
-          toolbarVisible={activeTab === 'terminal'}
-        />
-      </TabsContent>
-      <TabsContent value="reasoning" className="m-0 min-h-0 flex-1 overflow-hidden p-2 lg:p-4">
-        <ReasoningProcessPage
-          embedded
-          toolbarContainerId={toolbarContainerId}
-          toolbarVisible={activeTab === 'reasoning'}
-          topbarActionsContainerId={reasoningTopbarActionsContainerId}
-          onToolbarContentVisibleChange={setReasoningToolbarVisible}
-        />
-      </TabsContent>
-      <TabsContent value="statistics" className="m-0 min-h-0 flex-1 overflow-y-auto">
-        <Suspense
-          fallback={
-            <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              正在加载详细统计…
-            </div>
-          }
+      {/* 终端、推理过程、详细统计是页面级切换：标签压在面板上沿；手机上三个入口各自独立，不显示标签行 */}
+      <div className="shrink-0 max-lg:hidden">
+        <DashboardFolderTabBar
+          aria-label="日志视图"
+          trailing={<div id={statusContainerId} className="flex items-center" />}
         >
-          <StatisticsPage />
-        </Suspense>
-      </TabsContent>
+          <DashboardFolderTab value="terminal" icon={<Terminal />}>
+            终端
+          </DashboardFolderTab>
+          <DashboardFolderTab value="reasoning" icon={<BrainCircuit />}>
+            推理过程
+          </DashboardFolderTab>
+          <DashboardFolderTab value="statistics" icon={<BarChart3 />}>
+            详细统计
+          </DashboardFolderTab>
+        </DashboardFolderTabBar>
+      </div>
+
+      <DashboardFolderPanel
+        data-log-viewer-panel="true"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2 sm:p-3"
+      >
+        <div
+          className={cn(
+            // 工具栏容器里没有内容时整行收起
+            'flex shrink-0 items-center has-[>:empty]:hidden',
+            activeTab === 'reasoning' && !reasoningToolbarVisible && 'hidden'
+          )}
+        >
+          <div id={toolbarContainerId} className="flex min-w-0 flex-1" />
+        </div>
+
+        <TabsContent value="terminal" className="m-0 min-h-0 flex-1 overflow-hidden">
+          <LogTerminalPane
+            toolbarContainerId={toolbarContainerId}
+            statusContainerId={statusContainerId}
+            toolbarVisible={activeTab === 'terminal'}
+          />
+        </TabsContent>
+        <TabsContent value="reasoning" className="m-0 min-h-0 flex-1 overflow-hidden">
+          <ReasoningProcessPage
+            embedded
+            toolbarContainerId={toolbarContainerId}
+            statusContainerId={statusContainerId}
+            toolbarVisible={activeTab === 'reasoning'}
+            onToolbarContentVisibleChange={setReasoningToolbarVisible}
+          />
+        </TabsContent>
+        <TabsContent value="statistics" className="m-0 min-h-0 flex-1 overflow-y-auto">
+          <Suspense
+            fallback={
+              <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
+                正在加载详细统计…
+              </div>
+            }
+          >
+            <StatisticsPage
+              embedded
+              toolbarContainerId={toolbarContainerId}
+              toolbarVisible={activeTab === 'statistics'}
+            />
+          </Suspense>
+        </TabsContent>
+      </DashboardFolderPanel>
     </Tabs>
   )
 }

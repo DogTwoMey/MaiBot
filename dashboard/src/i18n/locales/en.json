@@ -1,8 +1,209 @@
 {
+  "hostManager": {
+    "title": "Bot management",
+    "entrySubtitle": "Create and control independent Bots from one management center.",
+    "workspace": "Host workspace",
+    "subtitle": "Independent Bots, one place to manage them.",
+    "runtimeHint": "“Running” means the Bot process is alive. It does not mean an account is signed in or that models and adapters are ready.",
+    "refresh": "Refresh",
+    "refreshFailed": "Could not refresh status",
+    "staleData": "These are previously loaded statuses and may be out of date.",
+    "summary": "Bot counts",
+    "total": "All Bots",
+    "needsAttention": "Needs attention",
+    "createTitle": "Create a Bot",
+    "createHint": "Creates independent configuration and data directories. Does not start the Bot or sign in.",
+    "botName": "Bot display name",
+    "namePlaceholder": "e.g. Work assistant",
+    "create": "Create",
+    "creating": "Creating…",
+    "botList": "Managed Bots",
+    "lastUpdated": "Updated {{time}}",
+    "loading": "Loading Bots…",
+    "emptyTitle": "No managed Bots yet",
+    "emptyHint": "Enter a name above to create your first independent Bot.",
+    "pid": "Process ID",
+    "exitCode": "Exit code",
+    "start": "Start",
+    "stop": "Stop",
+    "restart": "Restart",
+    "details": "Directories and runtime details",
+    "directory": "Bot directory",
+    "logs": "Runtime log",
+    "botId": "Bot ID",
+    "startedAt": "Started",
+    "exitedAt": "Exited",
+    "operationFailed": "The operation did not complete. Check the Bot's error details.",
+    "uncertainResult": "The result is not confirmed; the Host may still be working. Refresh and check the list before trying again to avoid duplicate Bots.",
+    "status": {
+      "initializing": "Initializing",
+      "initializationFailed": "Initialization failed",
+      "starting": "Starting",
+      "running": "Running",
+      "stopping": "Stopping",
+      "stopped": "Stopped",
+      "exited": "Exited",
+      "failed": "Failed",
+      "migrating": "Migrating data",
+      "crashLoop": "Crash loop, restarts paused"
+    },
+    "retryAt": "Restarting automatically at {{time}}",
+    "pending": {
+      "start": "Starting, please wait…",
+      "stop": "Waiting for the Bot and its child processes to exit. This may take over a minute…",
+      "restart": "Stopping and restarting the Bot, please wait…"
+    },
+    "currentBot": "Current Bot",
+    "noSelection": "No Bot selected",
+    "selectedStopped": "The current Bot is not running",
+    "selectToContinue": "Select and start a Bot in Bot Manager before opening its configuration, chats, or plugins. Bot Manager stays available.",
+    "selected": "Current Bot",
+    "useBot": "Use this Bot",
+    "unifiedScope": "Configuration, chats, plugins, and resources belong to the selected Bot. Browser tabs can select different Bots. Management remains available when all Bots are stopped.",
+    "pluginDeps": {
+      "title": "Plugin dependencies",
+      "hint": "Check all enabled plugin requirements across Bots before installing missing packages. Existing libraries are not automatically upgraded or downgraded.",
+      "check": "Check",
+      "none": "All plugin dependencies are satisfied.",
+      "install": "Stop all Bots and install",
+      "installHint": "All Bots pause during installation and resume their previous state afterwards.",
+      "installed": "Dependencies installed. Bots are resuming their previous state."
+    }
+  },
+  "helpHistory": {
+    "newSession": "New conversation",
+    "retryLoad": "Reload",
+    "draftRestored": "Draft restored. Review it before sending again.",
+    "description": "Review recent Agent help sessions and ask follow-up questions.",
+    "deleteSession": "Delete session “{{title}}”",
+    "deleteTitle": "Delete session",
+    "deleteDescription": "Delete “{{title}}” and all its questions and answers?",
+    "deleteConfirm": "Delete",
+    "loading": "Loading help history…",
+    "loadError": "Could not load help history.",
+    "empty": "No help sessions yet.",
+    "select": "Select a session to view its questions and answers.",
+    "noReply": "No answer has been recorded for this question."
+  },
+  "observation": {
+    "helpHistory": "Help history",
+    "keys": {
+      "bot": "Mai",
+      "model": "Models",
+      "adapter": "Adapters",
+      "learning": "Learning",
+      "memory": "Memory",
+      "plugin": "Plugins",
+      "market": "Market",
+      "prompt": "Prompts",
+      "data": "Data",
+      "logs": "Logs"
+    },
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "settingsBlock": "Settings",
+    "compactSettings": "Show settings in one row",
+    "keyNeedsBot": "{{label}} · Start a bot first",
+    "pet": {
+      "title": "Desktop pet",
+      "settings": "Pet settings",
+      "enabledLamp": "Desktop pet on",
+      "mode": {
+        "local": "Local window",
+        "remote": "Remote client"
+      },
+      "state": {
+        "idle": "Visible",
+        "thinking": "Thinking",
+        "hidden": "Hidden",
+        "starting": "Starting",
+        "waiting": "Waiting",
+        "error": "Not running"
+      },
+      "thinkingMeta": "Replying to you",
+      "hiddenMeta": "Running in the background",
+      "waitingTitle": "Waiting for the pet client",
+      "waitingHint": "Enter the host WebUI address in the pet client and sign in. The pet appears here once connected.",
+      "startingTitle": "Starting the pet window…",
+      "errorTitle": "The pet window is not running",
+      "unsupported": "This system does not support the local window. Use the remote client instead.",
+      "show": "Show",
+      "showFailed": "Could not show the pet",
+      "inputPlaceholder": "Say something to the pet…",
+      "send": "Send",
+      "sendFailed": "Could not send",
+      "todos": "To-dos",
+      "todosLabel": "To-dos, {{count}} open",
+      "todosEmpty": "No open to-dos",
+      "todosMore": "{{count}} more in the pet"
+    },
+    "allConversations": "All conversations",
+    "filterConversations": "Filter",
+    "focusFlows": "Focus flows",
+    "overviewPreview": "Status and usage overview",
+    "agentHelper": "Agent Helper",
+    "localChatPreview": "Local chat room",
+    "console": "Console",
+    "uptime": "Uptime",
+    "unread": "{{count}} unread",
+    "loading": "Loading…",
+    "noNews": "No news",
+    "detailedStats": "Detailed stats",
+    "otherModels": "Other models",
+    "noData": "No data",
+    "quickChat": "Chat with Mai",
+    "quickChatPlaceholder": "Say something to Mai, press Enter to open the chat…",
+    "composerMode": "Input mode",
+    "modeChat": "Chat",
+    "modeAsk": "Ask",
+    "editCards": "Edit cards",
+    "cardLibrary": "Card library",
+    "resetLayout": "Reset",
+    "doneEditing": "Done",
+    "removeCard": "Remove “{{name}}”",
+    "moveCard": "Drag or use arrow keys to move “{{name}}”",
+    "cardWidth": "Card width",
+    "addCard": "Add “{{name}}” to the board",
+    "libraryHint": "Press + to add a card back; stats cards go below the rule.",
+    "libraryEmpty": "Every card is already on the board",
+    "closeLibrary": "Close card library",
+    "refreshQuote": "Next quote",
+    "emptyBoard": "The board is empty. Add a few cards from the library.",
+    "zoneTop": "Top row",
+    "zoneStats": "Stats",
+    "modeChatLabel": "Chat mode",
+    "modeAskLabel": "Ask mode",
+    "switchMode": "Switch to {{mode}}",
+    "askTitle": "Ask Mai",
+    "askPreview": "Docs and plugin market",
+    "askPlaceholder": "Ask how to configure Mai or use a plugin, press Enter…",
+    "ask": "Ask",
+    "send": "Send"
+  },
   "pluginWebUI": {
+    "settingsTitle": "Plugin pages",
+    "settingsHint": "Choose which plugin pages appear in the sidebar and in what order. Settings are saved in this browser.",
+    "orderAndVisibility": "Order and visibility",
+    "pluginCount": "{{count}} plugins",
+    "hiddenLabel": "Hidden",
+    "sidebarLabel": "Sidebar",
+    "visibleLabel": "Show",
+    "customReload": "Reload page",
+    "customStop": "Stop page",
+    "customStopped": "Page stopped. Reload the page to run again.",
+    "customStopRequestRate": "Too many requests. Page stopped (20 requests per second, with bursts of up to 200).",
+    "customStopLayoutRate": "Too many page size updates. Page stopped.",
+    "customStopHeight": "Page height is invalid or exceeds 30000 pixels. Page stopped.",
+    "customStopDuplicateId": "The plugin sent a duplicate request ID. Page stopped.",
+    "customStopTimeout": "The page connection was not ready within 10 seconds. Page stopped.",
+    "customStopManual": "You stopped the page.",
+    "customStopNavigation": "The page reloaded or navigated. Connection stopped.",
+    "galleryLayout": "Gallery layout",
+    "paginationSummary": "Page {{page}} / {{pages}} · {{total}} images",
+    "galleryAuto": "Auto layout",
+    "galleryColumns": "{{count}} columns",
     "extensions": "Plugin extensions",
     "manage": "Manage plugin pages",
-    "more": "More plugin workspaces",
     "refresh": "Refresh",
     "loading": "Loading…",
     "empty": "No data",
@@ -57,9 +258,9 @@
       "modelManagement": "Model Management",
       "promptManagement": "Prompt Management",
       "emojiManagement": "Emoji Management",
+      "learning": "Learning",
       "expressionManagement": "Expression Management",
       "slangManagement": "Slang Management",
-      "behaviorLearning": "Behavior Learning",
       "personInfo": "Person Info",
       "knowledgeGraph": "Long-Term Memory Graph",
       "knowledgeBase": "Long-Term Memory",
@@ -70,10 +271,10 @@
       "mcpSettings": "MCP Settings",
       "dataTransfer": "Data Management",
       "statistics": "Detailed Statistics",
-      "replyEffects": "Reply Effects",
       "logViewer": "Log Viewer",
       "reasoningProcess": "Reasoning Process",
       "maisakaMonitor": "MaiSaka Chat Monitor",
+      "agent": "Independent Agent",
       "localChat": "Local Chat",
       "settings": "WebUI Settings"
     }
@@ -86,7 +287,8 @@
     "empty": "No data for this period",
     "actions": {
       "refresh": "Refresh",
-      "openHtml": "Open HTML report"
+      "compare": "Compare with previous",
+      "details": "Details"
     },
     "error": {
       "title": "Failed to load detailed statistics",
@@ -107,8 +309,12 @@
       "metrics": "Metric trends"
     },
     "sections": {
-      "breakdowns": "Breakdowns",
-      "distributions": "Distributions"
+      "breakdowns": "Detailed Breakdown",
+      "embeddings": "Embedding statistics",
+      "distributions": "Distributions",
+      "period": "Period",
+      "trend": "Trends & Insights",
+      "reliability": "Reliability & Failures"
     },
     "breakdowns": {
       "taskGroups": "By task group",
@@ -133,7 +339,11 @@
       "costPerReceivedMessages": "Cost/received messages",
       "costPerReplies": "Cost/replies",
       "costPerHour": "Cost/hour",
-      "tokensPerHour": "Tokens/hour"
+      "tokensPerHour": "Tokens/hour",
+      "callsPerReply": "Calls / Reply",
+      "failureRate": "Failure Rate",
+      "replyRate": "Reply Rate",
+      "sparkLabel": "{{name}} recent trend"
     },
     "units": {
       "per100": "per 100",
@@ -149,8 +359,7 @@
       "cacheMissTokens": "Cache miss tokens",
       "cacheHitRate": "Cache hit rate",
       "cost": "Total cost",
-      "avgTime": "Average time",
-      "stdTime": "Time deviation",
+      "time": "Time",
       "callsPerReply": "Calls per reply",
       "tokensPerReply": "Tokens per reply",
       "tokensPerCall": "Tokens per call",
@@ -158,12 +367,37 @@
       "messages": "Messages"
     },
     "distributions": {
+      "metric": "Statistics metric",
+      "costs": "Cost",
+      "tokens": "Tokens",
+      "ownerTokens": "Tokens by caller",
+      "modelTokens": "Tokens by model",
+      "moduleTokens": "Tokens by module",
+      "requestTypeTokens": "Tokens by request type",
+      "chatTokens": "Tokens by chat",
       "ownerCosts": "Call source cost distribution",
       "modelCosts": "Model cost distribution",
       "moduleCosts": "Module cost distribution",
       "requestTypeCosts": "Request type cost distribution",
       "chatMessages": "Chat message distribution",
-      "chatCosts": "Chat stream cost distribution"
+      "chatCosts": "Chat stream cost distribution",
+      "hint": "Click a legend item to filter the table below",
+      "itemCount": "{{count}} items",
+      "filterTable": "Filter {{name}} in detail table",
+      "singleSource": "Only \"{{name}}\" is present in this period",
+      "zeroCount": "{{count}} items with 0 value",
+      "titles": {
+        "owner": "Owner {{metric}} Distribution",
+        "model": "Model {{metric}} Distribution",
+        "module": "Module {{metric}} Distribution",
+        "requestType": "Request Type {{metric}} Distribution",
+        "taskGroup": "Task Group {{metric}} Distribution",
+        "chat": "Chat {{metric}} Distribution"
+      },
+      "totals": {
+        "costs": "Total Cost",
+        "tokens": "Total Tokens"
+      }
     },
     "charts": {
       "timeRange": "Time range",
@@ -189,6 +423,153 @@
       "costPerHour": "Cost per hour trend",
       "tokensPerHour": "Tokens per hour trend",
       "costPerReplies": "Cost per reply trend"
+    },
+    "other": "Other ({{count}})",
+    "delta": {
+      "vsPrevious": "Compared with previous period",
+      "noBaseline": "Previous period was 0",
+      "new": "NEW"
+    },
+    "modules": {
+      "usage": "Usage Overview",
+      "cache": "Prompt Cache",
+      "modelCosts": "Model Cost Share",
+      "flow": "Token Flow",
+      "unit": "Unit Cost & Efficiency",
+      "insights": "Auto Insights",
+      "failureRank": "Failure Rate Ranking",
+      "failureTrend": "Failure Trend & Latency",
+      "heatmap": "Activity Heatmap",
+      "chats": "Top Active Chats"
+    },
+    "cache": {
+      "all": "Overall",
+      "uncachedHint": "{{tokens}} input tokens without cache breakdown"
+    },
+    "models": {
+      "freeHint": "{{count}} additional models with ¥0.00 cost"
+    },
+    "flow": {
+      "total": "Total {{tokens}}",
+      "cacheHit": "Cache Hit Input",
+      "cacheMiss": "Cache Miss Input",
+      "noCacheInfo": "Uncached Input",
+      "output": "Output Tokens",
+      "ioRatio": "Input : Output Ratio"
+    },
+    "trend": {
+      "metric": "Metric",
+      "group": "Group By",
+      "mode": "Chart Mode",
+      "sum": "Total",
+      "truncated": "Detailed series kept for 30 days (since {{start}})",
+      "metrics": {
+        "cost": "Cost",
+        "tokens": "Tokens",
+        "requests": "Requests",
+        "messages": "Messages"
+      },
+      "groups": {
+        "total": "Total",
+        "model": "By Model",
+        "module": "By Module",
+        "chat": "By Chat"
+      },
+      "modes": {
+        "stack": "Stacked",
+        "line": "Line",
+        "percent": "100% Share"
+      },
+      "titles": {
+        "cost": "Cost Trend",
+        "tokens": "Token Usage Trend",
+        "requests": "Request Trend",
+        "messages": "Message Trend"
+      },
+      "totals": {
+        "cost": "Total Cost",
+        "tokens": "Total Tokens",
+        "requests": "Total Requests",
+        "messages": "Total Messages"
+      }
+    },
+    "insights": {
+      "empty": "No notable anomalies or concentrations in this period",
+      "alertCount": "{{count}} alerts",
+      "costUp": "Cost is {{current}}, up {{change}} from {{previous}}.",
+      "costDown": "Cost is {{current}}, down {{change}} from {{previous}}.",
+      "failureRate": "{{name}} failure rate reached {{rate}} ({{failures}} / {{attempts}}), above overall {{overall}}.",
+      "failureShare": "{{name}} had {{failures}} failures ({{share}} of all failures).",
+      "costShare": "{{name}} cost {{cost}}, accounting for {{share}} of total cost.",
+      "cacheLow": "{{name}} cache hit rate is {{rate}}, well below overall {{overall}}.",
+      "unitPrice": "{{name}} averages {{unit}} / 1M tokens ({{ratio}}x overall average).",
+      "latencyTail": "{{name}} latency std dev is {{std}} (avg {{avg}}), showing long-tail spikes.",
+      "topChat": "\"{{name}}\" is most active with {{messages}} messages ({{share}})."
+    },
+    "reliability": {
+      "source": "Based on 1-minute task usage buckets",
+      "truncated": "Task usage kept for 7 days (covered since {{start}})",
+      "dimension": "Dimension",
+      "empty": "No task usage records in this period",
+      "attempts": "Attempts",
+      "failures": "Failures",
+      "failureRate": "Failure Rate",
+      "avgSuccessDuration": "Avg Success Time",
+      "chartLegend": "Bars: Failures · Line: Failure Rate",
+      "hint": "Highlighted when failure rate reaches {{threshold}}",
+      "dimensions": {
+        "model": "By Model",
+        "provider": "By Provider",
+        "task": "By Task"
+      }
+    },
+    "heatmap": {
+      "metric": "Heatmap Metric",
+      "weekdays": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+      "less": "Less",
+      "more": "More",
+      "messagesValue": "{{value}} msgs",
+      "cellTitle": "{{day}} {{hour}}:00 · {{value}}",
+      "metrics": {
+        "messages": "Messages",
+        "costs": "Cost"
+      }
+    },
+    "chats": {
+      "topHint": "Top {{count}} / {{total}}",
+      "costPer100": "{{cost}} / 100 msgs"
+    },
+    "columns": {
+      "name": "Name",
+      "requests": "Requests",
+      "tokens": "Tokens (Total / In·Out)",
+      "cacheRate": "Cache Hit Rate",
+      "cost": "Total Cost",
+      "failureRate": "Failure Rate",
+      "time": "Avg Latency",
+      "unitCost": "Cost / 1M",
+      "costPerCall": "Cost / 1K Calls",
+      "callsPerReply": "Calls / Reply",
+      "tokensPerReply": "Tokens / Reply"
+    },
+    "detail": {
+      "hideEmbedding": "Hide Embeddings",
+      "columnGroups": "Column Groups",
+      "dimension": "Dimension",
+      "search": "Filter by name…",
+      "rowCount": "{{shown}} / {{total}}",
+      "total": "Total ({{count}})",
+      "embeddingTag": "Embed",
+      "freeTag": "Free",
+      "failureCount": "{{value}} failed",
+      "attemptsFailures": "Failures / Attempts",
+      "groups": {
+        "token": "Tokens",
+        "cache": "Cache",
+        "perf": "Latency & Errors",
+        "unit": "Unit Cost",
+        "reply": "Per Reply"
+      }
     }
   },
   "workspace": {
@@ -198,6 +579,44 @@
     "logs": "Logs"
   },
   "chat": {
+    "agent": {
+      "desktopSetup": "Connect dsh Desktop",
+      "desktopInstall": "Install the bridge with the dsh command bundled with Desktop (0.2.1-rc.2 or later):",
+      "desktopConnect": "Start or restart Desktop. Leave the bridge file and model option empty to use its defaults. Tasks appear in the MaiMai session in Desktop. Stopping MaiBot does not quit Desktop.",
+      "dshSetup": "Connect dsh in three steps",
+      "dshInstall": "If dsh is not installed, run:",
+      "dshModel": "Configure the model and API key in dsh (skip if configured):",
+      "dshEnable": "Select the dsh CLI connection, enable and save the Agent, then send a task on its page. If the executable is not found, set ACP executable to the absolute path of dsh.cmd on Windows.",
+      "dshCommand": "The preset runs:",
+      "disabled": "Agent disabled",
+      "paused": "Decisions paused",
+      "running": "Task running",
+      "resume": "Resume",
+      "toolCall": "Tool call",
+      "toolResult": "Result",
+      "failed": "Failed",
+      "thought": "Thinking",
+      "eventCount": "{{count}} records",
+      "userMessage": "User",
+      "systemEvent": "Autonomous wake",
+      "queued": "Queued",
+      "noEvents": "No activity yet",
+      "inputEvent": "Input and requests",
+      "stepEvent": "Model and tools",
+      "message": "Give the Agent a task",
+      "send": "Send",
+      "thinking": "Thinking",
+      "tool": "Using a tool",
+      "idle": "Idle"
+    },
+    "setupTrial": {
+      "title": "Try chatting with the bot",
+      "description": "Say hello and check that the bot can reply.",
+      "repliedTitle": "The bot has replied",
+      "repliedDescription": "If the reply and personality look right, continue to message platform setup.",
+      "keepChatting": "Keep chatting",
+      "continue": "Continue to message platforms"
+    },
     "botNameFallback": "Mai",
     "userFallback": "User",
     "userNameFallback": "Human",
@@ -339,6 +758,11 @@
       "sessionUnavailable": "Cannot open the chat session. Please try again later.",
       "virtualTabCreated": "Virtual identity tab",
       "virtualTabCreatedDesc": "Created a chat for {{label}}"
+    },
+    "mobile": {
+      "back": "Back to conversations",
+      "close": "Close",
+      "settings": "Settings"
     }
   },
   "layout": {
@@ -356,12 +780,17 @@
     "title": "WebUI Settings",
     "description": "Manage your application preferences",
     "tabs": {
+      "general": "General",
       "appearance": "Appearance",
       "security": "Security",
       "other": "Other",
       "about": "About"
     },
     "appearance": {
+      "layoutVersion": "Layout",
+      "layoutVersionDesc": "Classic keeps the top bar and card home page. Observation removes the top bar: the sidebar shows settings on top and all conversations below, and home becomes a status board. Desktop width only.",
+      "layoutClassic": "Classic",
+      "layoutObservation": "Observation",
       "themeMode": "Theme Mode",
       "themeModeDesc": "Light / Dark / Follow system",
       "light": "Light",
@@ -466,6 +895,7 @@
       "retroPanelDepthDesc": "Controls the visibility of recessed surfaces and shadows."
     },
     "security": {
+      "tokenManagement": "Access Token Management",
       "currentToken": "Current Access Token",
       "yourToken": "Your Access Token",
       "regenerate": "Regenerate",
@@ -589,11 +1019,23 @@
       "resetAllSettingsBtn": "Reset All Settings to Defaults",
       "confirmResetAll": "Confirm Reset All Settings",
       "confirmResetAllDesc": "This will restore all interface settings to their defaults, including theme, colors, animation, and other preferences. This will not affect your login status. Are you sure?",
-      "configWizardDesc": "Re-run the initial setup wizard to reconfigure system basics.",
+      "configWizardDesc": "Run setup again, optionally resetting the login password to start with password setup.",
       "rerunSetup": "Re-run Initial Setup",
+      "resetSetupPassword": "Also reset the login password",
+      "resetSetupPasswordDesc": "The old password will stop working immediately. Other browsers must sign in again. This browser stays signed in and opens password setup. A temporary credential is used until you save a new password and will change on restart.",
+      "setupPasswordResetSuccess": "Password reset. Opening password setup.",
+      "setupResetSuccess": "Setup reset. Opening the setup wizard.",
+      "setupResetFailed": "Unable to reset setup. Please try again.",
       "confirmRerunSetup": "Confirm Re-run Setup",
       "confirmRerunSetupDesc": "This will take you back to the initial setup wizard. You can reconfigure the system basics. Are you sure?",
       "devToolsDesc": "The following features are for development and debugging only. They may cause crashes or abnormal behavior.",
+      "resetNotificationStates": "Reset all notification states",
+      "resetNotificationStatesDesc": "Clears news read records, the home news bar dismissal, and dismissed page notices so they show again. Completed tours are kept.",
+      "resetNotificationStatesAction": "Reset",
+      "notificationsResetDone": "Notification states reset",
+      "notificationsResetDoneDesc": "Cleared {{count}} items. Changes apply when you revisit the page.",
+      "alwaysShowUpdateButton": "Always show update button",
+      "alwaysShowUpdateButtonDesc": "Always show the main program update button in the top-right corner, even when no update is detected. Takes effect immediately.",
       "alwaysShowUpdateNotice": "Always Show Update Notice",
       "alwaysShowUpdateNoticeDesc": "When enabled, the update details and plugin compatibility notice appear every time you enter the WebUI. Takes effect after a refresh.",
       "triggerError": "Trigger Test Error",
@@ -614,6 +1056,60 @@
       "importInvalidDesc": "Invalid file format",
       "resetDone": "Reset done",
       "resetDoneDesc": "All settings restored to defaults. Refresh the page to apply changes."
+    },
+    "selfUpdate": {
+      "title": "MaiBot Update",
+      "current": "Current version {{version}}",
+      "loading": "Loading update status…",
+      "loadFailed": "Failed to load update status",
+      "check": "Check for updates",
+      "checking": "Checking…",
+      "checkFailed": "Update check failed",
+      "notChecked": "Not checked yet",
+      "upToDate": "Up to date",
+      "checkedAt": "checked at {{time}}",
+      "newVersion": "New version {{version}} available",
+      "newCommits": "{{count}} new commit(s) available",
+      "behind": "{{count}} commit(s) behind the official {{branch}} branch",
+      "moreCommits": "Showing the latest {{count}} commits only",
+      "dependenciesChanged": "This update changes dependencies; they will be synced automatically ({{tool}})",
+      "cannotApply": "Automatic update is not possible right now",
+      "dirtyFiles": "Modified files:",
+      "apply": "Update now",
+      "applyFailed": "Failed to start the update",
+      "confirmTitle": "Update to {{version}}?",
+      "confirmDesc": "MaiBot will be offline for a few minutes: it stops, pulls the new version, syncs dependencies and starts again. If pulling or syncing dependencies fails, it rolls back to the current version automatically. Backing up the data directory first is recommended.",
+      "confirmAction": "Update and restart",
+      "cancel": "Cancel",
+      "overlayTitle": "Updating MaiBot",
+      "overlayDesc": "Pulling the new version and syncing dependencies. This may take a few minutes; do not close MaiBot",
+      "source": "Update source: {{name}}",
+      "sourceHint": "Sources are tried in the order of the plugin marketplace mirror settings; only the official repository Mai-with-u/MaiBot is pulled",
+      "packageSourceHint": "Install stable releases from PyPI. Configuration and databases are backed up; stop other instances sharing this environment first.",
+      "packageConfirmDesc": "MaiBot will be offline for a few minutes. It backs up configuration and databases, installs the confirmed version with uv, and restarts. Installation verification failures trigger an attempt to restore the previous package and dependencies. Backups are in data/self_update/backups. Database migrations after the new version starts are not automatically reversed.",
+      "lastSuccess": "Updated from {{from}} to {{to}} at {{time}}",
+      "lastFailed": "Update to {{to}} failed at {{time}}",
+      "rolledBack": "Rolled back to the previous version automatically",
+      "rollbackFailed": "Automatic rollback failed; check the repository and dependencies manually: {{error}}",
+      "toastSuccess": "Update complete",
+      "toastSuccessDesc": "Updated to {{version}}",
+      "toastFailed": "Update failed",
+      "toastFailedDesc": "Update failed. See Settings → About for details.",
+      "blockers": {
+        "uv_missing": "uv was not found; add it to the startup PATH",
+        "not_uv_tool": "This is not a PyPI-based uv tool installation; use the original installer to update",
+        "package_runner_missing": "Start with maibot run to enable automatic updates",
+        "other_instances_running": "Stop other MaiBot instances sharing this tool environment first",
+        "package_busy": "The tool environment is updating; try again later",
+        "git_missing": "Git was not found, so self-update is unavailable",
+        "not_git_repo": "This deployment is not a Git repository (e.g. a Docker image or an archive); update it the way it was deployed",
+        "detached_head": "Not on any branch (detached HEAD), so self-update is unavailable",
+        "unsupported_branch": "Self-update is only supported on the main or dev branch",
+        "dirty_worktree": "There are uncommitted local changes; commit or revert them first",
+        "diverged": "There are local commits that the official branch does not have, so a fast-forward update is impossible",
+        "no_dependency_tool": "This update changes dependencies, but no way to install them was found (uv or pip)",
+        "python_requirement_changed": "This update changes the required Python version; please update manually"
+      }
     },
     "about": {
       "openSource": "Open Source",
@@ -680,6 +1176,7 @@
     "loginFailed": "Login failed",
     "loginSuccess": "Login successful",
     "checkingAuth": "Checking login status...",
+    "waitingConnection": "Waiting for connection. You will enter automatically when the server is ready…",
     "welcome": "Welcome to MaiBot",
     "accessDesc": "Enter your access password to access MaiBot",
     "tokenRequired": "Please enter your access password",
@@ -711,7 +1208,8 @@
       },
       "customToken": {
         "title": "Set Login Token",
-        "description": "Replace this startup's random token with a fixed custom token"
+        "description": "Without a saved password, a random one is generated on every startup.",
+        "label": "Password"
       },
       "botBasic": {
         "title": "Bot Basics",
@@ -761,7 +1259,7 @@
       "saveFailedTitle": "Save failed",
       "validationFailedTitle": "Validation failed",
       "completeSuccessTitle": "Setup complete",
-      "completeSuccessDescription": "{{appName}} configuration has been saved and applied.",
+      "completeSuccessDescription": "{{appName}} configuration has been saved. Say hello in Chat to try the bot's replies and personality.",
       "completeFailedTitle": "Setup failed",
       "skipFailedTitle": "Failed to skip the setup wizard",
       "customTokenSuccessTitle": "Token updated",
@@ -773,7 +1271,7 @@
       "next": "Next",
       "skip": "Skip Wizard",
       "complete": "Complete Setup",
-      "saveToken": "Save Token",
+      "saveToken": "Save and continue",
       "saving": "Saving...",
       "completing": "Completing..."
     },
@@ -786,6 +1284,7 @@
     "defaults": {
       "personality": {
         "personality": "She is a sophomore college student who spends time on Tieba.",
+        "behaviorStyle": "Join everyday conversations naturally. Understand the context before replying or staying quiet, and avoid forcing a topic.",
         "replyStyle": "Keep replies plain and concise, speak Chinese, and avoid deliberately emphasizing any academic background. You can refer to the reply styles commonly seen on Tieba, Zhihu, and Weibo.",
         "multipleReplyStyles": {
           "plain": "Your style is plain, lightly sarcastic, very short, and colloquial. You can reference Tieba and Weibo reply styles.",
@@ -803,11 +1302,19 @@
         "noticeTitle": "You are still using the random startup token",
         "noticeDescription": "The random token changes on the next startup. Set a fixed custom token and use it for future WebUI sign-ins.",
         "label": "Custom Token *",
-        "placeholder": "Enter a secure token you can store safely",
+        "placeholder": "Enter a new password",
         "description": "After saving, your current session will expire and you will need to sign in with the new token.",
         "requirements": "Token requirements",
-        "show": "Show token",
-        "hide": "Hide token"
+        "show": "Show",
+        "hide": "Hide",
+        "met": "Met",
+        "unmet": "Not met",
+        "rules": {
+          "minLength": "10+ characters",
+          "hasUppercase": "Uppercase",
+          "hasLowercase": "Lowercase",
+          "hasSpecialChar": "Special symbol"
+        }
       },
       "botBasic": {
         "platform": {
@@ -833,7 +1340,7 @@
           "description": "The bot's account identifier on this platform"
         },
         "nickname": {
-          "label": "Nickname *",
+          "label": "Nickname",
           "placeholder": "Enter the bot's nickname",
           "description": "The bot's primary display name"
         },
@@ -846,15 +1353,26 @@
         }
       },
       "personality": {
+        "expand": "Expand editor for {{field}}",
+        "presets": {
+          "default": "Default (MaiMai)",
+          "label": "Persona presets",
+          "description": "Selecting a preset replaces the personality, behavior style, and reply style below. You can continue editing them."
+        },
         "personality": {
-          "label": "Personality Traits *",
+          "label": "Personality Traits",
           "placeholder": "Describe the bot's personality and identity traits (recommended within 120 characters)",
-          "description": "Example: a sophomore college girl who browses Tieba"
+          "description": "Describe the bot's core personality traits, shaping how it understands itself"
+        },
+        "behaviorStyle": {
+          "label": "Behavior style",
+          "placeholder": "Describe when to participate, observe, or stay quiet",
+          "description": "Describe the bot's behavior, determining how it acts"
         },
         "replyStyle": {
-          "label": "Reply Style *",
+          "label": "Reply Style",
           "placeholder": "Describe how the bot speaks and expresses itself",
-          "description": "Example: keep replies plain and concise, speak Chinese, and refer to styles seen on Tieba, Zhihu, and Weibo"
+          "description": "Directly shape how the bot speaks and its speaking style"
         },
         "multipleReplyStyle": {
           "label": "Alternate Reply Styles",
@@ -921,6 +1439,8 @@
         }
       },
       "modelSetup": {
+        "identifierPlaceholder": "Enter model ID",
+        "pickFromList": "Browse",
         "planner": {
           "identifier": {
             "label": "planner Model Identifier *",
@@ -1011,6 +1531,43 @@
     "copyError": "Copy error info"
   },
   "search": {
+    "previewArtifactImage": "Preview image",
+    "invalidArtifactImage": "This file is not an image that can be previewed.",
+    "harness": {
+      "title": "Help session progress",
+      "plan": "Current plan",
+      "skills": "Skills loaded",
+      "status": {
+        "pending": "Pending",
+        "in_progress": "In progress",
+        "completed": "Completed"
+      },
+      "skill": {
+        "setup": "Setup",
+        "troubleshoot": "Troubleshooting",
+        "plugin": "Plugin use",
+        "develop": "Plugin development"
+      }
+    },
+    "allowPluginConfigWrite": "Allow plugin configuration changes",
+    "allowPluginConfigWriteHint": "Applies to this question only. The agent can save plugin settings as requested.",
+    "progressPrepareInstall": "Prepare installation confirmation",
+    "progressListInstalled": "List installed plugins",
+    "progressReadPluginConfig": "Read plugin configuration",
+    "progressUpdatePluginConfig": "Update plugin configuration",
+    "pluginInstallTitle": "Plugin installation",
+    "pluginInstallPending": "Not installed yet. Confirm to download and install this plugin and version.",
+    "pluginConfirmInstall": "Confirm installation",
+    "pluginCancelInstall": "Cancel installation",
+    "pluginOpenConfig": "Open plugin configuration",
+    "pluginConfigUpdated": "Plugin configuration saved",
+    "pluginInstallFailed": "Plugin installation failed",
+    "pluginInstallStatus": {
+      "installing": "Installing, please wait…",
+      "success": "Installation completed",
+      "error": "Installation failed",
+      "cancelled": "Cancelled; installation was not started"
+    },
     "placeholder": "Search pages, settings, or describe a problem...",
     "title": "Search",
     "noResults": "No matching pages or settings found",
@@ -1019,7 +1576,7 @@
     "navigate": "Navigate",
     "select": "Select",
     "close": "Close",
-    "aiSearch": "AI Search",
+    "aiSearch": "Ask",
     "aiSearching": "Understanding",
     "aiHint": "Describe the outcome you want, such as “MaiBot talks too much”",
     "progressTitle": "Search progress",
@@ -1031,6 +1588,21 @@
     "progressSearchDocs": "Search official documentation",
     "progressReadDocs": "Read official documentation",
     "progressReadConfig": "Read local configuration",
+    "progressReadLogs": "Reading recent logs",
+    "progressListReasoning": "Finding recent reasoning records",
+    "progressReadReasoning": "Reading the reasoning record",
+    "progressPublishArtifact": "Publishing display content",
+    "progressSearchPlugins": "Search plugin marketplace",
+    "progressReadPluginDetail": "Check plugin details and compatibility",
+    "progressReadPluginReadme": "Read plugin README",
+    "pluginResults": "Related plugins",
+    "pluginOpenStore": "View in plugin store",
+    "pluginRecommendedVersion": "Recommended version: {{version}}",
+    "pluginCompatibility": {
+      "unknown": "Compatibility not checked",
+      "compatible": "Compatible with this environment",
+      "incompatible": "No compatible stable release or branch"
+    },
     "progressTool": "Run search operation",
     "progressCompleted": "{{action}} completed ({{count}} items)",
     "progressFailed": "{{action}} failed",
@@ -1043,9 +1615,9 @@
     "aiRecommendation": "AI Pick",
     "aiAnswer": "AI Answer",
     "aiSuggestions": "Suggestions",
-    "aiSources": "Official documentation",
+    "aiSources": "Sources",
     "aiUnderstood": "AI understood: {{terms}}",
-    "aiNoResults": "AI could not find a sufficiently relevant page or setting",
+    "aiNoResults": "AI found no sufficiently relevant pages, settings or plugins",
     "aiFailed": "AI search failed",
     "indexLoading": "Loading the configuration search index…",
     "categories": {
@@ -1059,19 +1631,19 @@
     "items": {
       "home": "Home",
       "homeDesc": "View dashboard overview",
+      "chatDesc": "Conversation settings: open the group conversation settings to check its reply frequency. At zero, the group still receives messages but does not enter Planner. Private chat has its own pause switch.",
       "botConfig": "Bot Main Config",
       "botConfigDesc": "Configure bot settings and shared groups",
       "model": "Model Config",
       "modelDesc": "Configure model parameters",
       "emoji": "Emoji Management",
-      "emojiDesc": "Manage bot emoji",
       "expression": "Expression Management",
+      "learningDesc": "Manage learned expressions, slang and emoji",
       "expressionDesc": "Manage bot expressions",
       "person": "Person Info",
       "personDesc": "Manage person info",
       "jargon": "Slang Management",
       "jargonDesc": "Manage bot learned slang and jargon",
-      "behaviorLearningDesc": "Browse behavior experience paths and retrieval hits",
       "statistics": "Statistics",
       "statisticsDesc": "View usage statistics",
       "plugins": "Plugin Market",
@@ -1434,8 +2006,7 @@
         "modelTasks": "Open Model Management / Task assignments",
         "botConfig": "Open MaiBot core configuration",
         "emojiManagement": "Open emoji resource management",
-        "expressionManagement": "Open expression management",
-        "statistics": "Open maibot_statistics.html"
+        "expressionManagement": "Open expression management"
       },
       "categories": {
         "system": "System",
@@ -1514,7 +2085,9 @@
       "openLink": "Open source link",
       "openPlugin": "View plugin",
       "pinned": "Pinned",
-      "empty": "No news yet"
+      "empty": "No news yet",
+      "dismiss": "Hide news bar",
+      "next": "Next news"
     },
     "storage": {
       "title": "Storage Usage",
@@ -1578,6 +2151,121 @@
       "requestTrend": "Hourly request trend chart showing request count changes over recent hours",
       "costTrend": "API cost trend chart showing API call cost changes over recent hours",
       "tokenUsage": "Token usage trend chart showing token consumption over recent hours"
+    },
+    "mobile": {
+      "title": "MaiBot",
+      "openSettings": "WebUI settings"
     }
+  },
+  "mobileNav": {
+    "label": "Main navigation",
+    "home": "Home",
+    "chat": "Chat",
+    "manage": "Manage",
+    "me": "Me",
+    "search": "Search",
+    "live": "MaiBot live",
+    "botInitial": "M",
+    "backHome": "Back to home",
+    "backManage": "Back to manage"
+  },
+  "manage": {
+    "searchPlaceholder": "Search pages or settings",
+    "groups": {
+      "runtime": "Runtime records"
+    }
+  },
+  "dynamicForm": {
+    "mobileTextEmpty": "Empty",
+    "mobileTextCancel": "Cancel",
+    "mobileTextDone": "Done"
+  },
+  "dataManagement": {
+    "transfer": "Backup & Cache"
+  },
+  "files": {
+    "disabled": "File capabilities are disabled. Enable them in Capabilities.",
+    "openSettings": "Open capability settings",
+    "title": "Files",
+    "description": "Files belong to chats and download on demand. Preview text; uploaded and generated originals remain until manually deleted.",
+    "storage": "Used",
+    "reserved": "Reserved",
+    "maximum": "File limit",
+    "chat": "Chat",
+    "allChats": "All chats",
+    "refresh": "Refresh",
+    "upload": "Upload file",
+    "chooseChat": "Choose a chat before uploading.",
+    "download": "Download",
+    "read": "Read text",
+    "sendTo": "Send to chat…",
+    "confirmSend": "Send this file to “{{name}}”?",
+    "clearCache": "Clear cache",
+    "delete": "Delete",
+    "confirmDelete": "Delete “{{name}}”? Local originals cannot be recovered.",
+    "empty": "No attachments",
+    "previous": "Previous",
+    "next": "Next",
+    "encoding": "Encoding",
+    "close": "Close",
+    "remote": "Platform cache",
+    "original": "Local original",
+    "removeAttachment": "Remove attachment from draft (original stays in Files)",
+    "uploadFailed": "File upload failed",
+    "state": {
+      "remote": "Not downloaded",
+      "ready": "Ready",
+      "failed": "Failed",
+      "uploading": "Uploading",
+      "downloading": "Downloading"
+    },
+    "delivery": {
+      "sent": "File sent",
+      "unknown": "Delivery is uncertain. Check the chat before retrying."
+    }
+  },
+  "hostShared": {
+    "title": "Shared model catalog",
+    "hint": "The host shares providers, keys and models. Each Bot keeps its task choices; local entries override shared names. Running Bots reload shared changes.",
+    "source": "Select Bot",
+    "importHint": "Import fills this editor; save to publish. Inherit removes identical local copies only, preserving task choices and different local overrides.",
+    "adopt": "Inherit identical entries",
+    "adopted": "Removed {{count}} identical local copies. Running Bots reload automatically.",
+    "saved": "Catalog saved. Running Bots will reload automatically.",
+    "api_providers": "Providers",
+    "models": "Models",
+    "name": "Name",
+    "base_url": "Base URL",
+    "api_key": "API Key",
+    "client_type": "Client type",
+    "model_identifier": "Model identifier",
+    "api_provider": "Provider",
+    "model_type": "Model type",
+    "remove": "Remove",
+    "add": "Add",
+    "save": "Save shared catalog",
+    "reload": "Reload / discard changes",
+    "inherited": "These entries come from the host. Editing creates an override for this Bot. Manage shared entries in Bot management → Shared model catalog.",
+    "gateway": "Unified message endpoints (configure this Bot’s token / API key)",
+    "import": "Import from Bot"
+  },
+  "hostOperations": {
+    "rename": "Rename",
+    "clone": "Clone template",
+    "archive": "Archive and remove",
+    "renameHint": "Change the host display name only; the Bot ID, directory and persona name stay unchanged.",
+    "cloneHint": "Temporarily stop the source, copy configuration and plugins, then restore its desired state. History, memory, login state and logs are excluded. The clone stays stopped; review accounts and credentials before starting it.",
+    "archiveHint": "Stop this Bot, move its directory into host/archives and remove its registration. Data is retained.",
+    "unregisterHint": "Stop and unregister this Bot. Its original or external directory stays in place.",
+    "working": "Working…",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "update": "Program update",
+    "updateHint": "Update the program shared by all Bots. Stop all Bots and the host, then restart after success or a safe rollback and restore desired states.",
+    "check": "Check for updates",
+    "apply": "Confirm update and restart host",
+    "current": "No applicable update",
+    "updated": "The last program update succeeded",
+    "restarting": "The host is updating and restarting. Waiting to reconnect. If rollback fails, check the terminal and restart manually after repair."
   }
 }

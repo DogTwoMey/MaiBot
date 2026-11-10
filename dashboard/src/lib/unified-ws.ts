@@ -1,5 +1,4 @@
 import { getWsBaseUrl } from '@/lib/api-base'
-import { backendApi } from '@/lib/http'
 
 import { getSetting } from './settings-manager'
 
@@ -59,19 +58,6 @@ function isEventEnvelope(message: WsServerEnvelope): message is WsEventEnvelope 
   return message.op === 'event'
 }
 
-async function getWsToken(): Promise<string | null> {
-  try {
-    const data = await backendApi.get<{ success?: boolean; token?: string }>('/api/webui/ws-token')
-    if (data.success && data.token) {
-      return data.token
-    }
-    return null
-  } catch (error) {
-    console.error('获取统一 WebSocket token 失败:', error)
-    return null
-  }
-}
-
 class UnifiedWebSocketClient {
   private readonly heartbeatIntervalMs = 30000
   private readonly heartbeatTimeoutMs = 90000
@@ -80,7 +66,7 @@ class UnifiedWebSocketClient {
   private eventListeners: Set<EventListener> = new Set()
   private hasConnectedOnce = false
   private heartbeatIntervalId: number | null = null
-  private lastPongAt = 0
+  private lastInboundAt = 0
   private manualDisconnect = false
   private pendingRequests: Map<string, PendingRequest> = new Map()
   private reconnectAttempts = 0
@@ -150,7 +136,7 @@ class UnifiedWebSocketClient {
       }
 
       const now = Date.now()
-      if (this.lastPongAt > 0 && now - this.lastPongAt > this.heartbeatTimeoutMs) {
+      if (this.lastInboundAt > 0 && now - this.lastInboundAt > this.heartbeatTimeoutMs) {
         console.warn('统一 WebSocket 心跳超时，准备重连')
         void this.restart().catch((error) => {
           console.error('统一 WebSocket 心跳重连失败:', error)
@@ -228,11 +214,10 @@ class UnifiedWebSocketClient {
   private async createWebSocketUrl(): Promise<string | null> {
     try {
       const wsBaseUrl = await getWsBaseUrl()
-      const wsToken = await getWsToken()
-      if (!wsBaseUrl || !wsToken) {
+      if (!wsBaseUrl) {
         return null
       }
-      return `${wsBaseUrl}/api/webui/ws?token=${encodeURIComponent(wsToken)}`
+      return `${wsBaseUrl}/api/webui/ws`
     } catch (error) {
       console.error('构建统一 WebSocket 地址失败:', error)
       return null
@@ -295,6 +280,9 @@ class UnifiedWebSocketClient {
       return
     }
 
+    // 任何下行数据都说明连接存活；pong 可能排在大批量事件之后，不能只靠它判活
+    this.lastInboundAt = Date.now()
+
     let message: WsServerEnvelope
     try {
       message = JSON.parse(rawData) as WsServerEnvelope
@@ -304,7 +292,6 @@ class UnifiedWebSocketClient {
     }
 
     if (message.op === 'pong') {
-      this.lastPongAt = Date.now()
       return
     }
 
@@ -343,7 +330,7 @@ class UnifiedWebSocketClient {
   /** 丢弃当前 socket 的全部运行态；之后该 socket 的回调都会被视为过期而忽略 */
   private releaseSocket(reason: Error): void {
     this.stopHeartbeat()
-    this.lastPongAt = 0
+    this.lastInboundAt = 0
     this.ws = null
     this.connectPromise = null
     this.setStatus('idle')
@@ -407,7 +394,7 @@ class UnifiedWebSocketClient {
           this.reconnectAttempts = 0
           this.clearReconnectTimer()
           this.setRecoveryWatch(false)
-          this.lastPongAt = Date.now()
+          this.lastInboundAt = Date.now()
           this.startHeartbeat()
           this.setStatus('connected')
           resolve()
@@ -476,17 +463,21 @@ class UnifiedWebSocketClient {
     domain: string
     method: string
     session?: string
+    timeoutMs?: number
   }): Promise<Record<string, unknown>> {
     await this.connect()
     const requestId = this.nextRequestId()
-    return await this.sendRequest({
-      op: 'call',
-      id: requestId,
-      domain: params.domain,
-      method: params.method,
-      session: params.session,
-      data: params.data ?? {},
-    })
+    return await this.sendRequest(
+      {
+        op: 'call',
+        id: requestId,
+        domain: params.domain,
+        method: params.method,
+        session: params.session,
+        data: params.data ?? {},
+      },
+      params.timeoutMs
+    )
   }
 
   async subscribe(

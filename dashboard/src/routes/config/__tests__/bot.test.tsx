@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { BotConfigPage } from '../bot'
+import { ChatTalkRuleGroupsHook } from '../bot/hooks/complexFieldHooks'
 import { scrollToConfigSearchField } from '@/lib/config-search-navigation'
 import { fieldHooks } from '@/lib/field-hooks'
 import * as configApi from '@/lib/config-api'
@@ -11,6 +12,45 @@ import type { ConfigSchema, FieldSchema } from '@/types/config-schema'
 import type { ReactNode } from 'react'
 
 const toastMock = vi.fn()
+
+it('复制规则组后只修改当前组的规则开关', async () => {
+  const user = userEvent.setup()
+  const rule = { platform: 'qq', item_id: '*', rule_type: 'group', time: '*', value: 0.4, enabled: true }
+  const value = { active_group: '默认', groups: [{ name: '默认', rules: [rule] }] }
+  const onChange = vi.fn()
+  const props = {
+    fieldPath: 'chat.reply_timing.talk_rule_groups',
+    onChange,
+    nestedSchema: {
+      className: 'TalkRuleGroups',
+      classDoc: '',
+      fields: [],
+      nested: {
+        groups: {
+          className: 'TalkRuleGroup',
+          classDoc: '',
+          fields: [],
+          nested: { rules: { className: 'TalkRulesItem', classDoc: '', fields: [] } },
+        },
+      },
+    },
+  }
+  const { rerender } = render(<ChatTalkRuleGroupsHook {...props} value={value} />)
+
+  await user.click(screen.getByRole('button', { name: '新建组' }))
+  await user.type(screen.getByLabelText('新规则组名称'), '夜间')
+  await user.click(screen.getByRole('button', { name: '保存' }))
+
+  const copied = { active_group: '夜间', groups: [...value.groups, { name: '夜间', rules: [rule] }] }
+  expect(onChange).toHaveBeenLastCalledWith(copied)
+  rerender(<ChatTalkRuleGroupsHook {...props} value={copied} />)
+
+  await user.click(screen.getByRole('switch', { name: /启用.*轨道 1/ }))
+  expect(onChange).toHaveBeenLastCalledWith({
+    active_group: '夜间',
+    groups: [...value.groups, { name: '夜间', rules: [{ ...rule, enabled: false }] }],
+  })
+})
 
 // 路由 search 字符串（供 useRouterState mock 读取，可按用例改写）
 let routerSearchStr = ''
@@ -228,19 +268,33 @@ function createDeferred<T>() {
 
 /** 页面挂载时应注册的字段 hook 路径与类型（replace 为缺省） */
 const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = [
+  ['keyword_reaction.keyword_rules', 'replace'],
+  ['keyword_reaction.regex_rules', 'replace'],
+  ['agent.connection', 'wrapper'],
+  ['agent.desktop_manifest', 'wrapper'],
+  ['agent.acp_args', 'wrapper'],
+  ['agent.acp_command', 'wrapper'],
+  ['agent.acp_cwd', 'wrapper'],
+  ['agent.acp_env', 'wrapper'],
+  ['agent.acp_model', 'wrapper'],
+  ['agent.acp_timeout', 'wrapper'],
+
+  ['desktop_pet.skin_id', 'replace'],
+  ['desktop_pet.show_current_task', 'replace'],
   ['bot.platform', 'hidden'],
   ['bot.alias_names', 'replace'],
   ['bot.qq_account', 'hidden'],
   ['bot.platforms', 'hidden'],
   ['personality.multiple_reply_style', 'replace'],
   ['chat.reply_style.chat_prompts', 'replace'],
-  ['chat.reply_timing.talk_value_rules', 'replace'],
+  ['chat.reply_timing.talk_rule_groups', 'replace'],
+  ['chat.reply_timing.private_reply_pause_rules', 'replace'],
   ['experimental.focus_chat_whitelist', 'replace'],
   ['experimental.focus_groups', 'replace'],
-  ['experimental.behavior_groups', 'replace'],
-  ['experimental.behavior_learning_list', 'replace'],
   ['expression.expression_groups', 'replace'],
   ['expression.learning_list', 'replace'],
+  ['expression.learning_blacklist', 'replace'],
+  ['jargon.learning_blacklist', 'replace'],
   ['jargon.jargon_groups', 'replace'],
   ['jargon.learning_list', 'replace'],
   ['a_memorix.global_memory_sharing_enabled', 'hidden'],
@@ -254,8 +308,6 @@ const EXPECTED_FIELD_HOOKS: Array<[string, 'replace' | 'wrapper' | 'hidden']> = 
   ['a_memorix.filter.retrieval.chat_stream.chats', 'replace'],
   ['a_memorix.filter.retrieval.chat_summary.chats', 'replace'],
   ['a_memorix.filter.retrieval.episode.chats', 'replace'],
-  ['keyword_reaction.keyword_rules', 'replace'],
-  ['keyword_reaction.regex_rules', 'replace'],
   ['mcp.client.roots.items', 'replace'],
   ['mcp.servers', 'replace'],
 ]
@@ -400,6 +452,9 @@ async function enterDetailMode(
   if (formTestId === 'form-personality' && !screen.queryByTestId(formTestId)) {
     await selectConfigPage(user, '人格')
   }
+  if (formTestId === 'form-ChatSectionRoot' && !screen.queryByTestId(formTestId)) {
+    await selectConfigPage(user, '聊天')
+  }
   await screen.findByTestId(formTestId)
 }
 
@@ -411,6 +466,11 @@ async function openConfigMenu(user: ReturnType<typeof userEvent.setup>) {
 async function selectConfigPage(user: ReturnType<typeof userEvent.setup>, name: string) {
   await openConfigMenu(user)
   await user.click(screen.getByRole('menuitem', { name }))
+}
+
+/** 栏目下拉菜单中的页面入口；每行另有一个仅含图标的「钉固 / 取消钉固」menuitem，不计入 */
+function getConfigPageMenuItems(menu: HTMLElement) {
+  return within(menu).getAllByRole('menuitem', { name: (name) => !/^(取消)?钉固/.test(name) })
 }
 
 describe('BotConfigPage 特征化', () => {
@@ -588,11 +648,12 @@ describe('BotConfigPage 特征化', () => {
       expect(screen.getByTestId('form-personality-sections')).toHaveTextContent('personality')
       expect(screen.getByTestId('form-personality-values')).toHaveTextContent('原始人格')
       const menu = await openConfigMenu(user)
-      expect(
-        within(menu)
-          .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
-          .map((item) => item.textContent)
-      ).toEqual(['人格', '机器人', '实验性'])
+      expect(getConfigPageMenuItems(menu).map((item) => item.textContent)).toEqual([
+        '人格',
+        '机器人',
+        '实验性',
+        '公共设置',
+      ])
       await user.click(within(menu).getByRole('menuitem', { name: '机器人' }))
       expect(await screen.findByTestId('form-bot-sections')).toHaveTextContent('bot,sub_feature')
     })
@@ -656,7 +717,7 @@ describe('BotConfigPage 特征化', () => {
       await renderBotPage()
       expect(screen.queryByText(/展开隐藏配置栏目/)).not.toBeInTheDocument()
       const menu = await openConfigMenu(user)
-      expect(within(menu).getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })).toHaveLength(3)
+      expect(getConfigPageMenuItems(menu)).toHaveLength(4)
     })
   })
 
@@ -1168,7 +1229,7 @@ describe('BotConfigPage 特征化', () => {
       expect(screen.getByTestId('form-experimental')).toBeInTheDocument()
     })
 
-    it('uiUseSubTabs 按根字段/子类/高级子页拆分，并保留聊天管理入口', async () => {
+    it('uiUseSubTabs 按根字段/子类/高级子页拆分，回复风格以聊天流prompt子页默认显示', async () => {
       const config = {
         ...baseConfig(),
         chat: { enabled: true, reply_timing: { talk_value: 1 }, reply_style: { style: 'a' } },
@@ -1193,8 +1254,10 @@ describe('BotConfigPage 特征化', () => {
       const defaultSubtabNames = within(subtabList)
         .getAllByRole('tab')
         .map((tab) => tab.textContent)
-      expect(defaultSubtabNames).toEqual(['总览', '时机子页', '聊天流prompt'])
-      // 回复风格已迁至人格配置，不再列为聊天子页。
+      // 回复风格提示词使用独立配置弹窗，其余聊天子页保持默认展示。
+      expect(defaultSubtabNames).toEqual(['总览', '时机子页'])
+      expect(screen.getByRole('button', { name: /聊天流prompt/ })).toBeInTheDocument()
+      // 不再以「回复风格」原名列为聊天子页。
       expect(within(subtabList).queryByRole('tab', { name: '回复风格' })).not.toBeInTheDocument()
 
       await user.click(within(subtabList).getByRole('tab', { name: '时机子页' }))
@@ -1318,10 +1381,8 @@ describe('BotConfigPage 特征化', () => {
       await enterDetailMode(user, 'form-solo')
 
       const tabList = await openConfigMenu(user)
-      const tabNames = within(tabList)
-        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
-        .map((tab) => tab.textContent)
-      expect(tabNames).toEqual(['单独'])
+      const tabNames = getConfigPageMenuItems(tabList).map((tab) => tab.textContent)
+      expect(tabNames).toEqual(['单独', '公共设置'])
     })
 
     it('相同 uiOrder 的 tab 按中文 locale 标签排序', async () => {
@@ -1342,10 +1403,8 @@ describe('BotConfigPage 特征化', () => {
       await enterDetailMode(user, 'form-alpha')
 
       const tabList = await openConfigMenu(user)
-      const tabNames = within(tabList)
-        .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
-        .map((tab) => tab.textContent)
-      expect(tabNames).toEqual(['alpha配置', 'zeta配置'])
+      const tabNames = getConfigPageMenuItems(tabList).map((tab) => tab.textContent)
+      expect(tabNames).toEqual(['alpha配置', 'zeta配置', '公共设置'])
     })
   })
 })
@@ -1380,10 +1439,8 @@ describe('BotConfigPage 补充覆盖', () => {
     await renderBotPage()
     await user.click(screen.getByRole('tab', { name: '详细设置' }))
     const tabList = await openConfigMenu(user)
-    const tabNames = within(tabList)
-      .getAllByRole('menuitem', { name: /^(?!钉固|取消钉固).+/ })
-      .map((tab) => tab.textContent)
-    expect(tabNames).toEqual(['有序', '无序'])
+    const tabNames = getConfigPageMenuItems(tabList).map((tab) => tab.textContent)
+    expect(tabNames).toEqual(['有序', '无序', '公共设置'])
   })
 
   it('配置数据无法解析时走加载失败兜底', async () => {

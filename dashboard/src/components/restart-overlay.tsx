@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   Loader2,
@@ -29,6 +30,7 @@ import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { useRestart, type RestartStatus, type RestartContextValue } from '@/lib/restart-context'
 import { cn } from '@/lib/utils'
+import { resolveApiPath } from '@/lib/api-base'
 
 // Hook 用于安全获取 restart context
 function useSafeRestart(): RestartContextValue | null {
@@ -220,7 +222,8 @@ function RestartOverlayContent({
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  return (
+  // 避开页面动画容器的 transform 和滚动裁剪，让遮罩始终相对视口定位。
+  return createPortal(
     <div
       className={cn(
         'fixed inset-0 bg-background/95 backdrop-blur-sm z-50 flex items-center justify-center',
@@ -278,7 +281,8 @@ function RestartOverlayContent({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -322,7 +326,7 @@ function StandaloneRestartOverlay({
       }))
 
       try {
-        const response = await fetch('/api/webui/system/status', {
+        const response = await fetch(await resolveApiPath('/api/webui/system/status'), {
           method: 'GET',
           signal: AbortSignal.timeout(3000),
         })

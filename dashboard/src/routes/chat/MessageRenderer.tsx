@@ -1,17 +1,14 @@
 import { Reply as ReplyIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { EnsureImageGallery, useImageGallery, type GalleryImage } from '@/components/image-gallery'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { scopeBotResourcePath } from '@/host/state'
 
 import { useChatScroll } from './ChatScrollContext'
+import { FileAttachment } from './FileAttachment'
 import type {
   AtSegmentData,
   ChatMessage,
@@ -39,16 +36,28 @@ function normalizeReplySegment(segment: MessageSegment): ReplySegmentData {
 }
 
 function MediaSegment({ segment, mediaLabel }: MediaSegmentProps) {
+  const source = scopeBotResourcePath(String(segment.data))
+  const galleryImage = useMemo<GalleryImage>(
+    () => ({ src: source, alt: mediaLabel }),
+    [mediaLabel, source]
+  )
+  return (
+    <EnsureImageGallery image={galleryImage}>
+      <MediaSegmentBody segment={segment} mediaLabel={mediaLabel} galleryImage={galleryImage} />
+    </EnsureImageGallery>
+  )
+}
+
+function MediaSegmentBody({
+  segment,
+  mediaLabel,
+  galleryImage,
+}: MediaSegmentProps & { galleryImage: GalleryImage }) {
   const { t } = useTranslation()
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const source = String(segment.data)
-  const previewTitle = t('chat.media.previewTitle', {
-    type: mediaLabel,
-    defaultValue: `${mediaLabel}预览`,
-  })
+  const gallery = useImageGallery()
+  const source = galleryImage.src
 
   return (
-    <>
       <button
         type="button"
         className="focus:ring-ring inline-flex max-w-full cursor-zoom-in rounded-lg border-0 bg-transparent p-0 text-left align-bottom focus:ring-2 focus:ring-offset-2 focus:outline-none"
@@ -56,7 +65,7 @@ function MediaSegment({ segment, mediaLabel }: MediaSegmentProps) {
           type: mediaLabel,
           defaultValue: `放大查看${mediaLabel}`,
         })}
-        onClick={() => setIsPreviewOpen(true)}
+        onClick={() => gallery?.open(galleryImage)}
       >
         <img
           src={source}
@@ -77,26 +86,6 @@ function MediaSegment({ segment, mediaLabel }: MediaSegmentProps) {
           }}
         />
       </button>
-
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="border-0 bg-black/95 p-2 text-white shadow-2xl [--dialog-width:72rem]">
-          <DialogTitle className="sr-only">{previewTitle}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {t('chat.media.previewDescription', {
-              type: mediaLabel,
-              defaultValue: `正在查看放大的${mediaLabel}。`,
-            })}
-          </DialogDescription>
-          <div className="flex max-h-[calc(100vh-3rem)] min-h-0 w-full items-center justify-center">
-            <img
-              src={source}
-              alt={mediaLabel}
-              className="max-h-[calc(100vh-4rem)] max-w-full rounded-md object-contain"
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
   )
 }
 
@@ -118,7 +107,7 @@ export function RenderMessageSegment({ segment }: { segment: MessageSegment }) {
     case 'voice':
       return (
         <div className="flex items-center gap-2">
-          <audio controls src={String(segment.data)} className="h-8 max-w-[200px]">
+          <audio controls src={scopeBotResourcePath(String(segment.data))} className="h-8 max-w-[200px]">
             <track kind="captions" src="" label={t('chat.media.noCaptions')} default />
             {t('chat.media.audioUnsupported')}
           </audio>
@@ -127,7 +116,7 @@ export function RenderMessageSegment({ segment }: { segment: MessageSegment }) {
 
     case 'video':
       return (
-        <video controls src={String(segment.data)} className="max-h-64 max-w-full rounded-lg">
+        <video controls src={scopeBotResourcePath(String(segment.data))} className="max-h-64 max-w-full rounded-lg">
           <track kind="captions" src="" label={t('chat.media.noCaptions')} default />
           {t('chat.media.videoUnsupported')}
         </video>
@@ -145,11 +134,7 @@ export function RenderMessageSegment({ segment }: { segment: MessageSegment }) {
       return <span className="text-muted-foreground">{t('chat.media.music')}</span>
 
     case 'file':
-      return (
-        <span className="text-muted-foreground">
-          {t('chat.media.file', { data: String(segment.data) })}
-        </span>
-      )
+      return <FileAttachment data={segment.data} />
 
     case 'reply': {
       const replyData = normalizeReplySegment(segment)

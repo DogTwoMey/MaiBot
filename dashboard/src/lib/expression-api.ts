@@ -6,6 +6,7 @@
  * 公开函数遵循 throw 契约：成功返回数据，失败抛 ApiError。
  */
 import { ApiError, backendApi, requireSuccess } from '@/lib/http'
+import type { VectorSpaceList } from '@/types/vector-space'
 import type {
   BatchReviewItem,
   BatchReviewResponse,
@@ -30,13 +31,26 @@ import type {
   ExpressionStatsResponse,
   ExpressionUpdateRequest,
   ExpressionUpdateResponse,
-  LegacyExpressionImportPreviewResponse,
-  LegacyExpressionImportResponse,
   ReviewListResponse,
   ReviewStats,
 } from '@/types/expression'
 
 const API_BASE = '/api/webui/expression'
+
+export async function getExpressionVectorSpaces(): Promise<VectorSpaceList> {
+  const data = await backendApi.get<VectorSpaceList>(`${API_BASE}/runtime/vectors/spaces`, {
+    errorMessage: '获取表达向量库失败',
+  })
+  return requireSuccess(data, '获取表达向量库失败')
+}
+
+export async function deleteExpressionVectorSpace(spaceId: string): Promise<{ success: boolean }> {
+  const data = await backendApi.delete<{ success: boolean }>(
+    `${API_BASE}/runtime/vectors/spaces/${encodeURIComponent(spaceId)}`,
+    { errorMessage: '删除表达向量库失败' }
+  )
+  return requireSuccess(data, '删除表达向量库失败')
+}
 
 export interface ExpressionVectorBuildProgress {
   status: 'disabled' | 'unconfigured' | 'waiting_profile' | 'pending' | 'running' | 'completed'
@@ -99,7 +113,7 @@ export async function getExpressionList(params: {
   chat_ids?: string[]
   include_legacy?: boolean
   review_filter?: 'all' | 'user_checked' | 'unchecked'
-  sort_by?: 'time'
+  sort_by?: 'time' | 'time_asc' | 'created' | 'created_asc'
 }): Promise<ExpressionListResponse> {
   const data = await backendApi.get<ExpressionListResponse>(`${API_BASE}/list`, {
     query: {
@@ -118,10 +132,11 @@ export async function getExpressionList(params: {
 }
 
 /**
- * 按聊天导出表达方式。导出的 JSON 不包含 session_id。
+ * 按所选记录、聊天范围或全部导出表达方式。导出的 JSON 不包含 session_id。
  */
 export async function exportExpressions(params: {
-  chat_id: string
+  chat_id?: string
+  chat_ids?: string[]
   ids?: number[]
 }): Promise<ExpressionExportResponse> {
   return backendApi.post<ExpressionExportResponse>(`${API_BASE}/export`, {
@@ -134,7 +149,8 @@ export async function exportExpressions(params: {
  * 将表达方式 JSON 导入到指定聊天。
  */
 export async function importExpressions(params: {
-  chat_id: string
+  chat_id?: string
+  is_global?: boolean
   expressions: ExpressionExportItem[]
 }): Promise<ExpressionImportResponse> {
   return backendApi.post<ExpressionImportResponse>(`${API_BASE}/import`, {
@@ -152,55 +168,6 @@ export async function clearExpressions(params: {
   return backendApi.post<ExpressionClearResponse>(`${API_BASE}/clear`, {
     body: params,
     errorMessage: '清除表达方式失败',
-  })
-}
-
-/**
- * 预览旧版数据库表达方式导入。
- */
-export async function previewLegacyExpressionImport(params: {
-  db_path: string
-}): Promise<LegacyExpressionImportPreviewResponse> {
-  return backendApi.post<LegacyExpressionImportPreviewResponse>(
-    `${API_BASE}/legacy-import/preview`,
-    {
-      body: params,
-      errorMessage: '预览旧版导入失败',
-    }
-  )
-}
-
-/**
- * 上传旧版数据库并预览表达方式导入。
- */
-export async function previewLegacyExpressionImportFile(
-  file: File
-): Promise<LegacyExpressionImportPreviewResponse> {
-  const formData = new FormData()
-  formData.append('file', file)
-  return backendApi.post<LegacyExpressionImportPreviewResponse>(
-    `${API_BASE}/legacy-import/preview-file`,
-    {
-      body: formData,
-      errorMessage: '预览旧版导入失败',
-    }
-  )
-}
-
-/**
- * 按映射从旧版数据库导入表达方式。
- */
-export async function importLegacyExpressions(params: {
-  db_path: string
-  mappings: Array<{
-    old_chat_id: string
-    target_chat_id?: string | null
-    target_chat_ids?: string[]
-  }>
-}): Promise<LegacyExpressionImportResponse> {
-  return backendApi.post<LegacyExpressionImportResponse>(`${API_BASE}/legacy-import/import`, {
-    body: params,
-    errorMessage: '旧版导入失败',
   })
 }
 

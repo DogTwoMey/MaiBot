@@ -48,6 +48,7 @@ export interface ChatTalkFrequencyRule {
   type: ChatStreamType | string
   time: string
   value: number
+  enabled: boolean
   value_label: string
   target_priority: number
   time_priority: number | null
@@ -57,13 +58,19 @@ export interface ChatTalkFrequencyRule {
 }
 
 export interface ChatTalkFrequencyDetail {
-  enabled: boolean
+  active_group: string | null
   base_value: number
   base_value_label: string
   effective_value: number
   effective_value_label: string
   current_time: string
   matched_rules: ChatTalkFrequencyRule[]
+}
+
+export interface ChatPrivateReplyDetail {
+  paused: boolean
+  global_paused: boolean
+  has_override: boolean
 }
 
 export interface ChatPromptDetail {
@@ -115,6 +122,7 @@ export interface AdapterPolicyDefaults {
 export type AdapterHostDefaultAction = 'inherit' | 'allow' | 'block'
 
 export interface AdapterHostPolicySection {
+  disabled_ids?: string[]
   default_action: AdapterHostDefaultAction
   allow_ids: string[]
   deny_ids: string[]
@@ -184,9 +192,9 @@ export interface ChatStreamDetail {
   group_id: string | null
   user_id: string | null
   expression: ChatLearningStatus
-  behavior?: ChatLearningStatus
   jargon: ChatLearningStatus
   talk_frequency: ChatTalkFrequencyDetail
+  private_reply: ChatPrivateReplyDetail | null
   prompts: ChatPromptDetail
   adapters: ChatAdapterStatus[]
 }
@@ -242,6 +250,8 @@ export interface ChatStreamDeleteResult {
 }
 
 interface UpdateTalkFrequencyPayload {
+  active_group?: string | null
+  enabled?: boolean
   previous_time?: string | null
   time: string
   value: number
@@ -352,14 +362,32 @@ export async function updateChatStreamTalkFrequency(
   return result.detail
 }
 
+export async function updateChatStreamPrivateReplyPause(
+  sessionId: string,
+  paused: boolean | null
+): Promise<ChatStreamDetail> {
+  const result = await backendApi.put<ChatStreamDetailResponse>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/private-reply-pause`,
+    {
+      body: { paused },
+      errorMessage: '保存私聊暂停设置失败',
+    }
+  )
+  if (!result.detail) {
+    throw new Error('聊天流详情为空')
+  }
+  return result.detail
+}
+
 export async function deleteChatStreamTalkFrequency(
   sessionId: string,
-  time: string
+  time: string,
+  activeGroup?: string | null,
 ): Promise<ChatStreamDetail> {
   const result = await backendApi.delete<ChatStreamDetailResponse>(
     `/api/chat/sessions/${encodeURIComponent(sessionId)}/talk-frequency`,
     {
-      query: { time },
+      query: { time, active_group: activeGroup ?? undefined },
       errorMessage: '删除发言频率规则失败',
     }
   )
@@ -371,7 +399,7 @@ export async function deleteChatStreamTalkFrequency(
 
 export async function updateChatStreamLearning(
   sessionId: string,
-  kind: 'expression' | 'jargon' | 'behavior',
+  kind: 'expression' | 'jargon',
   payload: UpdateLearningPayload
 ): Promise<ChatStreamDetail> {
   const result = await backendApi.put<ChatStreamDetailResponse>(

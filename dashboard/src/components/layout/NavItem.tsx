@@ -1,27 +1,51 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
+import { PromptWarningDot } from '@/components/ui/prompt-warning-dot'
 
 import type { MenuItem } from './types'
 
 const MotionLink = motion.create(Link)
 
+function measureFlyout(link: Element) {
+  const rect = link.getBoundingClientRect()
+  const viewport = link.closest('[data-dashboard-scrollbar-viewport="true"]')
+  const bounds = viewport?.getBoundingClientRect()
+  // Portal 只允许横向越过侧栏；上下仍遵守原滚动视口，包括键帽阴影和退出动画。
+  const topClip = bounds ? Math.max(0, bounds.top - rect.top + 6) : 0
+  const bottomClip = bounds ? Math.max(0, rect.bottom + 6 - bounds.bottom) : 0
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    clipPath: `inset(${topClip}px 0 ${bottomClip}px 0)`,
+  }
+}
+
 interface NavItemProps {
   item: MenuItem
   sidebarOpen: boolean
+  promptWarning?: boolean
   expandOnHover?: boolean
+  groupFlyoutWidth?: number
+  groupFlyoutId?: string
+  onGroupFlyoutClose?: () => void
   onMobileMenuClose: () => void
 }
 
 export function NavItem({
   item,
   sidebarOpen,
+  promptWarning = false,
   expandOnHover = false,
+  groupFlyoutWidth,
+  groupFlyoutId,
+  onGroupFlyoutClose,
   onMobileMenuClose,
 }: NavItemProps) {
   const { t } = useTranslation()
@@ -36,24 +60,37 @@ export function NavItem({
   }
   const itemRef = useRef<HTMLLIElement>(null)
   const flyoutRef = useRef<HTMLDivElement>(null)
-  const [flyoutRect, setFlyoutRect] = useState<DOMRect | null>(null)
+  const [flyoutRect, setFlyoutRect] = useState<ReturnType<typeof measureFlyout> | null>(null)
   const [flyoutMounted, setFlyoutMounted] = useState(false)
   // 原位按钮和悬浮按钮是两份 DOM。浮层可能在「按下」和「抬起」之间才盖上来（或刚好收走），
   // 这时两次事件落在不同元素上，浏览器不会派发 click。用这两个标记识别这种情况并补一次点击。
   const pressStartedRef = useRef(false)
   const clickDeliveredRef = useRef(false)
 
+  const closeFlyout = useCallback(() => {
+    setFlyoutRect(null)
+    onGroupFlyoutClose?.()
+  }, [onGroupFlyoutClose])
+
+  // 分组统一控制展开；每个按钮仍以自己的原位坐标绘制，保留原有点击与动画逻辑。
+  useLayoutEffect(() => {
+    if (!onGroupFlyoutClose) return
+    const link = itemRef.current?.firstElementChild
+    setFlyoutRect(groupFlyoutWidth !== undefined && link ? measureFlyout(link) : null)
+  }, [groupFlyoutWidth, onGroupFlyoutClose])
+
   const handleFlyoutScroll = useCallback(() => {
     const node = flyoutRef.current
     const link = itemRef.current?.firstElementChild
     if (node && link) {
       // 退出动画仍会保留 DOM；每次滚动都跟随原按钮更新位置，直到动画结束卸载。
-      const rect = link.getBoundingClientRect()
+      const rect = measureFlyout(link)
       node.style.left = `${rect.left - 6}px`
       node.style.top = `${rect.top - 6}px`
+      node.style.clipPath = rect.clipPath
     }
-    setFlyoutRect(null)
-  }, [])
+    closeFlyout()
+  }, [closeFlyout])
 
   const handleFlyoutWheel = useCallback((event: WheelEvent) => {
     if (event.ctrlKey || event.deltaY === 0) return
@@ -88,42 +125,53 @@ export function NavItem({
   }, [handleFlyoutScroll, handleFlyoutWheel])
 
   const openFlyout = () => {
-    if (expandOnHover && window.matchMedia('(min-width: 1024px)').matches) {
+    if (!onGroupFlyoutClose && expandOnHover && window.matchMedia('(min-width: 1024px)').matches) {
       const link = itemRef.current?.firstElementChild
-      if (link) setFlyoutRect(link.getBoundingClientRect())
+      if (link) setFlyoutRect(measureFlyout(link))
     }
   }
 
   const menuItemContent = (expanded = false) => (
     <>
-      <div className={cn(
-        'flex min-w-0 items-center',
-        sidebarOpen || expanded ? 'gap-3' : 'gap-3 lg:gap-0',
-        expanded && 'shrink-0'
-      )}>
-        <Icon
-          data-dashboard-nav-icon="true"
-          className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')}
-          size={20}
-        />
-        <motion.span
-          data-dashboard-nav-label="true"
-          initial={expanded ? { opacity: 0 } : false}
-          animate={expanded ? { opacity: 1 } : undefined}
-          exit={expanded ? { opacity: 0 } : undefined}
-          transition={flyoutTransition}
-          className={cn(
-            'text-base font-medium whitespace-nowrap transition-opacity duration-150',
-            expanded
-              ? 'opacity-100'
-              : sidebarOpen
+      <div
+        className={cn(
+          'flex min-w-0 items-center gap-3',
+          expanded ? 'shrink-0' : 'flex-1 overflow-hidden'
+        )}
+      >
+        <span className="relative flex shrink-0">
+          <Icon
+            data-dashboard-nav-icon="true"
+            className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')}
+            size={20}
+          />
+          {promptWarning && <PromptWarningDot className="absolute -top-1 -right-1" />}
+        </span>
+        {expanded ? (
+          <motion.span
+            data-dashboard-nav-label="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={flyoutTransition}
+            className="text-base font-medium whitespace-nowrap opacity-100 transition-opacity duration-150"
+          >
+            {label}
+          </motion.span>
+        ) : (
+          <span
+            data-dashboard-nav-label="true"
+            className={cn(
+              'text-base font-medium whitespace-nowrap transition-opacity duration-150',
+              sidebarOpen
                 ? 'max-w-[160px] min-w-0 overflow-hidden text-ellipsis opacity-100'
-                : 'max-w-[200px] opacity-100 lg:max-w-0 lg:overflow-hidden lg:opacity-0'
-          )}
-          title={expanded ? undefined : label}
-        >
-          {label}
-        </motion.span>
+                : 'shrink-0 opacity-100 lg:opacity-0'
+            )}
+            title={label}
+          >
+            {label}
+          </span>
+        )}
       </div>
     </>
   )
@@ -132,16 +180,14 @@ export function NavItem({
     'relative flex h-[var(--layout-sidebar-nav-item-height)] items-center rounded-lg px-[var(--layout-sidebar-nav-item-padding-x)] py-0 transition-colors duration-150',
     'hover:bg-accent hover:text-accent-foreground',
     isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground',
-    sidebarOpen &&
-      'lg:pl-[calc(var(--layout-sidebar-nav-icon-left)-var(--layout-sidebar-nav-padding-collapsed))]',
-    !sidebarOpen &&
-      'lg:w-[var(--layout-sidebar-nav-item-collapsed-width)] lg:justify-center lg:px-0'
+    'lg:pl-[calc(var(--layout-sidebar-nav-icon-left)-var(--layout-sidebar-nav-padding-collapsed))]',
+    !sidebarOpen && 'lg:w-[var(--layout-sidebar-nav-item-collapsed-width)] lg:pr-0'
   )
   const commonLinkProps = {
     'data-tour': item.tourId,
     'data-dashboard-nav-item': 'true',
     'data-active': isActive ? 'true' : 'false',
-    'aria-label': label,
+    'aria-label': promptWarning ? `${label}：Prompt 模板不兼容或缺少变量，请检查` : label,
     style: {
       height: 'var(--layout-sidebar-nav-item-height)',
       minHeight: 'var(--layout-sidebar-nav-item-height)',
@@ -150,11 +196,11 @@ export function NavItem({
     className: linkClassName,
     onClick: () => {
       clickDeliveredRef.current = true
-      setFlyoutRect(null)
+      closeFlyout()
       onMobileMenuClose()
     },
     onKeyDown: (event: KeyboardEvent<HTMLAnchorElement>) => {
-      if (event.key === 'Escape') setFlyoutRect(null)
+      if (event.key === 'Escape') closeFlyout()
     },
   } as const
 
@@ -179,7 +225,7 @@ export function NavItem({
       // 动画直接改变键帽本身的宽度，四周边框和底边随之重绘，不再裁断右边缘。
       const animationProps = {
         initial: { width: flyoutRect.width },
-        animate: { width: 'auto' },
+        animate: { width: groupFlyoutWidth ?? 'auto' },
         exit: { width: flyoutRect.width },
         transition: flyoutTransition,
       }
@@ -211,7 +257,9 @@ export function NavItem({
       onPointerEnter={(event) => {
         if (event.pointerType === 'mouse') openFlyout()
       }}
-      onPointerLeave={() => setFlyoutRect(null)}
+      onPointerLeave={() => {
+        if (!onGroupFlyoutClose) setFlyoutRect(null)
+      }}
       onPointerDown={(event) => {
         const onNavLink = (event.target as Element).closest('[data-dashboard-nav-item]') !== null
         pressStartedRef.current = event.button === 0 && onNavLink
@@ -242,7 +290,7 @@ export function NavItem({
       }}
       onFocus={openFlyout}
       onBlur={(event) => {
-        if (!itemRef.current?.contains(event.relatedTarget) && !flyoutRef.current?.contains(event.relatedTarget)) {
+        if (!onGroupFlyoutClose && !itemRef.current?.contains(event.relatedTarget) && !flyoutRef.current?.contains(event.relatedTarget)) {
           setFlyoutRect(null)
         }
       }}
@@ -256,8 +304,15 @@ export function NavItem({
               <motion.div
                 key={item.path}
                 ref={setFlyoutRef}
+                data-dashboard-sidebar-group={groupFlyoutId}
                 className="fixed z-[60] p-[6px] max-lg:hidden"
-                style={{ left: flyoutRect.left - 6, top: flyoutRect.top - 6 }}
+                style={{
+                  left: flyoutRect.left - 6,
+                  top: flyoutRect.top - 6,
+                  // 裁剪容器同步使用整组展开宽度，确保文字区域也在浮层的命中范围内。
+                  width: groupFlyoutWidth === undefined ? undefined : groupFlyoutWidth + 12,
+                  clipPath: flyoutRect.clipPath,
+                }}
                 // 外层只定位并保留键帽阴影，收回时等待内部按钮的宽度动画结束。
                 exit={{}}
               >

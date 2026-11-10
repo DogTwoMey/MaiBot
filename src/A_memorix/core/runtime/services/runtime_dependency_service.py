@@ -17,6 +17,7 @@ class MemoryRuntimeDependencyService(KernelServiceBase):
             graph_vector_store=self._graph_vector_store(),
             embedding_manager=self.embedding_manager,
             use_typed_relation_ids=self._dual_vector_pools_enabled(),
+            record_embedding_input=self._vector_space_service.record_input,
         )
 
     def _refresh_runtime_dependents(self, *, preserve_managers: bool = True) -> None:
@@ -53,7 +54,7 @@ class MemoryRuntimeDependencyService(KernelServiceBase):
             segmentation_service=self.episode_segmentation_service,
         )
         self.summary_importer = kernel_module.SummaryImporter(
-            vector_store=self.vector_store,
+            vector_store=self._paragraph_store(),
             graph_store=self.graph_store,
             metadata_store=self.metadata_store,
             embedding_manager=self.embedding_manager,
@@ -90,6 +91,8 @@ class MemoryRuntimeDependencyService(KernelServiceBase):
                 self._save_vector_store(self.paragraph_vector_store)
             if self.graph_vector_store is not None:
                 self._save_vector_store(self.graph_vector_store)
+        if not rebuild_required:
+            self._vector_space_service._save_inputs()
         if self.graph_store is not None:
             with self._relation_graph_projection_lock:
                 self.graph_store.save()

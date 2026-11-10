@@ -11,23 +11,21 @@ import json
 import shutil
 import subprocess
 
+from src.plugin_market.releases import PluginRelease, PluginReleaseEntry
+from src.plugin_runtime.plugin_catalog import RECEIPT_NAME
 from src.plugin_runtime.runner.manifest_validator import ManifestValidator, PluginDependencyDefinition
 from src.webui.services.git_mirror_service import get_git_mirror_service
 
 from .progress import update_progress
-from .releases import PluginRelease, PluginReleaseEntry
 from .support import (
     get_plugin_candidate_paths,
     iter_plugin_directories,
     load_manifest_json,
     parse_repository_url,
     remove_tree,
-    resolve_installed_plugin_path,
+    resolve_mutable_plugin_path,
     resolve_plugin_file_path,
 )
-
-RECEIPT_NAME = ".maibot-release.json"
-
 
 def _work_directory(plugin_root: Path, name: str) -> Path:
     directory = plugin_root / name
@@ -183,7 +181,7 @@ async def _install_release(
 
     operation = "update" if updating else "install"
     canonical_id = entry.manifest_id or plugin_id
-    existing = resolve_installed_plugin_path(canonical_id)
+    existing = resolve_mutable_plugin_path(canonical_id)
     if updating and existing is None:
         raise HTTPException(status_code=404, detail="插件未安装")
     if not updating and existing is not None:
@@ -202,6 +200,13 @@ async def _install_release(
     candidate = _work_directory(target.parent, ".update_tmp") / f"{target.name}.{uuid4().hex}"
     backup = _work_directory(target.parent, ".update_backups") / f"{target.name}.{uuid4().hex}"
     swapped = False
+
+    async def report_step(progress: int, message: str) -> None:
+        # 克隆后的百分比表示处理阶段；等待运行时锁及加载插件也必须报告，避免一直停留在校验文件。
+        await update_progress(
+            stage="loading", progress=progress, message=message,
+            operation=operation, plugin_id=plugin_id,
+        )
 
     def replace_files() -> None:
         receipt_data = {
@@ -228,14 +233,19 @@ async def _install_release(
         try:
             if existing:
                 # 先检查目录边界；停止运行时之后再检查并复制用户文件，避免复制过程中继续写入。
+                await report_step(88, "正在检查已安装插件目录...")
                 await asyncio.to_thread(_check_tree, target)
+                await report_step(90, "正在停止旧版本插件，等待插件退出...")
                 stopped = await _stop_runtime(canonical_id)
+                await report_step(92, "正在保留插件配置和本地数据...")
                 await asyncio.to_thread(_preserve_user_files, target, candidate)
+            await report_step(95, "正在替换插件版本文件...")
             await asyncio.to_thread(replace_files)
             swapped = True
             if existing is None:
                 # 整个目录移入时可能没有源码事件，首次安装必须主动同步运行时。
                 try:
+                    await report_step(98, "正在同步插件依赖并加载插件...")
                     await get_plugin_runtime_manager().activate_installed_plugin(canonical_id)
                 except RuntimeError as exc:
                     raise HTTPException(status_code=409, detail=f"插件文件已安装，但运行时加载失败：{exc}") from exc
@@ -246,6 +256,7 @@ async def _install_release(
             # 恢复也处于同一更新事务内，源码监听不能在停止与恢复之间重启运行时。
             if stopped:
                 try:
+                    await report_step(98, "正在加载新版本插件..." if swapped else "正在恢复原版本插件运行...")
                     await _resume_runtime(stopped)
                 except Exception as resume_error:
                     if failure is not None:
@@ -262,8 +273,21 @@ async def _install_release(
         )
         if not result.get("success"):
             raise HTTPException(status_code=502, detail=result.get("error", "下载发布版本失败"))
-        warnings = await asyncio.to_thread(_validate_candidate, candidate, entry, release)
-        await run_on_main_loop(get_plugin_runtime_manager().run_plugin_file_update(replace_and_reload))
+        async def validate_and_replace() -> List[str]:
+            warnings = await asyncio.to_thread(_validate_candidate, candidate, entry, release)
+            await report_step(85, "文件校验通过，等待其他插件操作或运行环境重启完成...")
+            await run_on_main_loop(
+                get_plugin_runtime_manager().run_plugin_file_update(replace_and_reload, plugin_paths=[target])
+            )
+            return warnings
+
+        # 文件替换及运行时重载一旦开始就收尾完成，避免取消后删除仍被使用的候选目录。
+        commit_task = asyncio.create_task(validate_and_replace())
+        try:
+            warnings = await asyncio.shield(commit_task)
+        except asyncio.CancelledError:
+            await commit_task
+            raise
     finally:
         if candidate.exists():
             # candidate 来自插件根目录下固定的临时目录，且下载文件已拒绝链接。

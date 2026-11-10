@@ -5,9 +5,7 @@ from binascii import Error as BinasciiError
 from dataclasses import dataclass, field
 from datetime import datetime
 from html import escape
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
-
-from rich.panel import Panel
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 import asyncio
 import difflib
@@ -16,7 +14,6 @@ import uuid
 
 from src.chat.heart_flow.heartFC_utils import CycleDetail
 from src.chat.message_receive.message import SessionMessage
-from src.cli.console import console
 from src.common.data_models.message_component_data_model import (
     EmojiComponent,
     ImageComponent,
@@ -33,8 +30,8 @@ from src.core.tooling import (
     ToolInvocation,
     ToolSpec,
 )
-from src.learners.behavior_selector import behavior_pattern_selector
 from src.llm_models.exceptions import ReqAbortException, RespNotOkException
+from src.llm_models.model_client.adapter_base import await_task_with_interrupt
 from src.llm_models.payload_content.context_item import (
     ContextImagePart,
     ContextItemBuilder,
@@ -46,6 +43,8 @@ from src.llm_models.payload_content.context_item import (
 from src.llm_models.payload_content.tool_option import ToolCall
 from src.services import database_service as database_api
 from src.maisaka.display.display_utils import format_tool_call_for_display
+from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
+from src.maisaka.display.reasoning_steps import reasoning_trace_id
 from src.maisaka.utils.tool_post_execution import handle_tool_post_execution_effects
 from src.maisaka.utils.tool_record_payload import build_tool_record_payload, normalize_tool_record_value
 
@@ -54,27 +53,29 @@ from src.maisaka.builtin_tool import (
     get_builtin_tool_visibility,
     is_builtin_tool_in_action_stage,
 )
-from .chat_loop_service import ChatResponse, MaisakaChatLoopService
-from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
+from .chat_loop_service import ChatResponse
+from .mode_policy import build_consecutive_wait_reminders
+from .reply_supplement import ReplySupplement, generate_reply_supplement
+from .tool_result_condenser import condense_tool_result, should_condense_tool_result
 from src.maisaka.visual.chat_history_refresher import (
     has_pending_image_recognition,
     log_pending_image_recognition_before_text_planner,
     refresh_chat_history_visual_placeholders,
 )
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
+from src.maisaka.builtin_tool.reply import execute_reply
 from src.maisaka.context.messages import (
     ComplexSessionMessage,
     LLMContextMessage,
     ReferenceMessage,
-    ReferenceMessageType,
     SessionBackedMessage,
+    ToolResultMediaMessage,
     ToolResultMessage,
+    WaitCompletedMessage,
     contains_complex_message,
 )
-from src.maisaka.focus import focus_mode_manager
 from src.maisaka.context.post_processor import process_chat_history_after_cycle
 from src.maisaka.context.history import (
-    TOOL_RESULT_MEDIA_SOURCE_KIND,
     build_prefixed_message_sequence,
     build_session_message_visible_text,
 )
@@ -85,13 +86,9 @@ from src.maisaka.jargon_context_matcher import (
 from src.maisaka.memory.heuristic_injector import heuristic_memory_injector
 from src.maisaka.memory.image_injector import image_memory_injector
 from src.maisaka.monitor.tool_media import build_tool_result_images
-from src.maisaka.memory.mid_term import (
-    build_mid_term_memory_message,
-    build_mid_term_memory_reference_message,
-    insert_mid_term_memory_message,
-    is_mid_term_memory_reference_message,
-)
+from src.maisaka.context.compaction import ContextSummaryMessage, build_context_summary
 from src.maisaka.monitor.events import (
+    emit_flow_step,
     emit_planner_snapshot,
 )
 from src.maisaka.memory.person_profile import build_person_profile_injection_messages
@@ -107,18 +104,6 @@ logger = get_logger("maisaka_reasoning_engine")
 HISTORY_DEFERRED_TOOL_RESULT_NAMES = {"wait"}
 TOOL_RESULT_MEDIA_TYPES = {"image", "audio", "resource_link", "resource", "binary"}
 STOP_AFTER_EXECUTION_PAUSE_REASON = "stop_after_execution"
-BEHAVIOR_SELECTOR_CONTEXT_MESSAGE_LIMIT = 8
-BEHAVIOR_SELECTOR_CONTEXT_TEXT_LIMIT = 1800
-BEHAVIOR_SCENARIO_CONSTRAINT_TEXT = (
-    "【行为表现情景分析任务约束】\n"
-    "你现在不是主 planner，不要续写聊天、不要判断是否需要回复、不要选择行为表现。\n"
-    "你只负责把当前上下文抽象成行为表现检索用的场景画像。\n"
-    "只能输出 JSON 对象，字段必须包含 summary、tag_clusters、need、other_traits、confidence；"
-    "tag_clusters 只表示领域概念，每项只能包含 tag_name、tag_aliases；"
-    "need 单独输出为包含 tag_name、tag_aliases 的对象；"
-    "other_traits 表示他人的特点和态度，输出 tag_name、tag_aliases 数组；"
-    "不要输出 kind、phase、risk、tags、name 或 cluster_key。"
-)
 
 @dataclass(frozen=True, slots=True)
 class CycleEnd:
@@ -145,9 +130,12 @@ class CycleRuntimeState:
     """一轮内部循环中逐步积累的运行产物。"""
 
     planner_duration_ms: float = 0.0
+    planner_started_at: Optional[float] = None
+    planner_ended_at: Optional[float] = None
     current_stage_started_at: float = 0.0
     action_tool_count: int = 0
     response: Optional[ChatResponse] = None
+    reply_target_message: Optional[SessionMessage] = None
     planner_extra_lines: list[str] = field(default_factory=list)
     planner_interrupted: bool = False
     cycle_end: CycleEnd = field(default_factory=lambda: CycleEnd("continue", "本轮思考完成，继续后续内部轮次。"))
@@ -171,6 +159,16 @@ class MaisakaReasoningEngine:
         self._runtime = runtime
         self._last_reasoning_content: str = ""
         self._active_logical_turn_id: str | None = None
+
+        self._turn_passive_replyer: Optional[bool] = None
+
+    @property
+    def passive_replyer_enabled(self) -> bool:
+        """一轮思考内固定实验模式，避免热重载使 Prompt、工具与输出处理不一致。"""
+
+        if self._turn_passive_replyer is not None:
+            return self._turn_passive_replyer
+        return global_config.experimental.passive_replyer
 
     @property
     def last_reasoning_content(self) -> str:
@@ -203,253 +201,27 @@ class MaisakaReasoningEngine:
         """运行一轮可被新消息打断的主 planner 请求。"""
 
         interrupt_flag = asyncio.Event()
-        interrupted = False
-        self._runtime._bind_planner_interrupt_flag(interrupt_flag)
+        self._runtime._planner_interrupt.bind(interrupt_flag)
         self._runtime._chat_loop_service.set_interrupt_flag(interrupt_flag)
         try:
-            return await self._runtime._chat_loop_service.chat_loop_step(
-                self._runtime._chat_history,
-                injected_user_messages=injected_user_messages,
-                tail_user_messages=tail_user_messages,
-                tool_definitions=tool_definitions,
-                max_context_size=self._runtime._max_context_size,
-                logical_turn_id=self._active_logical_turn_id,
+            if self._runtime.chat_stream.is_group_session and global_config.chat.reply_timing.planner_message_steering and self._runtime._has_pending_messages():
+                # 覆盖整理上下文到绑定中断标记之间收到消息的窗口。
+                interrupt_flag.set()
+            planner_task = asyncio.create_task(
+                self._runtime._chat_loop_service.chat_loop_step(
+                    self._runtime._chat_history,
+                    injected_user_messages=injected_user_messages,
+                    tail_user_messages=tail_user_messages,
+                    tool_definitions=tool_definitions,
+                    max_context_size=self._runtime._max_context_size,
+                    logical_turn_id=self._active_logical_turn_id,
+                )
             )
-        except ReqAbortException:
-            interrupted = True
-            raise
+            # 在完整请求期间监听中断，流暂时没有数据时也能取消，不采用迟到的输出。
+            return await await_task_with_interrupt(planner_task, interrupt_flag)
         finally:
-            self._runtime._unbind_planner_interrupt_flag(
-                interrupt_flag,
-                interrupted=interrupted,
-            )
+            self._runtime._planner_interrupt.unbind(interrupt_flag)
             self._runtime._chat_loop_service.set_interrupt_flag(None)
-
-    async def _run_behavior_scenario_analyzer_sub_agent(
-        self,
-        system_prompt: str,
-        *,
-        context_messages: Optional[list[LLMContextMessage]] = None,
-    ) -> str:
-        """运行行为表现情景分析子代理，并返回文本结果。"""
-
-        constraint_message = ReferenceMessage(
-            content=BEHAVIOR_SCENARIO_CONSTRAINT_TEXT,
-            timestamp=datetime.now(),
-            reference_type=ReferenceMessageType.TOOL_HINT,
-            remaining_uses_value=1,
-            display_prefix="[行为表现情景分析约束]",
-        )
-        if context_messages is None:
-            response = await self._runtime.run_sub_agent(
-                context_message_limit=self._runtime._max_context_size,
-                system_prompt=system_prompt,
-                request_kind="behavior_scenario_analyzer",
-                extra_messages=[constraint_message],
-                interrupt_flag=None,
-                tool_definitions=[],
-            )
-        else:
-            filtered_context_messages = self._filter_behavior_scenario_context_messages(context_messages)
-            sub_agent = MaisakaChatLoopService(
-                chat_system_prompt=system_prompt,
-                session_id=str(self._runtime.session_id or ""),
-                is_group_chat=self._runtime.chat_stream.is_group_session,
-                model_task_name="planner",
-            )
-            response = await sub_agent.chat_loop_step(
-                [*filtered_context_messages, constraint_message],
-                request_kind="behavior_scenario_analyzer",
-                tool_definitions=[],
-                max_context_size=self._runtime._max_context_size,
-            )
-        response_text = (response.content or "").strip()
-        self._log_behavior_scenario_prompt_preview(response)
-        return response_text
-
-    @staticmethod
-    def _filter_behavior_scenario_context_messages(
-        context_messages: list[LLMContextMessage],
-    ) -> list[LLMContextMessage]:
-        """场景概括只看真实聊天消息，不混入参考、assistant 或工具历史。"""
-
-        allowed_source_kinds = {"user", "guided_reply", "outbound_send"}
-        return [
-            message
-            for message in context_messages
-            if isinstance(message, SessionBackedMessage) and message.source_kind in allowed_source_kinds
-        ]
-
-    def _log_behavior_scenario_prompt_preview(
-        self,
-        response: ChatResponse,
-    ) -> None:
-        """保存行为表现情景分析 Prompt 预览，并在控制台输出查看入口。"""
-
-        try:
-            prompt_access_panel = PromptCLIVisualizer.build_prompt_access_panel(
-                response.request_messages,
-                category="behavior_scenario_analyzer",
-                chat_id=str(self._runtime.session_id or ""),
-                request_kind="behavior_scenario_analyzer",
-                selection_reason=(
-                    f"会话ID: {self._runtime.session_id}\n"
-                    f"会话名称: {self._runtime.session_name}\n"
-                    f"模型: {response.model_name or '未知'}\n"
-                    f"构建消息数: {response.built_message_count}\n"
-                    f"选中历史数: {response.selected_history_count}"
-                ),
-                output_items=response.output_items,
-                generation_attempts=response.generation_attempts,
-                metadata={
-                    "model_name": response.model_name,
-                    "duration_ms": response.duration_ms,
-                    "prompt_tokens": response.prompt_tokens,
-                    "completion_tokens": response.completion_tokens,
-                    "total_tokens": response.total_tokens,
-                },
-            )
-        except Exception as exc:
-            logger.warning(f"{self._runtime.log_prefix} 行为表现情景分析 Prompt 预览保存失败: {exc}")
-            return
-
-        console.print(
-            Panel(
-                prompt_access_panel,
-                title=f"{self._runtime.log_prefix} 行为表现情景分析请求预览",
-                border_style="bright_magenta",
-                padding=(0, 1),
-            )
-        )
-        logger.info(f"{self._runtime.log_prefix} 行为表现情景分析请求预览已生成，已在控制台显示可点击链接")
-
-    def _clear_behavior_reference_messages(
-        self,
-        history: Optional[list[LLMContextMessage]] = None,
-    ) -> list[ReferenceMessage]:
-        """清理当前历史中的行为表现参考，下一次裁切会写入新的参考。"""
-
-        target_history = self._runtime._chat_history if history is None else history
-        retained_history: list[LLMContextMessage] = []
-        removed_messages: list[ReferenceMessage] = []
-        for message in target_history:
-            if isinstance(message, ReferenceMessage) and message.source == "behavior_pattern":
-                removed_messages.append(message)
-                continue
-            retained_history.append(message)
-        if removed_messages:
-            target_history[:] = retained_history
-        return removed_messages
-
-    def _insert_behavior_reference_message(
-        self,
-        reference_text: str,
-        *,
-        history: Optional[list[LLMContextMessage]] = None,
-    ) -> Optional[ReferenceMessage]:
-        """将行为表现参考插入主循环历史。"""
-
-        normalized_text = reference_text.strip()
-        if not normalized_text:
-            return None
-
-        message = ReferenceMessage(
-            content=normalized_text,
-            timestamp=datetime.now(),
-            reference_type=ReferenceMessageType.BEHAVIOR_PATTERN,
-            remaining_uses_value=None,
-            display_prefix="[行为表现参考]",
-        )
-        if history is None:
-            self._runtime._chat_history.append(message)
-        else:
-            history.append(message)
-        return message
-
-    @staticmethod
-    def _append_behavior_selector_context_item(
-        context_items: list[str],
-        *,
-        text: str,
-        seen_texts: set[str],
-    ) -> None:
-        normalized_text = " ".join(str(text or "").split()).strip()
-        if not normalized_text or normalized_text in seen_texts:
-            return
-        seen_texts.add(normalized_text)
-        context_items.append(normalized_text)
-
-    def _build_behavior_selector_context_text(
-        self,
-        *,
-        source_messages: Optional[list[SessionMessage]] = None,
-        selected_history: Optional[list[LLMContextMessage]] = None,
-    ) -> str:
-        """构造行为表现本地检索使用的最近上下文文本。"""
-
-        context_items: list[str] = []
-        seen_texts: set[str] = set()
-
-        if selected_history is not None:
-            for history_message in selected_history:
-                if not isinstance(history_message, SessionBackedMessage):
-                    continue
-                if history_message.source_kind not in {"user", "guided_reply", "outbound_send"}:
-                    continue
-                self._append_behavior_selector_context_item(
-                    context_items,
-                    text=history_message.processed_plain_text,
-                    seen_texts=seen_texts,
-                )
-        else:
-            for message in (source_messages or [])[-BEHAVIOR_SELECTOR_CONTEXT_MESSAGE_LIMIT:]:
-                self._append_behavior_selector_context_item(
-                    context_items,
-                    text=str(message.processed_plain_text or ""),
-                    seen_texts=seen_texts,
-                )
-
-        if selected_history is None:
-            for history_message in reversed(self._runtime._chat_history):
-                if len(context_items) >= BEHAVIOR_SELECTOR_CONTEXT_MESSAGE_LIMIT:
-                    break
-                if not isinstance(history_message, SessionBackedMessage):
-                    continue
-                if history_message.source_kind not in {"user", "guided_reply", "outbound_send"}:
-                    continue
-                self._append_behavior_selector_context_item(
-                    context_items,
-                    text=history_message.processed_plain_text,
-                    seen_texts=seen_texts,
-                )
-
-        context_text = "\n".join(context_items[-BEHAVIOR_SELECTOR_CONTEXT_MESSAGE_LIMIT:])
-        if len(context_text) <= BEHAVIOR_SELECTOR_CONTEXT_TEXT_LIMIT:
-            return context_text
-        return context_text[-BEHAVIOR_SELECTOR_CONTEXT_TEXT_LIMIT:]
-
-    async def _select_behavior_reference_message(
-        self,
-        *,
-        source_messages: Optional[list[SessionMessage]] = None,
-        selected_history: list[LLMContextMessage],
-        target_history: Optional[list[LLMContextMessage]] = None,
-    ) -> Optional[ReferenceMessage]:
-        """基于裁切后的保留上下文刷新行为表现参考。"""
-
-        selection = await behavior_pattern_selector.retrieve_for_planner(
-            session_id=str(self._runtime.session_id or ""),
-            scenario_agent_runner=lambda system_prompt: self._run_behavior_scenario_analyzer_sub_agent(
-                system_prompt,
-                context_messages=selected_history,
-            ),
-            context_text=self._build_behavior_selector_context_text(
-                source_messages=source_messages,
-                selected_history=selected_history,
-            ),
-            include_context_in_prompt=False,
-        )
-        return self._insert_behavior_reference_message(selection.reference_text, history=target_history)
 
     async def _build_action_tool_definitions(self) -> tuple[list[dict[str, Any]], str]:
         """构造 Action Loop 阶段可见的工具定义与 deferred tools 提示。"""
@@ -463,9 +235,10 @@ class MaisakaReasoningEngine:
         tool_specs = await self._runtime._tool_registry.list_tools(availability_context)
         visible_builtin_tool_specs: list[ToolSpec] = []
         deferred_tool_specs: list[ToolSpec] = []
+        passive_replyer = self.passive_replyer_enabled
         for tool_spec in tool_specs:
             if tool_spec.provider_name == "maisaka_builtin":
-                if not is_builtin_tool_in_action_stage(tool_spec):
+                if not is_builtin_tool_in_action_stage(tool_spec, passive_replyer=passive_replyer):
                     continue
                 visibility = get_builtin_tool_visibility(tool_spec)
                 if visibility == "visible":
@@ -500,6 +273,7 @@ class MaisakaReasoningEngine:
         profile_message: SessionMessage,
         source_messages: list[SessionMessage],
         deferred_tools_reminder: str,
+        round_text: Optional[str] = None,
     ) -> list[str]:
         """构造本轮 planner 的一次性注入消息。"""
 
@@ -536,11 +310,44 @@ class MaisakaReasoningEngine:
                 logger.debug(f"{self._runtime.log_prefix} 图片记忆自然拉起失败，已跳过: {exc}")
                 return ""
 
+        pending = {"启发式记忆", "人物画像", "图片记忆"}
+        if round_text is not None:
+            self._runtime._update_stage_status("组织上下文", "正在准备：启发式记忆、人物画像、图片记忆", round_text=round_text)
+
+        async def measure_injection(name: str, build: Callable[[], Awaitable[Any]]) -> Any:
+            started = time.perf_counter()
+            try:
+                return await build()
+            finally:
+                elapsed = time.perf_counter() - started
+                pending.discard(name)
+                logger.info(f"{self._runtime.log_prefix} 上下文准备: {name} 耗时={elapsed:.2f}s")
+                if pending and round_text is not None:
+                    remaining = "、".join(item for item in ("启发式记忆", "人物画像", "图片记忆") if item in pending)
+                    self._runtime._update_stage_status("组织上下文", f"正在等待：{remaining}", round_text=round_text)
+
         heuristic_memory_message, profile_messages, image_memory_message = await asyncio.gather(
-            build_heuristic_memory_message(),
-            build_profile_messages(),
-            build_image_memory_message(),
+            measure_injection("启发式记忆", build_heuristic_memory_message),
+            measure_injection("人物画像", build_profile_messages),
+            measure_injection("图片记忆", build_image_memory_message),
         )
+        if global_config.debug.save_maisaka_reasoning:
+            # 在宿主注入边界记录实际结果，不改动记忆实现，也不把检索步骤伪装成模型调用。
+            def save_memory_steps() -> None:
+                for category, name, content in (
+                    ("memory_heuristic", "启发式记忆拉取", heuristic_memory_message),
+                    ("memory_profile", "人物画像拉取", "\n\n".join(profile_messages)),
+                    ("memory_image", "图片记忆拉取", image_memory_message),
+                ):
+                    PromptCLIVisualizer.build_text_preview_access(
+                        f"记录{name}在本轮 Planner 中的实际注入内容。",
+                        category=category, chat_id=self._runtime.session_id, request_kind=category,
+                        subtitle=f"会话ID: {self._runtime.session_id}", output_title="实际注入内容",
+                        output_items=[ContextItemBuilder().set_role(RoleType.User).add_text_content(
+                            content or "本轮没有注入内容。",
+                        ).build()], metadata={"request_source": "context_injection"},
+                    )
+            await asyncio.to_thread(save_memory_steps)
         if heuristic_memory_message:
             injected_messages.append(heuristic_memory_message)
         injected_messages.extend(profile_messages)
@@ -568,88 +375,14 @@ class MaisakaReasoningEngine:
         self._runtime._chat_history.append(reference_message)
         return reference_message
 
-    async def _refresh_mid_term_memory_reference_message(self) -> Optional[ReferenceMessage]:
-        """基于当前 planner 上下文刷新聊天回想参考消息。"""
-
-        if not bool(global_config.chat.mid_term_memory):
-            return None
-
-        selected_history, _ = self._runtime._chat_loop_service.select_llm_context_messages(
-            self._runtime._chat_history,
-            request_kind="planner",
-            max_context_size=self._runtime._max_context_size,
-            is_group_chat=self._runtime.chat_stream.is_group_session,
-        )
-        reference_message = await build_mid_term_memory_reference_message(
-            history=self._runtime._chat_history,
-            selected_history=selected_history,
-            session_id=str(self._runtime.session_id or ""),
-            log_prefix=self._runtime.log_prefix,
-        )
-        if reference_message is None:
-            return None
-
-        if self._has_mid_term_memory_reference_message(reference_message):
-            return None
-
-        self._runtime._chat_history.append(reference_message)
-        return reference_message
-
-    def _has_mid_term_memory_reference_message(self, reference_message: ReferenceMessage) -> bool:
-        """判断历史中是否已经存在相同的聊天回想参考。"""
-
-        normalized_content = " ".join(reference_message.content.split()).strip()
-        if not normalized_content:
-            return False
-
-        for history_message in self._runtime._chat_history:
-            if not is_mid_term_memory_reference_message(history_message):
-                continue
-            history_content = " ".join(str(history_message.content or "").split()).strip()
-            if history_content == normalized_content:
-                return True
-        return False
-
-    @staticmethod
-    def _is_planner_no_tool_hint_message(message: LLMContextMessage) -> bool:
-        """判断是否为 Planner 无工具重试提示。"""
-
-        return (
-            isinstance(message, ReferenceMessage) and message.reference_type == ReferenceMessageType.PLANNER_TOOL_HINT
-        )
-
-    def _clear_planner_no_tool_hints(self) -> None:
-        """移除已过期的 Planner 无工具重试提示。"""
-
-        self._runtime._chat_history = [
-            message for message in self._runtime._chat_history if not self._is_planner_no_tool_hint_message(message)
-        ]
-
-    def _handle_planner_no_tool_retry(
-        self,
-        planner_no_tool_count: int,
-        planner_extra_lines: list[str],
-    ) -> tuple[int, CycleEnd, bool]:
-        """处理 Planner 未调用工具时的终止策略。"""
-
-        planner_no_tool_count += 1
-        cycle_end = CycleEnd("planner_no_tool_end", "Planner本轮思考结束。")
-        self._end_planner_no_tool_cycle(
-            planner_extra_lines,
-            status_line="状态：已结束本轮思考",
-        )
-        logger.info(f"{self._runtime.log_prefix} Planner 已结束本轮思考")
-        return planner_no_tool_count, cycle_end, True
-
     def _end_planner_no_tool_cycle(
         self,
         planner_extra_lines: list[str],
         *,
         status_line: str,
     ) -> None:
-        """结束 Planner 无工具输出导致的当前思考轮。"""
+        """结束当前思考轮并进入停止等待状态。"""
 
-        self._clear_planner_no_tool_hints()
         self._runtime._end_planner_continuation()
         self._runtime._reset_consecutive_wait_count("planner_no_tool_end")
         self._runtime._enter_stop_state()
@@ -661,13 +394,41 @@ class MaisakaReasoningEngine:
         response: ChatResponse,
         cycle_detail: CycleDetail,
         state: CycleRuntimeState,
-        planner_no_tool_count: int,
         planner_extra_lines: list[str],
-    ) -> tuple[int, bool]:
+    ) -> bool:
         """处理 Planner 响应中的工具调用，或无工具输出策略。"""
 
+        # Planner 时间从防抖后的输入批次开始，包含上下文准备、模型请求，直到工具选定。
+        # 这段时间内的新消息必须先穿过防抖；旧的等待/静默决策不能盖过已就绪的新输入。
+        waiting_decision = not response.tool_calls and not (self.passive_replyer_enabled and self._get_planner_content(response))
+        waiting_decision = waiting_decision or any(call.func_name in {"wait", "stop"} for call in response.tool_calls or [])
+        if waiting_decision and self._runtime._has_pending_messages():
+            await self._runtime._wait_for_message_quiet_period()
+            if self._runtime._has_pending_messages():
+                # 不写入未执行的工具调用，避免留下没有回执的调用；下一轮统一接入新消息。
+                reminder = ChatResponse(output_items=(
+                    ContextItemBuilder().set_role(RoleType.User)
+                    .set_meta(ContextItemMeta.create(logical_turn_id=self._active_logical_turn_id))
+                    .add_text_content("有新消息，请根据新消息内容重新思考后规划新的行动").build(),
+                ), request_messages=[], selected_history_count=0, tool_count=0,
+                    prompt_tokens=0, built_message_count=0, completion_tokens=0, total_tokens=0)
+                self._runtime._chat_history.extend(reminder.raw_messages)
+                state.cycle_end = CycleEnd("tool_continue", "新消息已就绪，跳过等待决策并重新规划。")
+                return False
+
+        # stop 是终止信号，不是供下一轮参考的工具交互。
+        # 在写入整段模型输出和执行同批工具前截断，避免留下孤立调用、
+        # 参数错误或与终止意图冲突的正文；监控仍保留本轮 Planner 输出。
+        if self.passive_replyer_enabled and any(tool_call.func_name == "stop" for tool_call in response.tool_calls or []):
+            self._end_planner_no_tool_cycle(planner_extra_lines, status_line="状态：已结束本轮思考")
+            state.cycle_end = self._cycle_end_for_pause_tool("stop")
+            state.tool_result_summaries = []
+            state.tool_monitor_results = []
+            await self._emit_planner_progress(cycle_detail, state, [], "")
+            return True
+
         planner_content = self._get_planner_content(response)
-        if self._should_replace_reasoning(planner_content):
+        if (response.tool_calls or not self.passive_replyer_enabled) and self._should_replace_reasoning(planner_content):
             planner_content = "我应该根据我上面思考的内容进行反思，重新思考我下一步的行动，我需要分析当前场景，对话，然后直接输出我的想法："
             replaced_items = replace_output_projection(
                 response.output_items,
@@ -683,8 +444,6 @@ class MaisakaReasoningEngine:
         await self._emit_planner_progress(cycle_detail, state, [], first_tool_call_id)
 
         if response.tool_calls:
-            planner_no_tool_count = 0
-            self._clear_planner_no_tool_hints()
             tool_started_at = time.time()
             (
                 should_pause,
@@ -702,18 +461,107 @@ class MaisakaReasoningEngine:
             state.tool_monitor_results = tool_monitor_results
             if should_pause:
                 state.cycle_end = self._cycle_end_for_pause_tool(pause_tool_name)
-                return planner_no_tool_count, True
+                return True
             state.cycle_end = CycleEnd("tool_continue", "Planner 工具执行完成，继续下一轮内部思考。")
-            return planner_no_tool_count, False
+            return False
 
-        planner_no_tool_count, cycle_end, should_end_after_no_tool = self._handle_planner_no_tool_retry(
-            planner_no_tool_count,
+        if self.passive_replyer_enabled and planner_content:
+            await self._reply_from_planner_content(planner_content, cycle_detail, state)
+            self._end_planner_no_tool_cycle(
+                planner_extra_lines,
+                status_line=f"状态：{state.cycle_end.detail}",
+            )
+            return True
+
+        if self.passive_replyer_enabled:
+            logger.warning(f"{self._runtime.log_prefix} Planner 未返回正文或工具调用，不启动回复")
+        self._end_planner_no_tool_cycle(
             planner_extra_lines,
+            status_line="状态：已结束本轮思考",
         )
-        state.cycle_end = cycle_end
+        logger.info(f"{self._runtime.log_prefix} Planner 已结束本轮思考")
+        state.cycle_end = CycleEnd("planner_no_tool_end", "Planner本轮思考结束。")
         state.tool_result_summaries = []
         state.tool_monitor_results = []
-        return planner_no_tool_count, should_end_after_no_tool
+        return True
+
+    async def _reply_from_planner_content(
+        self,
+        content: str,
+        cycle_detail: CycleDetail,
+        state: CycleRuntimeState,
+    ) -> None:
+        """把最终正文作为指导执行一次回复，不追加虚构的工具调用或工具结果。"""
+
+        started_at = time.time()
+        execution_id = uuid.uuid4().hex
+        target = state.reply_target_message
+        arguments = {
+            "msg_id": target.message_id if target is not None else "",
+            "reply_reference": content,
+        }
+        self._runtime._update_stage_status("Replyer", "根据 Planner 正文生成可见回复")
+        tool_ctx = BuiltinToolRuntimeContext(self, self._runtime)
+        if target is None:
+            result = tool_ctx.build_failure_result("reply", "Planner 请求快照中没有可回复的真实消息。")
+        else:
+            try:
+                snapshot = self._runtime._chat_loop_service.planner_request_snapshot
+
+                async def supplement_runner() -> ReplySupplement:
+                    if snapshot is None:
+                        raise ValueError("缺少本轮 Planner 请求快照，无法生成回复补充内容")
+                    return await generate_reply_supplement(
+                        snapshot, content, self._runtime.session_id, self._runtime.chat_stream.is_group_session,
+                    )
+
+                result = await execute_reply(
+                    tool_ctx, arguments, call_id=execution_id, target_message=target,
+                    supplement_runner=supplement_runner,
+                )
+            except Exception as exc:
+                # 直接执行不再经过 ToolRegistry 的异常边界；记录完整异常并结束，不能重新发送。
+                logger.exception(f"{self._runtime.log_prefix} Planner 正文触发回复异常")
+                result = tool_ctx.build_failure_result("reply", f"回复执行异常：{type(exc).__name__}: {exc}")
+        await self._record_tool_execution_effects(
+            ToolInvocation(tool_name="reply", arguments=arguments, call_id=execution_id,
+                           session_id=self._runtime.session_id, stream_id=self._runtime.session_id,
+                           reasoning=content, metadata={"source": "planner_text"}),
+            result, None,
+        )
+        ended_at = time.time()
+        cycle_detail.time_records["replyer"] = ended_at - started_at
+        # 正文触发没有 FunctionCallItem，显式保留来源供回复记录反向跳转。
+        monitor_detail = result.metadata.get("monitor_detail")
+        if isinstance(monitor_detail, dict) and state.response is not None and state.response.prompt_html_uri:
+            monitor_detail["source_planner_uri"] = state.response.prompt_html_uri
+        summary = result.get_history_content()
+        if not result.success and any(receipt["success"] for receipt in result.metadata.get("send_results", [])):
+            summary = f"部分消息已发送，本轮不再重试。{summary}"
+        # 沿用现有回复详情展示与持久化字段，但标明它由正文触发，不进入模型的工具协议。
+        state.tool_result_summaries = [summary]
+        state.tool_monitor_results = [
+            {
+                "tool_call_id": execution_id,
+                "tool_name": "reply",
+                "tool_args": arguments,
+                "reply_schedule": result.metadata.get("reply_schedule"),
+                "reply_supplement": normalize_tool_record_value(result.metadata.get("reply_supplement")),
+                "tool_call_source": "planner_text",
+                "tool_call_source_label": "Planner 正文触发",
+                "success": result.success,
+                "summary": summary,
+                "started_at": started_at,
+                "ended_at": ended_at,
+                "duration_ms": (ended_at - started_at) * 1000,
+                "detail": normalize_tool_record_value(result.metadata.get("monitor_detail")),
+            }
+        ]
+        if result.success:
+            state.cycle_end = CycleEnd("planner_reply_end", "回复完成，已结束本轮思考。")
+        else:
+            logger.error(f"{self._runtime.log_prefix} Planner 正文触发回复失败：{summary}")
+            state.cycle_end = CycleEnd("planner_reply_failed", f"回复失败，已结束本轮思考：{summary}")
 
     async def _emit_planner_progress(
         self,
@@ -734,6 +582,7 @@ class MaisakaReasoningEngine:
             planner_selected_history_count=None,
             planner_tool_count=None,
             planner_content=response.content,
+            planner_reasoning=response.reasoning,
             planner_model_name=response.model_name,
             planner_tool_calls=response.tool_calls,
             planner_native_tool_calls=response.native_tool_calls,
@@ -741,6 +590,8 @@ class MaisakaReasoningEngine:
             planner_completion_tokens=response.completion_tokens,
             planner_total_tokens=response.total_tokens,
             planner_duration_ms=state.planner_duration_ms,
+            planner_started_at=state.planner_started_at,
+            planner_ended_at=state.planner_ended_at,
             planner_prompt_html_uri=response.prompt_html_uri,
             planner_prompt_cache_hit_tokens=response.prompt_cache_hit_tokens,
             planner_prompt_cache_miss_tokens=response.prompt_cache_miss_tokens,
@@ -748,6 +599,20 @@ class MaisakaReasoningEngine:
             tools=tools,
             active_tool_call_id=active_tool_call_id,
             run_id=self._runtime._monitor_run_id,
+        )
+
+    async def _emit_flow_step(
+        self, step: str, title: str, detail: str, *, cycle_id: Optional[int] = None
+    ) -> None:
+        """使用当前真实会话与运行标识记录轻量流程节点。"""
+
+        await emit_flow_step(
+            session_id=self._runtime.session_id,
+            run_id=self._runtime._monitor_run_id,
+            cycle_id=cycle_id,
+            step=step,
+            title=title,
+            detail=detail,
         )
 
     async def _run_planner_request(
@@ -762,18 +627,26 @@ class MaisakaReasoningEngine:
         """准备上下文并执行一次 Planner 请求。"""
 
         planner_started_at = time.time()
-        self._runtime._update_stage_status("Planner", "组织上下文并请求模型", round_text=round_text)
+        state.planner_started_at = planner_started_at
+        context_started = time.perf_counter()
+        self._runtime._update_stage_status("组织上下文", "正在准备：可用工具", round_text=round_text)
         action_tool_definitions, deferred_tools_reminder = await self._build_action_tool_definitions()
+        logger.info(f"{self._runtime.log_prefix} 上下文准备: 可用工具 耗时={time.perf_counter() - context_started:.2f}s")
+        self._runtime._update_stage_status("组织上下文", "正在准备：黑话参考", round_text=round_text)
+        jargon_started = time.perf_counter()
         try:
             jargon_reference_message = self._refresh_jargon_reference_message()
             if jargon_reference_message is not None:
                 logger.debug(f"{self._runtime.log_prefix} 已刷新黑话参考消息")
         except Exception as exc:
             logger.debug(f"{self._runtime.log_prefix} 黑话参考消息刷新失败，已跳过: {exc}")
+        finally:
+            logger.info(f"{self._runtime.log_prefix} 上下文准备: 黑话参考 耗时={time.perf_counter() - jargon_started:.2f}s")
         injected_user_messages = await self._build_planner_injected_user_messages(
             profile_message=trigger_message,
             source_messages=source_messages,
             deferred_tools_reminder=deferred_tools_reminder,
+            round_text=round_text,
         )
         if not resolve_enable_visual_planner():
             log_pending_image_recognition_before_text_planner(
@@ -781,33 +654,42 @@ class MaisakaReasoningEngine:
                 log_prefix=self._runtime.log_prefix,
             )
         logger.info(
-            f"{self._runtime.log_prefix} 开始思考: "
-            f"第 {round_index + 1} 轮"
-            f"消息数={len(self._runtime._chat_history)} "
-            f"开始时间={planner_started_at:.3f}"
+            f"{self._runtime.log_prefix} 上下文准备完成: 总耗时={time.perf_counter() - context_started:.2f}s"
+        )
+        logger.info(
+            f"{self._runtime.log_prefix} 开始思考 "
+            f"轮次={round_index + 1} 历史消息={len(self._runtime._chat_history)}"
         )
         state.current_stage_started_at = planner_started_at
         state.action_tool_count = len(action_tool_definitions)
-        response = await self._run_interruptible_planner(
-            injected_user_messages=injected_user_messages or None,
-            tail_user_messages=self._runtime.build_focus_tail_user_messages() or None,
-            tool_definitions=action_tool_definitions,
+        self._runtime._update_stage_status("Planner", "等待模型响应", round_text=round_text)
+        await self._emit_flow_step(
+            "planner.requested",
+            f"{round_text} · 请求模型",
+            f"上下文已整理：历史 {len(self._runtime._chat_history)} 条，可用工具 {state.action_tool_count} 个。",
+            cycle_id=self._runtime._cycle_counter,
         )
-        state.response = response
-        state.planner_duration_ms = (time.time() - planner_started_at) * 1000
-
-    async def _refresh_mid_term_memory_reference_for_continuation(self, cycle_detail: CycleDetail) -> None:
-        """在一次连续 Planner 循环开始前刷新一次聊天回想参考。"""
-
-        started_at = time.time()
         try:
-            mid_term_reference_message = await self._refresh_mid_term_memory_reference_message()
-            if mid_term_reference_message is not None:
-                logger.debug(f"{self._runtime.log_prefix} 已刷新聊天回想参考消息")
-        except Exception as exc:
-            logger.debug(f"{self._runtime.log_prefix} 聊天回想参考刷新失败，已跳过: {exc}", exc_info=True)
+            # 通知也可能包装为 SessionBackedMessage；引用目标必须是当前会话的非通知消息。
+            # 在请求前固定目标，避免生成期间的新消息改变本次回复的引用对象。
+            state.reply_target_message = next(
+                (
+                    message.original_message for message in reversed(self._runtime._chat_history)
+                    if isinstance(message, SessionBackedMessage)
+                    and message.original_message.session_id == self._runtime.session_id
+                    and not message.original_message.is_notify
+                ),
+                None,
+            )
+            response = await self._run_interruptible_planner(
+                injected_user_messages=injected_user_messages or None,
+                tail_user_messages=build_consecutive_wait_reminders(self._runtime._consecutive_wait_count),
+                tool_definitions=action_tool_definitions,
+            )
         finally:
-            cycle_detail.time_records["mid_term_memory_recall"] = time.time() - started_at
+            state.planner_ended_at = time.time()
+            state.planner_duration_ms = (state.planner_ended_at - planner_started_at) * 1000
+        state.response = response
 
     async def _handle_planner_interrupt(
         self,
@@ -827,6 +709,12 @@ class MaisakaReasoningEngine:
         )
         interrupted_at = time.time()
         interrupted_text = "Planner 收到新消息，开始重新决策"
+        partial_output = exc.partial_output
+        partial_text = partial_output.display_text() if partial_output is not None else ""
+        if partial_text:
+            interrupted_text = f"[Planner 已被新消息打断，以下为未完成输出]\n\n{partial_text}"
+        else:
+            interrupted_text += "（中断前尚未收到可展示的输出片段）"
         interrupted_response = ChatResponse(
             output_items=(
                 ContextItemBuilder()
@@ -842,9 +730,13 @@ class MaisakaReasoningEngine:
             built_message_count=0,
             completion_tokens=0,
             total_tokens=0,
-            model_name="",
+            model_name=partial_output.model_name if partial_output is not None else "",
             prompt_section=None,
         )
+        if partial_text:
+            # 保留被打断的分析，并先于下面接入的新消息写入上下文。
+            # 工具参数片段只作为文本保留，不创建可执行的 tool_call Item。
+            self._runtime._chat_history.extend(interrupted_response.raw_messages)
         extra_lines = [
             "状态：已被新消息打断",
             "打断位置：Planner 请求流式响应阶段",
@@ -860,14 +752,11 @@ class MaisakaReasoningEngine:
         if not self._runtime._has_pending_messages() or round_index >= self._runtime._max_internal_rounds:
             return PlannerInterruptResult(interrupted_response, extra_lines, [])
 
-        await self._runtime._wait_for_message_quiet_period()
-        self._runtime._mark_message_turn_unscheduled()
-        interrupted_messages = self._runtime._collect_pending_messages()
+        interrupted_messages = await self._ingest_pending_messages()
         if not interrupted_messages:
             return PlannerInterruptResult(interrupted_response, extra_lines, [])
 
-        await self._ingest_messages(interrupted_messages)
-        logger.info(f"{self._runtime.log_prefix} 保持活跃状态，直接重试 Planner: 回合={round_index + 2}")
+        logger.info(f"{self._runtime.log_prefix} 保持活跃状态，直接重试 Planner: 回合={round_index + 1}")
         return PlannerInterruptResult(interrupted_response, extra_lines, interrupted_messages)
 
     @staticmethod
@@ -886,10 +775,14 @@ class MaisakaReasoningEngine:
                 "tool_stop_after_execution",
                 "插件工具请求在当前批次执行完成后结束 Planner，并等待新消息。",
             )
+        if pause_tool_name == "stop":
+            return CycleEnd("planner_no_tool_end", "Planner 调用 stop，已结束本轮思考并等待新消息。")
         if pause_tool_name == "wait":
             return CycleEnd("tool_pause:wait", "Planner 调用 wait，本轮暂停并在等待结束后继续判断。")
-        if pause_tool_name == "wait_rest":
-            return CycleEnd("planner_wait_rest", "Planner 连续 wait 达到上限，本轮进入休息并等待新消息。")
+        if pause_tool_name == "reply:stop":
+            return CycleEnd("planner_no_tool_end", "回复已发送，after_reply=stop 结束本轮思考。")
+        if pause_tool_name == "reply:wait":
+            return CycleEnd("tool_pause:wait", "回复已发送，after_reply=wait 等待后继续判断。")
         if pause_tool_name:
             return CycleEnd(f"tool_pause:{pause_tool_name}", f"工具 {pause_tool_name} 要求暂停当前思考循环。")
         return CycleEnd("tool_pause", "工具要求暂停当前思考循环。")
@@ -900,21 +793,23 @@ class MaisakaReasoningEngine:
 
         return CycleEnd("max_rounds", f"已达到内部思考轮次上限 {max_internal_rounds}，本轮处理结束。")
 
-    async def _collect_pending_messages_before_next_round(self, round_index: int) -> list[SessionMessage]:
-        """在后续内部轮次开始前合并新消息。"""
+    async def _ingest_pending_messages(self) -> List[SessionMessage]:
+        """等消息防抖收齐本批后，把待处理消息接入当前思考循环。"""
 
-        if round_index <= 0 or not self._runtime._has_pending_messages():
+        if not self._runtime._has_pending_messages():
             return []
 
         await self._runtime._wait_for_message_quiet_period()
-        pending_round_messages = self._runtime._collect_pending_messages()
-        if pending_round_messages:
-            await self._ingest_messages(pending_round_messages)
-            logger.info(
-                f"{self._runtime.log_prefix} 内部轮次开始前已合并新消息: "
-                f"消息数={len(pending_round_messages)} 回合={round_index + 1}"
+        self._runtime._mark_message_turn_unscheduled()
+        messages = self._runtime._collect_pending_messages()
+        if messages:
+            await self._ingest_messages(messages)
+            logger.info(f"{self._runtime.log_prefix} 已将 {len(messages)} 条新消息接入当前思考")
+            await self._emit_flow_step(
+                "messages.merged", "接入新消息", f"已将 {len(messages)} 条新消息接入当前思考，供下一轮判断。",
+                cycle_id=self._runtime._cycle_counter,
             )
-        return pending_round_messages
+        return messages
 
     async def _start_cycle_round(self, round_index: int) -> tuple[CycleDetail, str]:
         """启动一轮内部循环。"""
@@ -923,6 +818,10 @@ class MaisakaReasoningEngine:
         round_text = f"第 {round_index + 1}/{self._runtime._max_internal_rounds} 轮"
         self._runtime._log_cycle_started(cycle_detail, round_index)
         self._runtime._update_stage_status("启动循环", f"循环 {cycle_detail.cycle_id}", round_text=round_text)
+        await self._emit_flow_step(
+            "cycle.started", f"开始{round_text}思考", "准备参考信息并整理本轮上下文。",
+            cycle_id=cycle_detail.cycle_id,
+        )
         return cycle_detail, round_text
 
     async def _refresh_visual_placeholders_for_cycle(self, cycle_detail: CycleDetail) -> None:
@@ -941,21 +840,26 @@ class MaisakaReasoningEngine:
         """消费触发信号并准备本轮初始消息与触发消息。"""
 
         message_triggered, timeout_triggered, proactive_triggered = self._drain_ready_turn_triggers(queued_trigger)
-        if proactive_triggered:
-            self._runtime._clear_focus_cooldown_wakeup_scheduled()
         silent_reply_frequency = self._runtime._is_reply_frequency_silent()
 
         if (
             self._runtime._agent_state == self._runtime._STATE_WAIT
             and not (timeout_triggered or proactive_triggered)
             and not silent_reply_frequency
+            and not (
+                message_triggered
+                and self._runtime._has_pending_messages()
+                and self._runtime._message_turn_scheduler.accepted_wait_started_at == self._runtime._pending_wait_started_at
+            )
         ):
             self._runtime._mark_message_turn_unscheduled()
             logger.debug(f"{self._runtime.log_prefix} 当前仍处于 wait 状态，忽略消息触发并继续等待超时")
             return TurnStartContext([], None, timeout_triggered, proactive_triggered, silent_reply_frequency)
 
-        if message_triggered:
+        if self._runtime._has_pending_messages():
+            # 消息、timeout、主动任务都可能带走消息缓存，不能绕过当前批次的防抖等待。
             await self._runtime._wait_for_message_quiet_period()
+        if message_triggered:
             self._runtime._mark_message_turn_unscheduled()
 
         cached_messages = self._runtime._collect_pending_messages() if self._runtime._has_pending_messages() else []
@@ -978,7 +882,11 @@ class MaisakaReasoningEngine:
             if trigger_message is None:
                 logger.warning(f"{self._runtime.log_prefix} 主动触发缺少对应的触发消息，跳过本轮")
                 return TurnStartContext([], None, timeout_triggered, proactive_triggered, silent_reply_frequency)
+            # 主动任务排队后，上一轮仍可能进入 wait；消费时必须再次恢复运行状态，
+            # 避免补齐 wait 结果并取消超时任务后，残留等待状态阻止后续消息调度。
+            self._runtime._enter_running_state()
             await self._runtime.restore_proactive_user_context()
+            await self._emit_flow_step("turn.proactive", "主动思考触发", "按已安排的主动触发继续判断当前对话。")
             if self._runtime._has_pending_wait_tool_call():
                 wait_message = self._build_wait_completed_message(has_new_messages=False)
                 continuation_logical_turn_id = wait_message.logical_turn_id
@@ -1018,11 +926,19 @@ class MaisakaReasoningEngine:
 
         completed_cycle = await self._end_cycle(cycle_detail)
         cycle_end = state.cycle_end
-        if round_index + 1 >= self._runtime._max_internal_rounds and cycle_end.reason in {"continue", "tool_continue"}:
+        if round_index + 1 >= self._runtime._max_internal_rounds and cycle_end.reason in {
+            "continue",
+            "tool_continue",
+        }:
             cycle_end = self._cycle_end_for_max_rounds(self._runtime._max_internal_rounds)
 
         response = state.response
+        # 记录先在线程中保存并回填监控数据，终端开关仅影响后续打印。
+        tool_prompt_panels = await asyncio.to_thread(
+            self._runtime._prepare_tool_prompt_records, state.tool_monitor_results
+        )
         self._runtime._render_context_usage_panel(
+            tool_prompt_panels=tool_prompt_panels,
             cycle_id=cycle_detail.cycle_id,
             time_records=dict(completed_cycle.time_records),
             planner_selected_history_count=response.selected_history_count if response is not None else None,
@@ -1044,6 +960,7 @@ class MaisakaReasoningEngine:
             planner_selected_history_count=response.selected_history_count if response is not None else None,
             planner_tool_count=response.tool_count if response is not None else None,
             planner_content=response.content if response is not None else None,
+            planner_reasoning=response.reasoning if response is not None else None,
             planner_model_name=response.model_name if response is not None else None,
             planner_tool_calls=response.tool_calls if response is not None else None,
             planner_native_tool_calls=response.native_tool_calls if response is not None else None,
@@ -1051,6 +968,8 @@ class MaisakaReasoningEngine:
             planner_completion_tokens=response.completion_tokens if response is not None else None,
             planner_total_tokens=response.total_tokens if response is not None else None,
             planner_duration_ms=state.planner_duration_ms if response is not None else None,
+            planner_started_at=state.planner_started_at,
+            planner_ended_at=state.planner_ended_at,
             planner_prompt_html_uri=response.prompt_html_uri if response is not None else None,
             planner_prompt_cache_hit_tokens=response.prompt_cache_hit_tokens if response is not None else None,
             planner_prompt_cache_miss_tokens=response.prompt_cache_miss_tokens if response is not None else None,
@@ -1062,8 +981,7 @@ class MaisakaReasoningEngine:
             end_reason=cycle_end.reason,
             end_detail=cycle_end.detail,
         )
-        self._runtime._idle_backoff.record_cycle_result(cycle_end.reason)
-        self._runtime.record_idle_cycle_result(cycle_end.reason)
+        self._runtime._message_turn_scheduler.record_cycle_result(cycle_end.reason)
         return cycle_end
 
     async def run_loop(self) -> None:
@@ -1071,14 +989,6 @@ class MaisakaReasoningEngine:
         try:
             while self._runtime._running:
                 queued_trigger = await self._runtime._internal_turn_queue.get()
-                if not focus_mode_manager.can_decide(
-                    self._runtime.session_id,
-                    is_group_chat=self._runtime.chat_stream.is_group_session,
-                ):
-                    self._runtime._mark_message_turn_unscheduled()
-                    logger.debug(f"{self._runtime.log_prefix} 当前不在 focus 状态，忽略已排队的 Maisaka 触发")
-                    continue
-
                 turn_start_context = await self._prepare_turn_start_context(queued_trigger)
                 if turn_start_context.trigger_message is None:
                     continue
@@ -1094,15 +1004,17 @@ class MaisakaReasoningEngine:
                     )
                     continue
 
+                trace_token = reasoning_trace_id.set(uuid.uuid4().hex)
                 try:
+                    self._turn_passive_replyer = global_config.experimental.passive_replyer
+                    self._runtime._chat_loop_service.passive_replyer_override = self._turn_passive_replyer
                     self._active_logical_turn_id = turn_start_context.logical_turn_id or uuid.uuid4().hex
                     if force_continue_reason := self._runtime._consume_forced_turn_reason():
                         logger.info(f"{self._runtime.log_prefix} {force_continue_reason}")
-                    planner_no_tool_count = 0
-                    mid_term_reference_refreshed = False
                     round_index = 0
                     while round_index < self._runtime._max_internal_rounds:
-                        pending_round_messages = await self._collect_pending_messages_before_next_round(round_index)
+                        # 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐。
+                        pending_round_messages = await self._ingest_pending_messages() if round_index > 0 else []
                         if pending_round_messages:
                             cached_messages = pending_round_messages
                             trigger_message = pending_round_messages[-1]
@@ -1111,9 +1023,7 @@ class MaisakaReasoningEngine:
                         state = CycleRuntimeState()
                         try:
                             await self._refresh_visual_placeholders_for_cycle(cycle_detail)
-                            if not mid_term_reference_refreshed:
-                                await self._refresh_mid_term_memory_reference_for_continuation(cycle_detail)
-                                mid_term_reference_refreshed = True
+                            await self._post_process_chat_history_after_cycle(cycle_detail, consume_references=False)
 
                             self._runtime._start_planner_continuation()
                             await self._run_planner_request(
@@ -1129,14 +1039,10 @@ class MaisakaReasoningEngine:
                             #     f"回合={round_index + 1} "
                             #     f"耗时={cycle_detail.time_records['planner']:.3f} 秒"
                             # )
-                            (
-                                planner_no_tool_count,
-                                should_break_after_action,
-                            ) = await self._handle_planner_response_actions(
+                            should_break_after_action = await self._handle_planner_response_actions(
                                 response=state.response,
                                 cycle_detail=cycle_detail,
                                 state=state,
-                                planner_no_tool_count=planner_no_tool_count,
                                 planner_extra_lines=state.planner_extra_lines,
                             )
                             if should_break_after_action:
@@ -1160,6 +1066,12 @@ class MaisakaReasoningEngine:
                             cached_messages = interrupt_result.retry_messages
                             trigger_message = interrupt_result.retry_messages[-1]
                             continue
+                        except asyncio.CancelledError:
+                            state.cycle_end = CycleEnd("cancelled", "思考任务已取消，本轮结束。")
+                            raise
+                        except Exception as exc:
+                            state.cycle_end = CycleEnd("cycle_error", f"本轮处理异常：{exc}")
+                            raise
                         finally:
                             state.cycle_end = await self._finalize_cycle(
                                 cycle_detail=cycle_detail,
@@ -1169,11 +1081,17 @@ class MaisakaReasoningEngine:
                             if not state.planner_interrupted:
                                 round_index += 1
                 finally:
+                    reasoning_trace_id.reset(trace_token)
+                    self._turn_passive_replyer = None
+                    self._runtime._chat_loop_service.passive_replyer_override = None
                     self._active_logical_turn_id = None
                     if self._runtime._agent_state == self._runtime._STATE_RUNNING:
                         self._runtime._enter_stop_state()
                     if self._runtime._running:
-                        self._runtime._update_stage_status("等待消息", "本轮处理结束")
+                        if self._runtime._agent_state == self._runtime._STATE_WAIT:
+                            self._runtime._update_stage_status("等待", "等待后继续思考")
+                        else:
+                            self._runtime._update_stage_status("空闲", "本轮处理结束")
         except asyncio.CancelledError:
             self._runtime._log_internal_loop_cancelled()
             raise
@@ -1198,7 +1116,7 @@ class MaisakaReasoningEngine:
         timeout_triggered: bool,
         proactive_triggered: bool,
     ) -> None:
-        """回复频率为 0 时只消费消息和维护历史，不进入 Planner。"""
+        """群聊频率为 0 或私聊暂停时只消费消息和维护历史，不进入 Planner。"""
 
         self._runtime._clear_forced_turn_state()
         if proactive_triggered:
@@ -1208,11 +1126,12 @@ class MaisakaReasoningEngine:
         cycle_detail = CycleDetail(cycle_id=self._runtime._cycle_counter)
         await self._post_process_chat_history_after_cycle(
             cycle_detail,
-            enable_mid_term_memory=False,
+            enable_compaction=False,
         )
         self._runtime._enter_stop_state()
+        silent_reason = self._runtime.scene.silent_reason
         if self._runtime._running:
-            self._runtime._update_stage_status("等待消息", "回复频率为 0，已静默接收消息")
+            self._runtime._update_stage_status("空闲", f"{silent_reason}，已静默接收消息")
 
         trigger_labels: list[str] = []
         if cached_messages:
@@ -1222,7 +1141,8 @@ class MaisakaReasoningEngine:
         if proactive_triggered:
             trigger_labels.append("proactive")
         trigger_text = " ".join(trigger_labels) if trigger_labels else "无新消息"
-        logger.info(f"{self._runtime.log_prefix} 回复频率为 0，静默接收并完成历史维护，不进入 Planner；{trigger_text}")
+        logger.info(f"{self._runtime.log_prefix} {silent_reason}，静默接收并完成历史维护，不进入 Planner；{trigger_text}")
+        await self._emit_flow_step("turn.silent", "本轮静默处理", f"{silent_reason}，已接收消息并维护历史，不进入思考。")
 
     def _drain_ready_turn_triggers(
         self,
@@ -1252,8 +1172,9 @@ class MaisakaReasoningEngine:
 
         return message_triggered, timeout_triggered, proactive_triggered
 
-    def _build_wait_completed_message(self, *, has_new_messages: bool) -> ToolResultMessage:
-        """构造 wait 完成后的工具结果消息。"""
+    def _build_wait_completed_message(self, *, has_new_messages: bool) -> ToolResultMessage | WaitCompletedMessage:
+        """独立 wait 补齐工具结果，reply 后的等待只追加上下文提醒。"""
+        after_reply = self._runtime._pending_wait_after_reply
         tool_call_id, logical_turn_id, elapsed_seconds, requested_seconds = self._runtime._consume_pending_wait_state()
         elapsed_text = f"{elapsed_seconds:.1f} 秒"
         requested_text = f"，原计划等待 {requested_seconds:.1f} 秒" if requested_seconds is not None else ""
@@ -1262,6 +1183,11 @@ class MaisakaReasoningEngine:
             if has_new_messages
             else f"等待已超时，实际等待 {elapsed_text}{requested_text}，期间没有收到新的用户输入。请基于现有上下文继续下一轮思考。"
         )
+        if after_reply:
+            return WaitCompletedMessage(
+                content=content, timestamp=datetime.now(), logical_turn_id=logical_turn_id,
+                remaining_uses_value=None, display_prefix="[回复后等待结束]",
+            )
         return ToolResultMessage(
             content=content,
             timestamp=datetime.now(),
@@ -1345,28 +1271,34 @@ class MaisakaReasoningEngine:
                     f"{self._runtime.log_prefix} 回填图片或表情二进制数据失败，Maisaka 将退化为文本占位: {result}"
                 )
 
-    async def _refresh_chat_history_visual_placeholders(self) -> int:
-        """在进入新一轮规划前，尝试用已完成的识图结果刷新历史占位。"""
+    async def _refresh_chat_history_visual_placeholders(
+        self,
+        *,
+        chat_history: Optional[List[LLMContextMessage]] = None,
+        wait_for_text_model: bool = False,
+    ) -> int:
+        """规划或回复前刷新历史占位；纯文本回复器可复用规划器的识图等待。"""
 
-        refreshed_count = await self._refresh_chat_history_visual_placeholders_once()
-        wait_seconds = self._resolve_image_recognition_wait_seconds()
+        history = self._runtime._chat_history if chat_history is None else chat_history
+        refreshed_count = await self._refresh_chat_history_visual_placeholders_once(history)
+        wait_seconds = self._resolve_image_recognition_wait_seconds(wait_for_text_model=wait_for_text_model)
         if wait_seconds <= 0:
             return refreshed_count
 
         deadline = time.monotonic() + wait_seconds
-        while has_pending_image_recognition(self._runtime._chat_history):
+        while await asyncio.to_thread(has_pending_image_recognition, history):
             remaining_seconds = deadline - time.monotonic()
             if remaining_seconds <= 0:
                 break
 
             await asyncio.sleep(min(0.2, remaining_seconds))
-            refreshed_count += await self._refresh_chat_history_visual_placeholders_once()
+            refreshed_count += await self._refresh_chat_history_visual_placeholders_once(history)
 
-        refreshed_count += await self._refresh_chat_history_visual_placeholders_once()
+        refreshed_count += await self._refresh_chat_history_visual_placeholders_once(history)
         return refreshed_count
 
-    def _resolve_image_recognition_wait_seconds(self) -> float:
-        if resolve_enable_visual_planner():
+    def _resolve_image_recognition_wait_seconds(self, *, wait_for_text_model: bool = False) -> float:
+        if not wait_for_text_model and resolve_enable_visual_planner():
             return 0.0
 
         try:
@@ -1376,9 +1308,9 @@ class MaisakaReasoningEngine:
 
         return max(0.0, wait_seconds)
 
-    async def _refresh_chat_history_visual_placeholders_once(self) -> int:
+    async def _refresh_chat_history_visual_placeholders_once(self, chat_history: List[LLMContextMessage]) -> int:
         return await refresh_chat_history_visual_placeholders(
-            chat_history=self._runtime._chat_history,
+            chat_history=chat_history,
             build_history_message=lambda message, source_kind: self._build_history_message(
                 message,
                 source_kind=source_kind,
@@ -1411,8 +1343,6 @@ class MaisakaReasoningEngine:
     def _start_cycle(self) -> CycleDetail:
         """开始一轮 Maisaka 思考循环。"""
         self._runtime._cycle_counter += 1
-        focus_mode_manager.mark_cycle(self._runtime.session_id)
-        self._runtime._arm_focus_cooldown_timer()
         self._runtime._current_cycle_detail = CycleDetail(cycle_id=self._runtime._cycle_counter)
         self._runtime._current_cycle_detail.thinking_id = f"maisaka_tid{round(time.time(), 2)}"
         return self._runtime._current_cycle_detail
@@ -1434,80 +1364,95 @@ class MaisakaReasoningEngine:
         self,
         cycle_detail: CycleDetail,
         *,
-        enable_mid_term_memory: bool = True,
+        enable_compaction: bool = True,
+        consume_references: bool = True,
     ) -> None:
-        """裁剪聊天历史，保证用户消息数量不超过配置限制。"""
+        """生成滚动状态后提交裁切；压缩失败也丢弃本批旧原文，继续处理近期消息。"""
+        original_history = list(self._runtime._chat_history)
         process_result = process_chat_history_after_cycle(
             self._runtime._chat_history,
             max_context_size=self._runtime._max_context_size,
-            enable_context_optimization=global_config.chat.enable_context_optimization,
             pending_call_ids=self._runtime._get_pending_wait_tool_call_ids(),
+            consume_references=consume_references,
         )
         if process_result.changed_count <= 0:
             return
 
+        trimmed_chat_count = sum(message.count_in_context for message in process_result.removed_messages)
         final_history = process_result.history
-        if process_result.removed_messages and enable_mid_term_memory and bool(global_config.chat.mid_term_memory):
-            logger.info(
-                f"{self._runtime.log_prefix} 开始生成聊天回想: "
-                f"裁切上下文消息数量={len(process_result.removed_messages)} "
-                f"保留上限={global_config.chat.mid_term_memory_lenth}"
-            )
+        if process_result.removed_messages and enable_compaction:
+            planner_snapshot = self._runtime._chat_loop_service.planner_request_snapshot
+            if planner_snapshot is None:
+                # 冷启动或上次摘要提交后必须先完成一次 Planner 请求，才能复用真实前缀。
+                return
             summary_started_at = time.time()
+            previous_summary = next(
+                (message for message in reversed(original_history) if isinstance(message, ContextSummaryMessage)), None
+            )
+            summary: ContextSummaryMessage | None = None
             try:
-                summary_result = await build_mid_term_memory_message(
+                summary = await build_context_summary(
                     process_result.removed_messages,
+                    planner_snapshot=planner_snapshot,
+                    previous_summary=previous_summary,
+                    recent_messages=[message for message in final_history if not isinstance(message, ContextSummaryMessage)],
                     session_id=self._runtime.session_id,
-                    log_prefix=self._runtime.log_prefix,
                 )
             except Exception:
-                logger.exception(f"{self._runtime.log_prefix} 生成聊天回想失败，已跳过本次插入")
-                summary_result = None
-
-            cycle_detail.time_records["mid_term_memory"] = time.time() - summary_started_at
-            if summary_result is not None:
-                final_history = insert_mid_term_memory_message(
-                    final_history,
-                    summary_result.message,
-                    max_summary_count=max(0, int(global_config.chat.mid_term_memory_lenth)),
-                )
+                logger.exception(f"{self._runtime.log_prefix} 上下文压缩失败，将直接裁切本批旧原文，不再重试本批内容")
+            finally:
+                cycle_detail.time_records["context_compaction"] = time.time() - summary_started_at
+            # /clear 或其他异步操作可能在模型请求期间改变历史，禁止用旧快照覆盖新状态。
+            if len(self._runtime._chat_history) != len(original_history) or any(
+                current is not original
+                for current, original in zip(self._runtime._chat_history, original_history, strict=True)
+            ):
+                logger.info(f"{self._runtime.log_prefix} 压缩期间上下文已改变，取消提交旧快照")
+                return
+            if summary is not None:
+                final_history = [summary, *[
+                    message for message in final_history if not isinstance(message, ContextSummaryMessage)
+                ]]
                 logger.info(
-                    f"{self._runtime.log_prefix} 已生成聊天回想: "
-                    f"msg_id={summary_result.message.message_id} "
-                    f"模型={summary_result.model_name or 'unknown'} "
-                    f"token={summary_result.total_tokens}"
+                    f"{self._runtime.log_prefix} 上下文压缩完成: "
+                    f"压缩={trimmed_chat_count} 保留原文={process_result.remaining_context_count} "
+                    f"摘要字符={len(summary.content)}"
                 )
-            else:
-                logger.debug(f"{self._runtime.log_prefix} 聊天回想未产生可插入内容，已跳过")
-        elif process_result.removed_messages:
-            logger.debug(f"{self._runtime.log_prefix} 聊天回想未启用，跳过生成")
-
-        removed_behavior_reference_messages: list[ReferenceMessage] = []
-        if process_result.removed_messages:
-            removed_behavior_reference_messages = self._clear_behavior_reference_messages(final_history)
-            try:
-                reference_message = await self._select_behavior_reference_message(
-                    selected_history=final_history,
-                    target_history=final_history,
-                )
-                if reference_message is not None:
-                    logger.debug(f"{self._runtime.log_prefix} 裁切后行为表现参考已刷新")
-            except Exception as exc:
-                logger.debug(f"{self._runtime.log_prefix} 裁切后行为表现参考刷新失败，已跳过: {exc}")
+            # 失败时直接提交已规划的裁切，保留上一份有效摘要；清除快照后不再尝试同一批旧原文。
 
         self._runtime._chat_history = final_history
-        if process_result.removed_count <= 0:
+        if process_result.removed_messages:
+            self._runtime._chat_loop_service.planner_request_snapshot = None
+        if trimmed_chat_count <= 0:
             return
+        # 常规收尾不单独展示，仅在确实裁切上下文后记录附加处理。
+        # 捕获本次运行与轮次，后台学习结束时可能已进入下一轮。
+        run_id = self._runtime._monitor_run_id
+        cycle_id = cycle_detail.cycle_id
+
+        async def report_learning(learning: Dict[str, Any]) -> None:
+            await emit_flow_step(
+                session_id=self._runtime.session_id,
+                run_id=run_id,
+                cycle_id=cycle_id,
+                step="context.trimmed",
+                title="上下文裁切",
+                detail=f"已裁切 {trimmed_chat_count} 条，保留 {process_result.remaining_context_count} 条上下文。",
+                trim={
+                    "removed_count": trimmed_chat_count,
+                    "remaining_count": process_result.remaining_context_count,
+                    "learning": learning,
+                },
+            )
+
+        await report_learning({"status": "pending", "detail": "准备学习", "learners": []})
         self._runtime._log_history_trimmed(
-            process_result.removed_count,
+            trimmed_chat_count,
             process_result.remaining_context_count,
         )
-        if process_result.removed_messages:
-            learning_messages = [
-                *removed_behavior_reference_messages,
-                *process_result.removed_messages,
-            ]
-            asyncio.create_task(self._runtime._trigger_trimmed_history_learning(learning_messages))
+        await self._runtime._trigger_trimmed_history_learning(
+            process_result.removed_messages, on_progress=report_learning
+        )
 
     @staticmethod
     def _calculate_similarity(text1: str, text2: str) -> float:
@@ -1705,12 +1650,14 @@ class MaisakaReasoningEngine:
         result: ToolExecutionResult,
         *,
         append_post_history: bool = True,
+        condensed_content: str | None = None,
     ) -> None:
         """将统一工具执行结果写回 Maisaka 历史。
 
         Args:
             tool_call: 原始工具调用对象。
             result: 统一工具执行结果。
+            condensed_content: 子代理整理后的结果文本；提供时代替原始结果文本写入历史。
         """
 
         if (
@@ -1720,7 +1667,11 @@ class MaisakaReasoningEngine:
         ):
             return
 
-        history_content = self._build_tool_result_history_content(tool_call, result)
+        history_content = self._build_tool_result_history_content(
+            tool_call,
+            result,
+            condensed_content=condensed_content,
+        )
         if not history_content:
             history_content = "工具执行成功。" if result.success else f"工具 {tool_call.func_name} 执行失败。"
 
@@ -1856,10 +1807,16 @@ class MaisakaReasoningEngine:
             label_parts.append(f"source_url={source_url}")
         return " / ".join(label_parts)
 
-    def _build_tool_result_history_content(self, tool_call: ToolCall, result: ToolExecutionResult) -> str:
+    def _build_tool_result_history_content(
+        self,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+        *,
+        condensed_content: str | None = None,
+    ) -> str:
         """构造纯文本 tool result，并在其中引用拆分出去的媒体索引。"""
 
-        history_content = result.get_history_content()
+        history_content = result.get_history_content() if condensed_content is None else condensed_content
         media_items = self._iter_tool_result_media_items(result)
         if not media_items:
             return history_content
@@ -1938,20 +1895,30 @@ class MaisakaReasoningEngine:
     def _append_tool_result_media_messages(self, tool_call: ToolCall, result: ToolExecutionResult) -> None:
         """将 tool result 中的媒体项拆分为紧跟其后的 user context message。"""
 
+        for message in self._build_tool_result_media_messages(tool_call, result):
+            self._schedule_tool_result_media_image_recognition(message.raw_message, message.message_id)
+            self._runtime._chat_history.append(message)
+
+    def _build_tool_result_media_messages(
+        self, tool_call: ToolCall, result: ToolExecutionResult,
+    ) -> List[ToolResultMediaMessage]:
+        """构造关联工具调用的媒体消息，主 Planner 和子 Agent 共用，调用方决定写入哪份历史。"""
+        messages: List[ToolResultMediaMessage] = []
         for item_index, item in self._iter_tool_result_media_items(result):
             media_sequence = self._build_tool_result_media_message_sequence(tool_call, item_index, item)
             visible_text = self._build_tool_result_media_visible_text(tool_call, item_index, item, media_sequence)
             media_index = self._build_tool_result_media_index(tool_call, item_index)
-            self._schedule_tool_result_media_image_recognition(media_sequence, media_index)
-            self._runtime._chat_history.append(
-                SessionBackedMessage(
+            messages.append(
+                ToolResultMediaMessage(
+                    tool_call_id=tool_call.call_id,
+                    session_id=self._runtime.session_id,
                     raw_message=media_sequence,
                     visible_text=visible_text,
                     timestamp=datetime.now(),
                     message_id=media_index,
-                    source_kind=TOOL_RESULT_MEDIA_SOURCE_KIND,
                 )
             )
+        return messages
 
     def _schedule_tool_result_media_image_recognition(self, media_sequence: MessageSequence, media_index: str) -> None:
         """为 tool result 拆出的图片消息调度后台识图。"""
@@ -1987,13 +1954,18 @@ class MaisakaReasoningEngine:
                     f"media_index={media_index} image_hash={image.binary_hash} error={exc}"
                 )
 
-    def _build_tool_result_summary(self, tool_call: ToolCall, result: ToolExecutionResult) -> str:
-        """构建用于终端展示的工具结果摘要。"""
+    def _build_tool_result_summary(
+        self,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+        condensed_content: Optional[str] = None,
+    ) -> str:
+        """构建终端和监控共用的摘要，优先展示写入 Planner 历史的整理结果。"""
 
         normalized_tool_call = format_tool_call_for_display(tool_call)
         source_label = str(normalized_tool_call.get("source_label") or "").strip()
         source_text = f" [{source_label}]" if source_label else ""
-        history_content = result.get_history_content().strip()
+        history_content = (result.get_history_content() if condensed_content is None else condensed_content).strip()
         if not history_content:
             history_content = result.error_message.strip()
         if not history_content:
@@ -2028,6 +2000,7 @@ class MaisakaReasoningEngine:
         result: ToolExecutionResult,
         duration_ms: float,
         tool_spec: Optional[ToolSpec] = None,
+        condensed_content: Optional[str] = None,
     ) -> dict[str, Any]:
         """构建 planner.finalized 中单个工具的监控结果。"""
 
@@ -2059,9 +2032,10 @@ class MaisakaReasoningEngine:
             "tool_call_source": tool_call_source,
             "tool_call_source_label": tool_call_source_label,
             "success": result.success,
+            "error_message": result.error_message,
             "stop_after_execution": result.stop_after_execution,
             "duration_ms": round(duration_ms, 2),
-            "summary": self._build_tool_result_summary(tool_call, result),
+            "summary": self._build_tool_result_summary(tool_call, result, condensed_content),
             "detail": normalized_detail,
             "card": normalized_card,
             "sub_cards": normalized_sub_cards,
@@ -2080,7 +2054,7 @@ class MaisakaReasoningEngine:
 
     @staticmethod
     def _build_tool_monitor_images(result: ToolExecutionResult) -> List[Dict[str, str]]:
-        """同时提取统一内容项和工具追加上下文中的图片（如表情候选拼图）。"""
+        """同时提取统一内容项和工具追加上下文中的图片。"""
 
         items = list(result.content_items)
         for message in result.post_history_messages:
@@ -2105,16 +2079,18 @@ class MaisakaReasoningEngine:
         result: ToolExecutionResult,
         duration_ms: float,
         tool_spec: Optional[ToolSpec],
+        condensed_content: Optional[str] = None,
     ) -> None:
         """追加终端摘要和监控详情。"""
 
-        tool_result_summaries.append(self._build_tool_result_summary(tool_call, result))
+        tool_result_summaries.append(self._build_tool_result_summary(tool_call, result, condensed_content))
         monitor_result = self._build_tool_monitor_result(
             tool_call,
             invocation,
             result,
             duration_ms,
             tool_spec=tool_spec,
+            condensed_content=condensed_content,
         )
         if result.content_items or result.post_history_messages:
             # 图片解码与缩放不能占用 bot 事件循环；每个工具结果只处理一次。
@@ -2145,10 +2121,14 @@ class MaisakaReasoningEngine:
         tool_monitor_results: list[dict[str, Any]] = []
         deferred_post_history_messages: list[LLMContextMessage] = []
         should_stop_after_execution = False
+        reply_pause = ""
+        reply_wait_seconds = 30
+        reply_pause_call_id = ""
 
         if self._runtime._tool_registry is None:
             total_tool_count = len(tool_calls)
             for tool_index, tool_call in enumerate(tool_calls, start=1):
+                tool_started_at = time.time()
                 self._log_tool_call_source(tool_call, stage=f"Planner {tool_index}/{total_tool_count}")
                 invocation = self._build_tool_invocation(tool_call, latest_thought)
                 result = ToolExecutionResult(
@@ -2156,6 +2136,7 @@ class MaisakaReasoningEngine:
                     success=False,
                     error_message="统一工具注册表尚未初始化。",
                 )
+                tool_ended_at = time.time()
                 await self._record_tool_execution_effects(invocation, result, None)
                 self._append_tool_execution_result(tool_call, result)
                 await self._append_tool_display_results(
@@ -2167,6 +2148,7 @@ class MaisakaReasoningEngine:
                     duration_ms=0.0,
                     tool_spec=None,
                 )
+                tool_monitor_results[-1].update(started_at=tool_started_at, ended_at=tool_ended_at)
                 next_call_id = tool_calls[tool_index].call_id if tool_index < total_tool_count else ""
                 await self._emit_planner_progress(cycle_detail, state, tool_monitor_results, next_call_id)
             return False, "", tool_result_summaries, tool_monitor_results
@@ -2187,18 +2169,67 @@ class MaisakaReasoningEngine:
             )
             tool_started_at = time.time()
             is_unexpanded_tool = not self._runtime.is_action_tool_currently_available(invocation.tool_name)
-            result = await self._runtime._tool_registry.invoke(invocation, execution_context)
+            if reply_pause:
+                # 同批调用都必须有回执，但回复要求结束后不能再执行其余工具。
+                result = ToolExecutionResult(
+                    tool_name=invocation.tool_name, success=False,
+                    error_message=f"未执行：前面的 reply 已选择 after_reply={reply_pause}。",
+                )
+            elif not self.passive_replyer_enabled and invocation.tool_name == "stop":
+                result = ToolExecutionResult(
+                    tool_name=invocation.tool_name, success=False,
+                    error_message="普通模式不提供 stop 工具；静默结束时不调用工具。",
+                )
+            elif self.passive_replyer_enabled and invocation.tool_name == "reply":
+                result = ToolExecutionResult(
+                    tool_name="reply", success=False,
+                    error_message="被动式 replyer 不调用 reply；决定发言时请直接输出回复指导，不要调用工具。",
+                )
+            else:
+                result = await self._runtime._tool_registry.invoke(invocation, execution_context)
+            tool_ended_at = time.time()
             if invocation.tool_name != "wait":
                 self._runtime._reset_consecutive_wait_count(f"tool:{invocation.tool_name}")
+            if result.success and invocation.tool_name == "reply" and not self.passive_replyer_enabled:
+                after_reply = result.metadata.get("after_reply", "continue")
+                if after_reply in {"stop", "wait"}:
+                    reply_pause = after_reply
+                    reply_pause_call_id = tool_call.call_id
+                    reply_wait_seconds = result.metadata.get("wait_seconds", 30)
             if is_unexpanded_tool and not result.success:
                 result = self._append_deferred_tool_parameter_hint(result)
-            tool_duration_ms = (time.time() - tool_started_at) * 1000
+            tool_duration_ms = (tool_ended_at - tool_started_at) * 1000
             await self._record_tool_execution_effects(
                 invocation,
                 result,
                 tool_spec_map.get(invocation.tool_name),
             )
-            self._append_tool_execution_result(tool_call, result, append_post_history=False)
+            # 超长结果先交给子代理按当前意图整理，Planner 历史里只留整理后的结论
+            condensed_content: str | None = None
+            raw_history_content = result.get_history_content()
+            if global_config.capabilities.tool_result_condense and should_condense_tool_result(
+                invocation.tool_name,
+                raw_history_content,
+                success=result.success,
+                # 统一联网工具已保存原文并生成预览；原始 MCP 工具仍沿用原来的整理逻辑。
+                already_previewed=result.metadata.get("web_result_preview") is True,
+            ):
+                self._runtime._update_stage_status(
+                    f"工具结果整理 · {invocation.tool_name}",
+                    f"原始结果 {len(raw_history_content)} 字",
+                )
+                condensed_content = await condense_tool_result(
+                    self._runtime,
+                    tool_call,
+                    raw_history_content,
+                    latest_thought,
+                )
+            self._append_tool_execution_result(
+                tool_call,
+                result,
+                append_post_history=False,
+                condensed_content=condensed_content,
+            )
             deferred_post_history_messages.extend(
                 message for message in result.post_history_messages if isinstance(message, LLMContextMessage)
             )
@@ -2210,8 +2241,10 @@ class MaisakaReasoningEngine:
                 result=result,
                 duration_ms=tool_duration_ms,
                 tool_spec=tool_spec_map.get(invocation.tool_name),
+                condensed_content=condensed_content,
             )
-            next_call_id = tool_calls[tool_index].call_id if tool_index < total_tool_count else ""
+            tool_monitor_results[-1].update(started_at=tool_started_at, ended_at=tool_ended_at)
+            next_call_id = tool_calls[tool_index].call_id if tool_index < total_tool_count and not reply_pause else ""
             await self._emit_planner_progress(cycle_detail, state, tool_monitor_results, next_call_id)
 
             if not result.success and tool_call.func_name == "reply":
@@ -2220,17 +2253,24 @@ class MaisakaReasoningEngine:
             if result.success and result.stop_after_execution:
                 should_stop_after_execution = True
 
-            if bool(result.metadata.get("wait_rest", False)):
-                self._runtime._reset_consecutive_wait_count("wait_limit_rest")
-                self._runtime._enter_stop_state()
-                self._append_tool_post_history_messages(deferred_post_history_messages)
-                return True, "wait_rest", tool_result_summaries, tool_monitor_results
-
             if bool(result.metadata.get("pause_execution", False)):
                 self._append_tool_post_history_messages(deferred_post_history_messages)
                 return True, invocation.tool_name, tool_result_summaries, tool_monitor_results
 
         self._append_tool_post_history_messages(deferred_post_history_messages)
+        if reply_pause:
+            if reply_pause == "stop":
+                self._runtime._end_planner_continuation()
+                self._runtime._enter_stop_state()
+            else:
+                # reply 的成功回执已即时闭合；等待到期只追加提醒，不重复生成工具结果。
+                self._runtime._enter_counted_wait_state(
+                    seconds=reply_wait_seconds,
+                    tool_call_id=reply_pause_call_id,
+                    logical_turn_id=self._active_logical_turn_id,
+                    after_reply=True,
+                )
+            return True, f"reply:{reply_pause}", tool_result_summaries, tool_monitor_results
         if should_stop_after_execution:
             self._runtime._end_planner_continuation()
             self._runtime._reset_consecutive_wait_count("tool_stop_after_execution")

@@ -30,9 +30,11 @@ function readThinkingState(extraParams: Record<string, unknown> | undefined): Th
   if (typeof params.thinking_budget === 'number') {
     return params.thinking_budget === 0 ? 'off' : 'on'
   }
-  const effort = isRecord(params.reasoning) ? params.reasoning.effort : params.reasoning_effort
+  const effort = isRecord(params.reasoning) && typeof params.reasoning.effort === 'string'
+    ? params.reasoning.effort
+    : params.reasoning_effort
   if (typeof effort === 'string') {
-    return effort === 'none' ? 'off' : 'on'
+    return effort === 'none' || effort === 'off' ? 'off' : 'on'
   }
   return 'unset'
 }
@@ -95,7 +97,7 @@ export function TaskRuntimeSummary({
   ]
 
   return (
-    <dl className="space-y-2 border-t pt-4 text-sm" aria-label={`${taskName} 运行方式`}>
+    <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label={`${taskName} 运行方式`}>
       {rows.map((row) => (
         <div key={row.label} className="flex items-baseline gap-3">
           <dt className="text-muted-foreground w-10 shrink-0">{row.label}</dt>

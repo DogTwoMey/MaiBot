@@ -10,10 +10,12 @@
 """
 
 from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
+from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Protocol, Set, Tuple, cast
 
 import asyncio
 import contextlib
@@ -29,11 +31,13 @@ import tomllib
 from pydantic import TypeAdapter, ValidationError
 import tomlkit
 
+from src.common.paths import get_instance_root, resolve_plugin_config_path
 from src.plugin_runtime.local_sdk import activate_local_sdk_import_path
 
 activate_local_sdk_import_path()
 
 from src.common.logger import get_console_handler, get_logger, initialize_logging
+from src.common.startup_diagnostics import diagnostic_stage
 from src.config.config_utils import compare_versions
 from src.plugin_runtime import (
     ENV_BLOCKED_PLUGIN_REASONS,
@@ -61,25 +65,37 @@ from src.plugin_runtime.protocol.envelope import (
     LLMProviderDeclaration,
     LLMProviderInvokePayload,
     RegisterPluginPayload,
+    RegisterPluginResultPayload,
     ReloadPluginPayload,
     ReloadPluginResultPayload,
     ReloadPluginsPayload,
     ReloadPluginsResultPayload,
     RunnerReadyPayload,
+    RunnerStartupProgressPayload,
     UnloadPluginsPayload,
     UnloadPluginsResultPayload,
     UnregisterPluginPayload,
     ValidatePluginConfigPayload,
     ValidatePluginConfigResultPayload,
 )
-from src.plugin_runtime.protocol.errors import ErrorCode
+from src.plugin_runtime.protocol.errors import ErrorCode, RPCError
 from src.plugin_runtime.runner.log_handler import RunnerIPCLogHandler
 from src.plugin_runtime.runner.plugin_paths import PluginPaths, build_plugin_paths
 from src.plugin_runtime.runner.plugin_loader import PluginCandidate, PluginLoader, PluginMeta
 from src.plugin_runtime.runner.rpc_client import RPCClient
+from src.plugin_runtime.config_widgets import ConfigWidgetProvider, invoke_widget_action, read_widget_snapshot
+from src.plugin_runtime.desktop_pet_buttons import (
+    DesktopPetButtonProvider,
+    invoke_button,
+    read_button_declarations,
+    read_button_snapshot,
+)
 from src.plugin_runtime.webui_schema import load_webui_extension
 
+from .task_registry import PluginTaskRegistry
+
 logger = get_logger("plugin_runtime.runner.main")
+_file_scope: ContextVar[str] = ContextVar("file_scope", default="")
 
 _PLUGIN_ALLOWED_RAW_HOST_METHODS = frozenset(
     {
@@ -89,8 +105,11 @@ _PLUGIN_ALLOWED_RAW_HOST_METHODS = frozenset(
     }
 )
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROJECT_ROOT = get_instance_root()
 _RUNNER_DEBUG_FILE_PATH = _PROJECT_ROOT / "logs" / "plugin_runtime_debug" / "runner_rpc_debug.jsonl"
+
+# 只并发异步初始化，不并发修改 sys.path / sys.modules 的插件导入。
+_PLUGIN_STARTUP_CONCURRENCY = 4
 
 # 宿主保留键 [plugin].enabled 的校验器，规则与配置模型声明 ``enabled: bool`` 时一致
 _PLUGIN_ENABLED_VALIDATOR: TypeAdapter[bool] = TypeAdapter(bool)
@@ -199,6 +218,7 @@ class PluginConfigNormalizationResult:
     normalized_config: Dict[str, Any]
     changed: bool
     should_persist: bool
+    config_error: str = ""
 
 
 class PluginConfigVersionError(ValueError):
@@ -400,6 +420,30 @@ def _disable_runner_console_logging() -> None:
         root_logger.removeHandler(console_handler)
 
 
+def _managed_plugin_request(
+    handler: Callable[["PluginRunner", Envelope], Awaitable[Envelope]],
+) -> Callable[["PluginRunner", Envelope], Awaitable[Envelope]]:
+    """统一限制业务入口，并把卸载导致的取消返回给宿主，避免 RPC 再次超时。"""
+
+    @wraps(handler)
+    async def managed(self: "PluginRunner", envelope: Envelope) -> Envelope:
+        plugin_id = envelope.plugin_id
+        if self._shutting_down or self._plugin_tasks.is_stopping(plugin_id):
+            return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, f"插件 {plugin_id} 正在停止，拒绝新调用")
+        try:
+            with self._plugin_tasks.scope(plugin_id):
+                response = await handler(self, envelope)
+                if self._plugin_tasks.is_stopping(plugin_id):
+                    return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, f"插件 {plugin_id} 停止，调用已取消")
+                return response
+        except asyncio.CancelledError:
+            if not self._plugin_tasks.is_stopping(plugin_id):
+                raise
+            return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, f"插件 {plugin_id} 停止，调用已取消")
+
+    return managed
+
+
 class PluginRunner:
     """插件 Runner
 
@@ -456,8 +500,11 @@ class PluginRunner:
         self._loader.set_blocked_plugin_reasons(self._blocked_plugin_reasons)
         self._start_time: float = time.monotonic()
         self._shutting_down: bool = False
-        self._reload_lock: asyncio.Lock = asyncio.Lock()
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
+        self._config_widget_locks: Dict[str, asyncio.Lock] = {}
+        self._desktop_pet_button_locks: Dict[Tuple[str, str], asyncio.Lock] = {}
         self._inflight_rpcs: Dict[int, InFlightRPC] = {}
+        self._plugin_tasks = PluginTaskRegistry()
 
         # IPC 日志 Handler：握手成功后安装，将所有 stdlib logging 转发到 Host
         self._log_handler: Optional[RunnerIPCLogHandler] = None
@@ -465,6 +512,12 @@ class PluginRunner:
 
     async def run(self) -> None:
         """运行 Runner 主循环。"""
+        # 覆盖整个 Runner 生命周期，插件后台任务之后再创建的子任务也要保留归属。
+        with self._plugin_tasks.task_factory():
+            await self._run()
+
+    async def _run(self) -> None:
+        """连接宿主、加载插件并维持运行。"""
         # 1. 连接 Host
         logger.info(f"Runner 启动，连接 Host: {self._host_address}")
         ok = await self._rpc_client.connect_and_handshake()
@@ -478,29 +531,110 @@ class PluginRunner:
         # 3. 注册方法处理器
         self._register_handlers()
 
-        # 3. 加载插件
-        plugins = self._loader.discover_and_load(
-            self._plugin_dirs,
-            extra_available=self._external_available_plugins,
-        )
-        logger.debug(f"已加载 {len(plugins)} 个插件")
+        # 3. 按依赖顺序导入，再并发初始化；重载请求必须等本轮初始化结束。
+        async with self._lifecycle_lock:
+            plugins = self._loader.discover_and_load(
+                self._plugin_dirs,
+                extra_available=self._external_available_plugins,
+            )
+            logger.debug(f"已加载 {len(plugins)} 个插件")
 
-        # 4. 注入 PluginContext + 调用 on_load 生命周期钩子
+            # 4. 注入 PluginContext + 调用 on_load 生命周期钩子
+            with diagnostic_stage("runner.plugin_initialization"):
+                ready = await self._initialize_plugins(plugins)
+            await self._notify_ready(
+                ready.loaded_plugins,
+                ready.failed_plugins,
+                ready.inactive_plugins,
+                ready.explicitly_disabled_plugins,
+                ready.failed_plugin_reasons,
+            )
+
+        # 5. 等待直到收到关停信号
+        await self._wait_for_shutdown()
+
+        # 6. 卸载 IPC 日志 Handler 并刷空剩余缓冲，然后断开连接
+        logger.debug("Runner 开始关停")
+        await self._uninstall_log_handler()
+        await self._rpc_client.disconnect()
+        logger.debug("Runner 已退出")
+
+    async def _wait_for_shutdown(self) -> None:
+        """维持 Runner 生命周期，直到宿主关停或进程任务取消。"""
+        with contextlib.suppress(asyncio.CancelledError):
+            while not self._shutting_down:
+                await asyncio.sleep(1.0)
+
+    async def _initialize_plugins(
+        self, plugins: List[PluginMeta], *, max_concurrency: int = _PLUGIN_STARTUP_CONCURRENCY,
+    ) -> RunnerReadyPayload:
+        """对已完成拓扑排序和导入的插件按依赖就绪调度，返回整轮初始化结果。
+
+        等待依赖不占并发名额，依赖完成后立即竞争空闲名额，不等待同批其他插件。
+        所有任务共享同一事件循环；版本可用性只在 on_load 成功后发布。
+        """
+        if max_concurrency < 1:
+            raise ValueError("插件初始化并发数必须大于 0")
+
         failed_plugin_reasons: Dict[str, str] = dict(self._loader.failed_plugins)
         failed_plugins: Set[str] = set(failed_plugin_reasons)
         inactive_plugins: Set[str] = set()
         explicitly_disabled_plugins: Set[str] = set()
+        config_error_plugins: Set[str] = set()
         available_plugin_versions: Dict[str, str] = dict(self._external_available_plugins)
-        for meta in plugins:
-            preparation_status = self._prepare_plugin_activation(meta)
+        semaphore = asyncio.Semaphore(max_concurrency)
+        tasks: Dict[str, asyncio.Task[None]] = {}
+        completed: Set[str] = set()
+
+        def record_failure(meta: PluginMeta) -> None:
+            if not meta.load_error:
+                raise RuntimeError(f"插件 {meta.plugin_id} 初始化失败，但没有记录失败原因")
+            failed_plugins.add(meta.plugin_id)
+            failed_plugin_reasons[meta.plugin_id] = meta.load_error
+
+        def build_progress() -> RunnerStartupProgressPayload:
+            return RunnerStartupProgressPayload(
+                loaded_plugins=[
+                    meta.plugin_id for meta in plugins
+                    if meta.plugin_id in completed
+                    and meta.plugin_id not in failed_plugins
+                    and meta.plugin_id not in inactive_plugins
+                ],
+                failed_plugins=sorted(failed_plugins),
+                inactive_plugins=sorted(inactive_plugins),
+                explicitly_disabled_plugins=sorted(explicitly_disabled_plugins),
+                failed_plugin_reasons=dict(failed_plugin_reasons),
+                loading_plugins=[meta.plugin_id for meta in plugins if meta.plugin_id not in completed],
+            )
+
+        async def report_progress() -> None:
+            # 单向完整快照让宿主在整轮结束前也能展示成功/失败，不把进度广播当成就绪。
+            await self._rpc_client.send_event("runner.startup_progress", payload=build_progress().model_dump())
+
+        async def initialize(meta: PluginMeta) -> None:
+            with diagnostic_stage(f"runner.plugin_config:{meta.plugin_id}"):
+                preparation_status = self._prepare_plugin_activation(meta)
             if preparation_status == PluginActivationStatus.INACTIVE:
                 inactive_plugins.add(meta.plugin_id)
                 explicitly_disabled_plugins.add(meta.plugin_id)
-                continue
+                return
             if preparation_status == PluginActivationStatus.FAILED:
-                failed_plugins.add(meta.plugin_id)
-                failed_plugin_reasons[meta.plugin_id] = "插件初始化失败"
-                continue
+                record_failure(meta)
+                return
+
+            if meta.config_error:
+                config_error_plugins.add(meta.plugin_id)
+                async with semaphore:
+                    activation = await self._activate_plugin(meta)
+                if activation == PluginActivationStatus.FAILED:
+                    record_failure(meta)
+                return
+
+            # discover_and_load 已验证依赖图无环；本组依赖须等初始化任务结束，
+            # 跨组依赖则使用宿主传入的、已经完成加载的版本映射。
+            for dependency in meta.manifest.plugin_dependencies:
+                if dependency.id in tasks:
+                    await tasks[dependency.id]
 
             unsatisfied_dependencies = [
                 dependency.id
@@ -513,46 +647,44 @@ class PluginRunner:
             ]
             if unsatisfied_dependencies:
                 self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
-                if any(dependency_id in inactive_plugins for dependency_id in unsatisfied_dependencies):
+                if any(
+                    dependency_id in inactive_plugins or dependency_id in config_error_plugins
+                    for dependency_id in unsatisfied_dependencies
+                ):
                     logger.info(
                         f"插件 {meta.plugin_id} 依赖的插件当前未激活，跳过本次启动: {', '.join(unsatisfied_dependencies)}"
                     )
                     inactive_plugins.add(meta.plugin_id)
-                    continue
+                    return
                 failed_plugins.add(meta.plugin_id)
                 failed_plugin_reasons[meta.plugin_id] = f"依赖未满足: {', '.join(unsatisfied_dependencies)}"
-                continue
+                return
 
-            activation_status = await self._activate_plugin(meta)
+            async with semaphore:
+                activation_status = await self._activate_plugin(meta)
             if activation_status == PluginActivationStatus.LOADED:
                 available_plugin_versions[meta.plugin_id] = meta.version
-                continue
-            failed_plugins.add(meta.plugin_id)
-            failed_plugin_reasons[meta.plugin_id] = "插件初始化失败"
+                return
+            record_failure(meta)
 
-        successful_plugins = [
-            meta.plugin_id
-            for meta in plugins
-            if meta.plugin_id not in failed_plugins and meta.plugin_id not in inactive_plugins
-        ]
-        await self._notify_ready(
-            successful_plugins,
-            sorted(failed_plugins),
-            sorted(inactive_plugins),
-            sorted(explicitly_disabled_plugins),
-            failed_plugin_reasons,
-        )
+        async def initialize_and_report(meta: PluginMeta) -> None:
+            await initialize(meta)
+            completed.add(meta.plugin_id)
+            await report_progress()
 
-        # 5. 等待直到收到关停信号
-        with contextlib.suppress(asyncio.CancelledError):
-            while not self._shutting_down:
-                await asyncio.sleep(1.0)
+        try:
+            await report_progress()
+            for meta in plugins:
+                tasks[meta.plugin_id] = asyncio.create_task(initialize_and_report(meta), name=f"plugin_startup:{meta.plugin_id}")
+            await asyncio.gather(*tasks.values())
+        finally:
+            # 初始化取消或发生宿主级异常时，必须先收回所有任务，避免它们在清理后继续注册。
+            for task in tasks.values():
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
 
-        # 6. 卸载 IPC 日志 Handler 并刷空剩余缓冲，然后断开连接
-        logger.debug("Runner 开始关停")
-        await self._uninstall_log_handler()
-        await self._rpc_client.disconnect()
-        logger.debug("Runner 已退出")
+        return build_progress().completed_result()
 
     def _install_log_handler(self) -> None:
         """握手完成后将 RunnerIPCLogHandler 安装到 logging.root。
@@ -744,7 +876,7 @@ class PluginRunner:
         if inspect.iscoroutinefunction(handler_method):
             return await handler_method(*args, **kwargs)
 
-        result = await asyncio.to_thread(handler_method, *args, **kwargs)
+        result = await self._plugin_tasks.invoke_sync(handler_method, *args, **kwargs)
         if inspect.isawaitable(result):
             return await result
         return result
@@ -792,6 +924,8 @@ class PluginRunner:
                     f"插件 {bound_plugin_id} 不允许直接调用 Host 原始 RPC 方法: {normalized_method or '<empty>'}"
                 )
             request_payload = dict(payload or {})
+            if normalized_method == "cap.call" and str(request_payload.get("capability", "")).startswith("files."):
+                request_payload["args"] = {**request_payload.get("args", {}), "file_scope": _file_scope.get()}
             if timeout_ms is None and normalized_method == "cap.call":
                 capability_name = str(request_payload.get("capability") or "").strip()
                 cap_args = request_payload.get("args")
@@ -953,15 +1087,12 @@ class PluginRunner:
             enforce_version=True,
         )
         plugin_config = normalization_result.normalized_config
-        config_path = Path(meta.plugin_dir) / "config.toml"
+        config_path = resolve_plugin_config_path(Path(meta.plugin_dir))
         should_initialize_file = not config_path.exists() and bool(default_config)
         if normalization_result.should_persist or should_initialize_file:
             self._save_plugin_config(meta.plugin_dir, plugin_config)
         if hasattr(instance, "set_plugin_config"):
-            try:
-                cast(_ConfigAwarePlugin, instance).set_plugin_config(plugin_config)
-            except Exception as exc:
-                logger.warning(f"插件 {meta.plugin_id} 配置注入失败: {exc}")
+            cast(_ConfigAwarePlugin, instance).set_plugin_config(plugin_config)
         return plugin_config
 
     def _normalize_plugin_config(
@@ -979,7 +1110,7 @@ class PluginRunner:
             instance: 插件实例。
             config_data: 原始配置数据。
             default_config: 插件声明的默认配置。
-            suppress_errors: 是否在归一化失败时吞掉异常并回退原始配置。
+            suppress_errors: 是否把配置错误作为明确的错误状态返回。
             enforce_version: 是否强制执行 ``plugin.config_version`` 版本检查。
 
         Returns:
@@ -1000,14 +1131,15 @@ class PluginRunner:
                     )
                 elif not raw_config:
                     config_for_normalize = rebuild_plugin_config_data(latest_default_config, {})
-        except Exception as exc:
+        except ValueError as exc:
             if not suppress_errors:
                 raise
-            logger.warning(f"插件配置版本检查失败，将回退为原始配置: {exc}")
+            logger.warning(f"插件配置版本检查失败: {exc}")
             return PluginConfigNormalizationResult(
-                normalized_config=raw_config,
+                normalized_config={},
                 changed=False,
                 should_persist=False,
+                config_error=str(exc),
             )
 
         try:
@@ -1020,14 +1152,15 @@ class PluginRunner:
             # [plugin].enabled 是宿主保留键，插件配置模型未声明时会被归一化丢弃，需从原始配置带回；
             # 带回值非法时与模型校验失败同等处理
             normalized_config = _restore_host_reserved_plugin_config(raw_config, normalized_config)
-        except Exception as exc:
+        except ValueError as exc:
             if not suppress_errors:
                 raise
-            logger.warning(f"插件配置归一化失败，将回退为原始配置: {exc}")
+            logger.warning(f"插件配置校验失败: {exc}")
             return PluginConfigNormalizationResult(
-                normalized_config=raw_config,
+                normalized_config={},
                 changed=False,
                 should_persist=False,
+                config_error=str(exc),
             )
 
         return PluginConfigNormalizationResult(
@@ -1160,7 +1293,7 @@ class PluginRunner:
             config_data: 需要写回的配置字典。
         """
 
-        config_path = Path(plugin_dir) / "config.toml"
+        config_path = resolve_plugin_config_path(Path(plugin_dir))
         config_path.parent.mkdir(parents=True, exist_ok=True)
         if config_path.exists():
             try:
@@ -1180,20 +1313,14 @@ class PluginRunner:
 
     @staticmethod
     def _load_plugin_config(plugin_dir: str, plugin_id: str = "") -> Dict[str, Any]:
-        """从插件目录读取 config.toml。"""
+        """读取插件配置；受管内置插件的可写配置归当前实例所有。"""
         _ = plugin_id
-        config_path = Path(plugin_dir) / "config.toml"
+        config_path = resolve_plugin_config_path(Path(plugin_dir))
         if not config_path.exists():
             return {}
 
-        try:
-            with config_path.open("rb") as handle:
-                loaded = tomllib.load(handle)
-        except Exception as exc:
-            logger.warning(f"读取插件配置失败 {config_path}: {exc}")
-            return {}
-
-        return loaded if isinstance(loaded, dict) else {}
+        with config_path.open("rb") as handle:
+            return tomllib.load(handle)
 
     def _resolve_plugin_candidate(self, plugin_id: str) -> Tuple[Optional[PluginCandidate], Optional[str]]:
         """解析指定插件的候选目录。
@@ -1238,7 +1365,7 @@ class PluginRunner:
             return None, False, error_message
 
         try:
-            meta = self._loader.load_candidate(plugin_id, candidate)
+            meta = self._loader.load_candidate(plugin_id, candidate, for_config_request=True)
         except Exception as exc:
             return None, False, str(exc)
         if meta is None:
@@ -1260,38 +1387,34 @@ class PluginRunner:
             meta: 插件元数据。
             config_data: 可选的配置内容。
             use_provided_config: 是否优先使用传入的配置内容。
-            suppress_errors: 是否在归一化失败时回退原始配置。
+            suppress_errors: 是否把配置错误作为明确的错误状态返回。
             enforce_version: 是否强制校验 ``plugin.config_version``。
 
         Returns:
             InspectPluginConfigResultPayload: 结构化解析结果。
         """
 
-        raw_config = config_data if use_provided_config else self._load_plugin_config(meta.plugin_dir)
-        if use_provided_config and config_data is None:
-            raw_config = {}
-
         default_config = self._get_plugin_default_config(meta.instance)
-        normalization_result = self._normalize_plugin_config(
-            meta.instance,
-            raw_config,
-            default_config=default_config,
-            suppress_errors=suppress_errors,
-            enforce_version=enforce_version,
-        )
-        normalized_config = normalization_result.normalized_config
-        changed = normalization_result.changed
-        if not normalized_config and not raw_config and default_config:
-            normalized_config = rebuild_plugin_config_data(default_config, {})
-            changed = True
-
+        try:
+            raw_config = (config_data or {}) if use_provided_config else self._load_plugin_config(meta.plugin_dir)
+            normalization_result = self._normalize_plugin_config(
+                meta.instance, raw_config, default_config=default_config,
+                suppress_errors=suppress_errors, enforce_version=enforce_version,
+            )
+        except (ValueError, OSError) as exc:
+            if not suppress_errors:
+                raise
+            return InspectPluginConfigResultPayload(success=True, config_error=str(exc), enabled=False)
+        if normalization_result.config_error:
+            return InspectPluginConfigResultPayload(
+                success=True, config_error=normalization_result.config_error, enabled=False,
+            )
         return InspectPluginConfigResultPayload(
-            success=True,
-            default_config=default_config,
+            success=True, default_config=default_config,
             config_schema=self._get_plugin_config_schema(meta),
-            normalized_config=normalized_config,
-            changed=changed,
-            enabled=self._is_plugin_enabled(normalized_config),
+            normalized_config=normalization_result.normalized_config,
+            changed=normalization_result.changed,
+            enabled=self._is_plugin_enabled(normalization_result.normalized_config),
         )
 
     def _register_handlers(self) -> None:
@@ -1309,9 +1432,12 @@ class PluginRunner:
         self._rpc_client.register_method("plugin.prepare_shutdown", self._handle_prepare_shutdown)
         self._rpc_client.register_method("plugin.shutdown", self._handle_shutdown)
         self._rpc_client.register_method("plugin.config_updated", self._handle_config_updated)
+        self._rpc_client.register_method("plugin.config_widgets", self._handle_config_widgets)
+        self._rpc_client.register_method("plugin.desktop_pet_buttons", self._handle_desktop_pet_buttons)
         self._rpc_client.register_method("plugin.inspect_config", self._handle_inspect_plugin_config)
         self._rpc_client.register_method("plugin.validate_config", self._handle_validate_plugin_config)
         self._rpc_client.register_method("plugin.reload", self._handle_reload_plugin)
+        self._rpc_client.register_method("plugin.webui.reload_documents", self._handle_reload_webui_documents)
         self._rpc_client.register_method("plugin.reload_batch", self._handle_reload_plugins)
         self._rpc_client.register_method("plugin.recover", self._handle_reload_plugins)
         self._rpc_client.register_method("plugin.unload_batch", self._handle_unload_plugins)
@@ -1355,43 +1481,47 @@ class PluginRunner:
             return prefixed_handler
         return getattr(instance, component_name, None)
 
-    async def _bootstrap_plugin(self, meta: PluginMeta, capabilities_required: Optional[List[str]] = None) -> bool:
-        """向 Host 同步插件 bootstrap 能力令牌。"""
+    async def _sync_plugin_capabilities(
+        self, meta: PluginMeta, capabilities_required: Optional[List[str]] = None,
+    ) -> None:
+        """同步能力令牌；None 使用声明，显式空列表表示撤销业务能力。"""
         payload = BootstrapPluginPayload(
             plugin_id=meta.plugin_id,
             plugin_version=meta.version,
             plugin_type=meta.plugin_type if capabilities_required is None or capabilities_required else "extension",
-            capabilities_required=capabilities_required
-            if capabilities_required is not None
-            else list(meta.capabilities_required or []),
+            capabilities_required=meta.capabilities_required if capabilities_required is None else capabilities_required,
         )
+        response = await self._rpc_client.send_request(
+            "plugin.bootstrap", plugin_id=meta.plugin_id, payload=payload.model_dump(), timeout_ms=30000,
+        )
+        if response.error:
+            raise RuntimeError(response.error["message"])
 
+    async def _bootstrap_plugin(self, meta: PluginMeta, capabilities_required: Optional[List[str]] = None) -> bool:
+        """初始化插件能力令牌，并记录这个阶段的加载错误。"""
         try:
-            response = await self._rpc_client.send_request(
-                "plugin.bootstrap",
-                plugin_id=meta.plugin_id,
-                payload=payload.model_dump(),
-                timeout_ms=10000,
-            )
-            if response.error:
-                raise RuntimeError(response.error.get("message", "插件 bootstrap 失败"))
+            await self._sync_plugin_capabilities(meta, capabilities_required)
             return True
         except Exception as e:
-            logger.error(f"插件 {meta.plugin_id} bootstrap 失败: {e}")
+            meta.load_error = f"bootstrap 失败: {type(e).__name__}: {e}"
+            logger.error(f"插件 {meta.plugin_id} bootstrap 失败: {e}", exc_info=True)
             return False
 
     async def _deactivate_plugin(self, meta: PluginMeta) -> None:
-        """撤销 bootstrap 期间为插件签发的能力令牌。"""
-        await self._bootstrap_plugin(meta, capabilities_required=[])
+        """撤销能力令牌；清理错误单独记录，不改写最初的加载失败原因。"""
+        try:
+            await self._sync_plugin_capabilities(meta, [])
+        except (RPCError, RuntimeError):
+            logger.exception(f"插件 {meta.plugin_id} 撤销能力令牌失败")
 
-    async def _register_plugin(self, meta: PluginMeta) -> bool:
-        """向 Host 注册单个插件。
+    async def _build_plugin_registration_payload(self, meta: PluginMeta) -> RegisterPluginPayload:
+        """收集和校验插件提供的注册声明。
 
         Args:
             meta: 待注册的插件元数据。
 
         Returns:
-            bool: 是否注册成功。
+            RegisterPluginPayload: 可发送给 Host 的注册声明。
         """
         # 收集插件组件声明
         components: List[ComponentDeclaration] = []
@@ -1400,15 +1530,19 @@ class PluginRunner:
         instance = meta.instance
 
         # 从插件实例获取组件声明（SDK 插件须实现 get_components 方法）
-        if hasattr(instance, "get_components"):
+        if not meta.config_error and hasattr(instance, "get_components"):
             meta.component_handlers.clear()
             for comp_info in instance.get_components():
                 if not isinstance(comp_info, dict):
                     continue
 
                 component_name = str(comp_info.get("name", "") or "").strip()
+                component_type = str(comp_info.get("type", "") or "").strip()
                 raw_metadata = comp_info.get("metadata", {})
                 component_metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+                if component_type.upper() == "ACTION" and isinstance(comp_info.get("description"), str):
+                    # LegacyPluginAdapter 把 Action 的描述放在声明顶层。
+                    component_metadata = {"description": comp_info["description"], **component_metadata}
 
                 if component_name:
                     handler_name = str(component_metadata.get("handler_name", component_name) or component_name).strip()
@@ -1417,7 +1551,7 @@ class PluginRunner:
                 components.append(
                     ComponentDeclaration(
                         name=component_name,
-                        component_type=str(comp_info.get("type", "") or "").strip(),
+                        component_type=component_type,
                         plugin_id=meta.plugin_id,
                         chat_scope=str(comp_info.get("chat_scope", "all") or "all").strip(),
                         allowed_session=[
@@ -1430,9 +1564,9 @@ class PluginRunner:
                         metadata=component_metadata,
                     )
                 )
-        if hasattr(instance, "get_config_reload_subscriptions"):
+        if not meta.config_error and hasattr(instance, "get_config_reload_subscriptions"):
             config_reload_subscriptions = list(instance.get_config_reload_subscriptions())
-        if hasattr(instance, "get_llm_providers"):
+        if not meta.config_error and hasattr(instance, "get_llm_providers"):
             meta.llm_provider_handlers.clear()
             for provider_info in instance.get_llm_providers():
                 if not isinstance(provider_info, dict):
@@ -1457,34 +1591,35 @@ class PluginRunner:
 
         declared_client_types = sorted(meta.manifest.llm_provider_client_types)
         registered_client_types = sorted(provider.client_type for provider in llm_providers)
-        if declared_client_types != registered_client_types:
-            logger.error(
-                f"插件 {meta.plugin_id} LLM Provider 声明不一致: "
+        if not meta.config_error and declared_client_types != registered_client_types:
+            raise ValueError(
+                "LLM Provider 声明不一致: "
                 f"manifest={declared_client_types}, code={registered_client_types}"
             )
-            return False
 
-        try:
-            webui = await asyncio.to_thread(load_webui_extension, meta.plugin_dir)
-        except (OSError, ValueError) as exc:
-            logger.error(f"插件 {meta.plugin_id} WebUI 声明无效: {exc}")
-            return False
-
-        reg_payload = RegisterPluginPayload(
+        webui = None if meta.config_error else await asyncio.to_thread(load_webui_extension, meta.plugin_dir)
+        desktop_pet_buttons = [] if meta.config_error else read_button_declarations(instance)
+        return RegisterPluginPayload(
             plugin_id=meta.plugin_id,
+            display_name=meta.manifest.name,
             webui=webui,
             plugin_version=meta.version,
             plugin_type=meta.plugin_type,
             components=components,
             llm_providers=llm_providers,
-            capabilities_required=meta.capabilities_required,
+            capabilities_required=[] if meta.config_error else meta.capabilities_required,
             dependencies=meta.dependencies,
             config_reload_subscriptions=config_reload_subscriptions,
-            default_config=self._get_plugin_default_config(instance),
-            config_schema=self._get_plugin_config_schema(meta),
+            default_config={} if meta.config_error else self._get_plugin_default_config(instance),
+            config_schema={} if meta.config_error else self._get_plugin_config_schema(meta),
+            config_error=meta.config_error,
+            desktop_pet_buttons=desktop_pet_buttons,
         )
 
+    async def _register_plugin(self, meta: PluginMeta) -> bool:
+        """注册边界：插件声明错误和 Host 拒绝都记录为该插件的明确失败。"""
         try:
+            reg_payload = await self._build_plugin_registration_payload(meta)
             response = await self._rpc_client.send_request(
                 "plugin.register_components",
                 plugin_id=meta.plugin_id,
@@ -1492,14 +1627,17 @@ class PluginRunner:
                 timeout_ms=10000,
             )
             if response.error:
-                raise RuntimeError(response.error.get("message", "插件注册失败"))
-            response_payload = response.payload if isinstance(response.payload, dict) else {}
-            if not bool(response_payload.get("accepted", True)):
-                raise RuntimeError(str(response_payload.get("reason", "插件注册失败")))
+                raise RuntimeError(response.error["message"])
+            result = RegisterPluginResultPayload.model_validate(response.payload)
+            if not result.accepted:
+                if result.reason is None or not result.reason.strip():
+                    raise ValueError("Host 拒绝注册但未提供原因")
+                raise RuntimeError(result.reason)
             logger.debug(f"插件 {meta.plugin_id} 注册完成")
             return True
         except Exception as e:
-            logger.error(f"插件 {meta.plugin_id} 注册失败: {e}")
+            meta.load_error = f"组件注册失败: {type(e).__name__}: {e}"
+            logger.error(f"插件 {meta.plugin_id} 注册失败: {e}", exc_info=True)
             return False
 
     @staticmethod
@@ -1730,44 +1868,59 @@ class PluginRunner:
             return True
 
         try:
-            await self._invoke_plugin_callable(instance.on_load)
+            with self._plugin_tasks.scope(meta.plugin_id):
+                await self._invoke_plugin_callable(instance.on_load)
             return True
         except Exception as exc:
+            meta.load_error = f"on_load 失败: {type(exc).__name__}: {exc}"
             logger.error(f"插件 {meta.plugin_id} on_load 失败: {exc}", exc_info=True)
             return False
 
-    async def _invoke_plugin_on_unload(self, meta: PluginMeta) -> None:
+    async def _invoke_plugin_on_unload(self, meta: PluginMeta, *, for_reload: bool = False) -> None:
         """执行插件的 ``on_unload`` 生命周期。
 
         Args:
             meta: 待卸载的插件元数据。
+            for_reload: 是否仅为重载暂时卸载；旧插件仍按无参数调用。
         """
         instance = meta.instance
-        if not hasattr(instance, "on_unload"):
+        if meta.config_error or not hasattr(instance, "on_unload"):
             return
 
         try:
-            await self._invoke_plugin_callable(instance.on_unload)
+            # 清理自身仍可创建并等待异步子任务，但业务入口已停止接收调用。
+            with self._plugin_tasks.scope(meta.plugin_id, cleanup=True):
+                if "for_reload" in inspect.signature(instance.on_unload).parameters:
+                    await self._invoke_plugin_callable(instance.on_unload, for_reload=for_reload)
+                else:
+                    await self._invoke_plugin_callable(instance.on_unload)
         except Exception as exc:
             logger.error(f"插件 {meta.plugin_id} on_unload 失败: {exc}", exc_info=True)
+            raise
 
     def _prepare_plugin_activation(self, meta: PluginMeta) -> Optional[PluginActivationStatus]:
         """准备真实配置，先于运行时依赖检查识别自身禁用。
 
-        返回禁用或配置失败的终止状态；None 表示配置启用，可继续检查依赖和激活。
+        返回禁用或初始化失败的终止状态；配置错误时仅注册管理状态，跳过业务激活。
         启动、重载和回滚共用此阶段，配置只读取和归一化一次。
         """
+        meta.load_error = ""
+        if meta.explicitly_disabled:
+            logger.debug(f"插件 {meta.plugin_id} 已在配置中禁用，跳过加载")
+            return PluginActivationStatus.INACTIVE
         self._inject_context(meta.plugin_id, meta.instance, meta.plugin_dir)
         try:
             plugin_config = self._apply_plugin_config(meta)
-        except PluginConfigVersionError as exc:
-            logger.error(f"插件 {meta.plugin_id} 配置版本非法: {exc}")
-            self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
-            return PluginActivationStatus.FAILED
+        except (ValueError, OSError) as exc:
+            meta.config_error = str(exc)
+            logger.warning(f"插件 {meta.plugin_id} 配置错误，仅加载配置管理: {exc}")
+            return None
         except Exception as exc:
-            logger.error(f"插件 {meta.plugin_id} 配置加载失败: {exc}", exc_info=True)
+            meta.load_error = f"配置初始化失败: {type(exc).__name__}: {exc}"
+            logger.exception(f"插件 {meta.plugin_id} 配置初始化失败")
             self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
             return PluginActivationStatus.FAILED
+        meta.config_error = ""
         if not self._is_plugin_enabled(plugin_config):
             logger.debug(f"插件 {meta.plugin_id} 已在配置中禁用，跳过激活")
             self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
@@ -1784,39 +1937,90 @@ class PluginRunner:
             PluginActivationStatus: 插件激活结果。
         """
 
-        if not await self._bootstrap_plugin(meta):
+        self._plugin_tasks.activate(meta.plugin_id)
+        with diagnostic_stage(f"runner.plugin_bootstrap:{meta.plugin_id}"):
+            bootstrapped = await self._bootstrap_plugin(meta, capabilities_required=[] if meta.config_error else None)
+        if not bootstrapped:
             self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
             return PluginActivationStatus.FAILED
 
-        if not await self._register_plugin(meta):
-            await self._invoke_plugin_on_unload(meta)
-            await self._deactivate_plugin(meta)
-            self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
+        with diagnostic_stage(f"runner.plugin_register:{meta.plugin_id}"):
+            registered = await self._register_plugin(meta)
+        if not registered:
+            await self._cleanup_failed_activation(meta, registered=False)
             return PluginActivationStatus.FAILED
 
-        if not await self._invoke_plugin_on_load(meta):
-            await self._unregister_plugin(meta.plugin_id, reason="on_load_failed")
-            await self._deactivate_plugin(meta)
-            self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
+        on_load_succeeded = True
+        if not meta.config_error:
+            with diagnostic_stage(f"runner.plugin_on_load:{meta.plugin_id}"):
+                on_load_succeeded = await self._invoke_plugin_on_load(meta)
+        if not on_load_succeeded:
+            await self._cleanup_failed_activation(meta, registered=True)
             return PluginActivationStatus.FAILED
 
         self._loader.set_loaded_plugin(meta)
         return PluginActivationStatus.LOADED
 
-    async def _unload_plugin(self, meta: PluginMeta, reason: str, *, purge_modules: bool = True) -> None:
+    async def _cleanup_failed_activation(self, meta: PluginMeta, *, registered: bool) -> None:
+        """初始化失败后的停止错误归属当前插件，保留实例供后续清理，不中断其他插件启动。"""
+        try:
+            await self._stop_plugin_tasks(meta.plugin_id)
+            await self._invoke_plugin_on_unload(meta)
+            await self._plugin_tasks.cancel_and_wait(meta.plugin_id)
+        except Exception as exc:
+            meta.load_error = f"{meta.load_error}；初始化失败后的清理未完成: {exc}"
+            self._loader.set_loaded_plugin(meta)
+            logger.error(f"插件 {meta.plugin_id} {meta.load_error}", exc_info=True)
+            return
+        if registered:
+            await self._unregister_plugin(meta.plugin_id, reason="on_load_failed")
+        await self._deactivate_plugin(meta)
+        self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
+
+    async def _stop_plugin_tasks(self, plugin_id: str) -> None:
+        """先关闭业务入口，再等待取消完成；任务未退出时不能关闭它使用的资源。"""
+        self._plugin_tasks.begin_stop([plugin_id])
+        await self._plugin_tasks.cancel_and_wait(plugin_id)
+
+    async def _unload_plugin(
+        self, meta: PluginMeta, reason: str, *, purge_modules: bool = True, for_reload: bool = False
+    ) -> None:
         """卸载单个插件并清理 Host/Runner 两侧状态。
 
         Args:
             meta: 待卸载的插件元数据。
             reason: 卸载原因。
             purge_modules: 是否在卸载完成后清理插件模块缓存。
+            for_reload: 是否向支持该参数的插件声明临时卸载。
         """
-        await self._invoke_plugin_on_unload(meta)
+        await self._stop_plugin_tasks(meta.plugin_id)
+        await self._invoke_plugin_on_unload(meta, for_reload=for_reload)
+        await self._plugin_tasks.cancel_and_wait(meta.plugin_id)
         await self._unregister_plugin(meta.plugin_id, reason)
         await self._deactivate_plugin(meta)
         self._loader.remove_loaded_plugin(meta.plugin_id)
         if purge_modules:
             self._loader.purge_plugin_modules(meta.plugin_id, meta.plugin_dir)
+
+    async def _release_unrestored_reload_resources(self, previous: Dict[str, PluginMeta]) -> Dict[str, str]:
+        """重载后被禁用或恢复失败的插件必须最终释放暂存资源。"""
+        failures: Dict[str, str] = {}
+        for plugin_id, meta in previous.items():
+            if self._loader.get_plugin(plugin_id) is not None:
+                continue
+            # 只通知显式支持重载保留的插件；旧接口不能重复调用 on_unload。
+            if not hasattr(meta.instance, "on_unload"):
+                continue
+            if "for_reload" in inspect.signature(meta.instance.on_unload).parameters:
+                try:
+                    await self._invoke_plugin_on_unload(meta)
+                    await self._plugin_tasks.cancel_and_wait(meta.plugin_id)
+                except Exception as exc:
+                    # 保留清理入口，不能丢弃仍持有模型、进程等资源的旧实例。
+                    self._plugin_tasks.begin_stop([plugin_id])
+                    self._loader.set_loaded_plugin(meta)
+                    failures[plugin_id] = f"暂存资源清理失败: {exc}"
+        return failures
 
     def _collect_reverse_dependents(self, plugin_id: str) -> Set[str]:
         """收集依赖指定插件的所有已加载插件。
@@ -1983,8 +2187,13 @@ class PluginRunner:
         }
         unload_order = self._build_unload_order(set(normalized_plugin_ids) & loaded_plugin_ids)
         unloaded_plugins: List[str] = []
+        self._plugin_tasks.begin_stop(unload_order)
 
         for plugin_id in unload_order:
+            blocked_by = self._collect_reverse_dependents(plugin_id) & failed_plugins.keys()
+            if blocked_by:
+                failed_plugins[plugin_id] = f"依赖方停止未完成，保留资源: {', '.join(sorted(blocked_by))}"
+                continue
             meta = self._loader.get_plugin(plugin_id)
             if meta is None:
                 failed_plugins[plugin_id] = "无法获取已加载插件元数据"
@@ -2057,6 +2266,7 @@ class PluginRunner:
             target_plugin_ids.update(self._collect_reverse_dependents_for_roots(loaded_root_plugin_ids))
 
         unload_order = self._build_unload_order(target_plugin_ids & loaded_plugin_ids)
+        self._plugin_tasks.begin_stop(unload_order)
         unloaded_plugins: List[str] = []
         retained_plugin_ids = loaded_plugin_ids - set(unload_order)
         rollback_metas: Dict[str, PluginMeta] = {}
@@ -2066,7 +2276,18 @@ class PluginRunner:
             if meta is None:
                 continue
             rollback_metas[unload_plugin_id] = meta
-            await self._unload_plugin(meta, reason=reason, purge_modules=False)
+            try:
+                await self._unload_plugin(meta, reason=reason, purge_modules=False, for_reload=True)
+            except Exception as exc:
+                failed_plugins[unload_plugin_id] = str(exc)
+                # 后续卸载未完成时不会再加载新实例，前面为重载暂存的资源也必须最终收尾。
+                failed_plugins.update(await self._release_unrestored_reload_resources(rollback_metas))
+                return ReloadPluginsResultPayload(
+                    success=False,
+                    requested_plugin_ids=normalized_plugin_ids,
+                    unloaded_plugins=unloaded_plugins,
+                    failed_plugins=failed_plugins,
+                )
             self._loader.purge_plugin_modules(unload_plugin_id, meta.plugin_dir)
             unloaded_plugins.append(unload_plugin_id)
 
@@ -2086,6 +2307,8 @@ class PluginRunner:
                     retained_plugin_id: retained_meta.version
                     for retained_plugin_id in retained_plugin_ids
                     if (retained_meta := self._loader.get_plugin(retained_plugin_id)) is not None
+                    and not retained_meta.config_error
+                    and not self._plugin_tasks.is_stopping(retained_plugin_id)
                 },
             },
         )
@@ -2097,6 +2320,8 @@ class PluginRunner:
                 retained_plugin_id: retained_meta.version
                 for retained_plugin_id in retained_plugin_ids
                 if (retained_meta := self._loader.get_plugin(retained_plugin_id)) is not None
+                and not retained_meta.config_error
+                and not self._plugin_tasks.is_stopping(retained_plugin_id)
             },
         }
         reloaded_plugins: List[str] = []
@@ -2125,6 +2350,15 @@ class PluginRunner:
                 continue
             if preparation_status == PluginActivationStatus.FAILED:
                 failed_plugins[load_plugin_id] = "插件初始化失败"
+                continue
+
+            if meta.config_error:
+                inactive_plugin_ids.add(load_plugin_id)
+                activation = await self._activate_plugin(meta)
+                if activation == PluginActivationStatus.LOADED:
+                    reloaded_plugins.append(load_plugin_id)
+                else:
+                    failed_plugins[load_plugin_id] = "配置管理状态注册失败"
                 continue
 
             _, manifest, _ = candidate
@@ -2164,11 +2398,22 @@ class PluginRunner:
 
         # 手动更新继续保持事务回滚；自动补载允许部分成功，不能撤销已恢复的插件。
         if failed_plugins and not recover_missing_only:
-            rollback_failures: Dict[str, str] = {}
+            # 新实例可能在 on_load 失败后仍未清理完；它不在 reloaded_plugins 中，
+            # 也必须保护其依赖，且不能用旧实例覆盖它而遗失尚未释放的资源。
+            rollback_failures: Dict[str, str] = {
+                plugin_id: f"新实例清理未完成: {meta.load_error}"
+                for plugin_id in failed_plugins
+                if (meta := self._loader.get_plugin(plugin_id)) is not None
+                and self._plugin_tasks.is_stopping(plugin_id)
+            }
 
             for reloaded_plugin_id in reversed(reloaded_plugins):
                 reloaded_meta = self._loader.get_plugin(reloaded_plugin_id)
                 if reloaded_meta is None:
+                    continue
+                blocked_by = self._collect_reverse_dependents(reloaded_plugin_id) & rollback_failures.keys()
+                if blocked_by:
+                    rollback_failures[reloaded_plugin_id] = f"依赖方停止未完成，保留资源: {', '.join(sorted(blocked_by))}"
                     continue
 
                 try:
@@ -2176,15 +2421,16 @@ class PluginRunner:
                         reloaded_meta,
                         reason=f"{reason}_rollback_cleanup",
                         purge_modules=False,
+                        for_reload=True,
                     )
                 except Exception as exc:
                     rollback_failures[reloaded_plugin_id] = f"清理失败: {exc}"
-                finally:
-                    self._loader.purge_plugin_modules(reloaded_plugin_id, reloaded_meta.plugin_dir)
+                    continue
+                self._loader.purge_plugin_modules(reloaded_plugin_id, reloaded_meta.plugin_dir)
 
             for rollback_plugin_id in reversed(unload_order):
                 rollback_meta = rollback_metas.get(rollback_plugin_id)
-                if rollback_meta is None:
+                if rollback_meta is None or rollback_plugin_id in rollback_failures:
                     continue
 
                 try:
@@ -2198,6 +2444,7 @@ class PluginRunner:
                 if restored != PluginActivationStatus.LOADED:
                     rollback_failures[rollback_plugin_id] = "无法重新激活旧版本"
 
+            rollback_failures.update(await self._release_unrestored_reload_resources(rollback_metas))
             return ReloadPluginsResultPayload(
                 success=False,
                 requested_plugin_ids=normalized_plugin_ids,
@@ -2208,6 +2455,7 @@ class PluginRunner:
                 failed_plugins=self._finalize_failed_reload_messages(failed_plugins, rollback_failures),
             )
 
+        failed_plugins.update(await self._release_unrestored_reload_resources(rollback_metas))
         requested_plugin_success = all(
             plugin_id in reloaded_plugins or plugin_id in inactive_plugins for plugin_id in reload_root_ids
         )
@@ -2252,6 +2500,7 @@ class PluginRunner:
             timeout_ms=10000,
         )
 
+    @_managed_plugin_request
     async def _handle_invoke(self, envelope: Envelope) -> Envelope:
         """处理组件调用请求"""
         try:
@@ -2261,6 +2510,8 @@ class PluginRunner:
 
         plugin_id = envelope.plugin_id
         meta = self._loader.get_plugin(plugin_id)
+        if meta is not None and meta.config_error:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, f"插件配置错误，业务暂停: {meta.config_error}")
         if meta is None:
             return envelope.make_error_response(
                 ErrorCode.E_PLUGIN_NOT_FOUND.value,
@@ -2270,6 +2521,7 @@ class PluginRunner:
         component_name = invoke.component_name
         handler_method = self._resolve_component_handler(meta, component_name)
         inflight = self._start_inflight_rpc(envelope, component_name)
+        file_scope_token = _file_scope.set(str(invoke.args.pop("_file_scope", "")))
 
         try:
             # 回退: 旧版 LegacyPluginAdapter 通过 invoke_component 统一桥接
@@ -2302,8 +2554,10 @@ class PluginRunner:
                 resp_payload = InvokeResultPayload(success=False, result=str(e))
                 return envelope.make_response(payload=resp_payload.model_dump())
         finally:
+            _file_scope.reset(file_scope_token)
             self._finish_inflight_rpc(inflight)
 
+    @_managed_plugin_request
     async def _handle_llm_provider_invoke(self, envelope: Envelope) -> Envelope:
         """处理 LLM Provider 调用请求。
 
@@ -2327,6 +2581,8 @@ class PluginRunner:
             )
 
         handler_name = meta.llm_provider_handlers.get(invoke.client_type, "")
+        if meta.config_error:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, meta.config_error)
         handler_method = getattr(meta.instance, handler_name, None) if handler_name else None
         if handler_method is None or not callable(handler_method):
             return envelope.make_error_response(
@@ -2353,6 +2609,7 @@ class PluginRunner:
         finally:
             self._finish_inflight_rpc(inflight)
 
+    @_managed_plugin_request
     async def _handle_event_invoke(self, envelope: Envelope) -> Envelope:
         """处理 EventHandler 调用请求
 
@@ -2374,6 +2631,8 @@ class PluginRunner:
             )
 
         component_name = invoke.component_name
+        if meta.config_error:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, meta.config_error)
         handler_method = self._resolve_component_handler(meta, component_name)
 
         if handler_method is None or not callable(handler_method):
@@ -2409,6 +2668,7 @@ class PluginRunner:
         finally:
             self._finish_inflight_rpc(inflight)
 
+    @_managed_plugin_request
     async def _handle_hook_invoke(self, envelope: Envelope) -> Envelope:
         """处理 HookHandler 调用请求。
 
@@ -2432,6 +2692,8 @@ class PluginRunner:
             )
 
         component_name = invoke.component_name
+        if meta.config_error:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, meta.config_error)
         handler_method = self._resolve_component_handler(meta, component_name)
         if handler_method is None or not callable(handler_method):
             return envelope.make_error_response(
@@ -2497,15 +2759,20 @@ class PluginRunner:
 
     async def _handle_shutdown(self, envelope: Envelope) -> Envelope:
         """处理关停 — 调用所有插件的 on_unload 后退出"""
-        logger.debug("收到 shutdown 信号，开始调用 on_unload")
+        logger.debug("收到 shutdown 信号，等待生命周期操作结束")
         await self._dump_inflight_debug("shutdown")
-        for plugin_id in list(self._loader.list_plugins()):
-            meta = self._loader.get_plugin(plugin_id)
-            if meta is not None:
-                await self._unload_plugin(meta, reason="runner_shutdown")
-        self._shutting_down = True
+        # 与初始化、重载和卸载使用同一生命周期锁，不能清理到一半又注册新插件。
+        async with self._lifecycle_lock:
+            plugin_ids = list(self._loader.list_plugins())
+            self._plugin_tasks.begin_stop(plugin_ids)
+            for plugin_id in plugin_ids:
+                meta = self._loader.get_plugin(plugin_id)
+                if meta is not None:
+                    await self._unload_plugin(meta, reason="runner_shutdown")
+            self._shutting_down = True
         return envelope.make_response(payload={"acknowledged": True})
 
+    @_managed_plugin_request
     async def _handle_config_updated(self, envelope: Envelope) -> Envelope:
         """处理配置更新事件。"""
         try:
@@ -2515,6 +2782,8 @@ class PluginRunner:
 
         plugin_id = envelope.plugin_id
         if meta := self._loader.get_plugin(plugin_id):
+            if meta.config_error:
+                return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, meta.config_error)
             inflight = self._start_inflight_rpc(envelope, "on_config_update")
             try:
                 config_scope = payload.config_scope.value
@@ -2535,6 +2804,74 @@ class PluginRunner:
             finally:
                 self._finish_inflight_rpc(inflight)
         return envelope.make_response(payload={"acknowledged": True})
+
+    @_managed_plugin_request
+    async def _handle_config_widgets(self, envelope: Envelope) -> Envelope:
+        """操作真实已加载实例；禁止临时实例触发登录等运行时副作用。"""
+        plugin_id = envelope.plugin_id
+        lock = self._config_widget_locks.setdefault(plugin_id, asyncio.Lock())
+        if lock.locked():
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "配置页操作进行中，请稍后重试")
+        async with lock:
+            meta = self._loader.get_plugin(plugin_id)
+            if meta is None or meta.config_error:
+                return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "插件未运行或配置无效")
+            try:
+                action_id = envelope.payload.get("action_id")
+                if action_id is not None and (not isinstance(action_id, str) or not action_id):
+                    raise ValueError("操作 ID 无效")
+                widgets = self._get_plugin_config_schema(meta).get("runtime_widgets", [])
+                if not widgets:
+                    raise ValueError("插件未声明运行时控件")
+                provider = cast(ConfigWidgetProvider, meta.instance)
+                async with asyncio.timeout(8):
+                    snapshot = await read_widget_snapshot(provider, widgets)
+                    if action_id is not None:
+                        await invoke_widget_action(provider, snapshot, action_id)
+                        snapshot = await read_widget_snapshot(provider, widgets)
+                return envelope.make_response(payload=snapshot.model_dump())
+            except TimeoutError:
+                return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "配置页操作超时")
+            except Exception as exc:
+                return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, f"{type(exc).__name__}: {exc}")
+
+    @_managed_plugin_request
+    async def _handle_desktop_pet_buttons(self, envelope: Envelope) -> Envelope:
+        """仅路由到真实加载的插件实例，同一个按钮执行中拒绝再次点击。"""
+        meta = self._loader.get_plugin(envelope.plugin_id)
+        if meta is None or meta.config_error:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "插件未运行或配置无效")
+        button_id = envelope.payload.get("button_id")
+        action_id = envelope.payload.get("action_id")
+        if action_id is not None and (not button_id or not isinstance(action_id, str) or not 1 <= len(action_id) <= 64):
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "面板操作 ID 无效")
+        if button_id is not None and (not isinstance(button_id, str) or not button_id):
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "按钮 ID 无效")
+        provider = cast(DesktopPetButtonProvider, meta.instance)
+        lock = self._desktop_pet_button_locks.setdefault((envelope.plugin_id, button_id), asyncio.Lock()) if button_id else None
+        if lock is not None and lock.locked():
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "按钮操作进行中")
+        if lock is not None:
+            await lock.acquire()
+        inflight = self._start_inflight_rpc(envelope, f"desktop_pet:{button_id or 'states'}")
+        try:
+            async with asyncio.timeout(8 if button_id else 3):
+                snapshot = await read_button_snapshot(provider)
+                if self._loader.get_plugin(envelope.plugin_id) is not meta:
+                    raise ValueError("插件已卸载或重载")
+                if button_id is not None:
+                    panel = await invoke_button(provider, snapshot, button_id, action_id)
+                    snapshot = await read_button_snapshot(provider)
+                    snapshot.panel = panel
+            return envelope.make_response(payload=snapshot.model_dump())
+        except TimeoutError:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "桌宠按钮请求超时")
+        except Exception as exc:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, f"{type(exc).__name__}: {exc}")
+        finally:
+            self._finish_inflight_rpc(inflight)
+            if lock is not None:
+                lock.release()
 
     async def _handle_inspect_plugin_config(self, envelope: Envelope) -> Envelope:
         """处理插件配置元数据解析请求。
@@ -2564,7 +2901,7 @@ class PluginRunner:
                 meta,
                 config_data=payload.config_data,
                 use_provided_config=payload.use_provided_config,
-                suppress_errors=payload.use_provided_config,
+                suppress_errors=True,
                 enforce_version=not payload.use_provided_config,
             )
         except Exception as exc:
@@ -2619,6 +2956,24 @@ class PluginRunner:
         )
         return envelope.make_response(payload=result.model_dump())
 
+    async def _handle_reload_webui_documents(self, envelope: Envelope) -> Envelope:
+        """只重读已加载插件的页面文件，不触发插件卸载或训练任务重启。"""
+        meta = self._loader.get_plugin(envelope.plugin_id)
+        if meta is None:
+            return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, "插件未加载")
+        async with self._lifecycle_lock:
+            try:
+                extension = await asyncio.to_thread(load_webui_extension, meta.plugin_dir)
+                if extension is None:
+                    raise ValueError("插件未声明 WebUI")
+                documents = [
+                    {"id": page.id, "entry": page.entry, "document": page.document}
+                    for page in extension.pages if page.mode == "custom"
+                ]
+                return envelope.make_response(payload={"documents": documents})
+            except (ValueError, OSError) as exc:
+                return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, str(exc))
+
     async def _handle_reload_plugin(self, envelope: Envelope) -> Envelope:
         """处理按插件 ID 的精确重载请求。
 
@@ -2633,13 +2988,15 @@ class PluginRunner:
         except Exception as exc:
             return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, str(exc))
 
-        if self._reload_lock.locked():
+        if self._lifecycle_lock.locked():
             return envelope.make_error_response(
                 ErrorCode.E_RELOAD_IN_PROGRESS.value,
-                f"插件 {payload.plugin_id} 重载请求被拒绝：已有重载任务正在执行",
+                f"插件 {payload.plugin_id} 重载请求被拒绝：插件正在加载或停止",
             )
 
-        async with self._reload_lock:
+        async with self._lifecycle_lock:
+            if self._shutting_down:
+                return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, "Runner 已进入关停流程")
             result = await self._reload_plugin_by_id(
                 payload.plugin_id,
                 payload.reason,
@@ -2655,14 +3012,16 @@ class PluginRunner:
         except Exception as exc:
             return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, str(exc))
 
-        if self._reload_lock.locked():
+        if self._lifecycle_lock.locked():
             requested_plugin_ids = ", ".join(self._normalize_requested_plugin_ids(payload.plugin_ids)) or "<empty>"
             return envelope.make_error_response(
                 ErrorCode.E_RELOAD_IN_PROGRESS.value,
-                f"插件 {requested_plugin_ids} 批量卸载请求被拒绝：已有重载或卸载任务正在执行",
+                f"插件 {requested_plugin_ids} 批量卸载请求被拒绝：插件正在加载或停止",
             )
 
-        async with self._reload_lock:
+        async with self._lifecycle_lock:
+            if self._shutting_down:
+                return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, "Runner 已进入关停流程")
             result = await self._unload_plugins_by_ids(list(payload.plugin_ids), payload.reason)
             return envelope.make_response(payload=result.model_dump())
 
@@ -2674,14 +3033,16 @@ class PluginRunner:
         except Exception as exc:
             return envelope.make_error_response(ErrorCode.E_BAD_PAYLOAD.value, str(exc))
 
-        if self._reload_lock.locked():
+        if self._lifecycle_lock.locked():
             requested_plugin_ids = ", ".join(self._normalize_requested_plugin_ids(payload.plugin_ids)) or "<empty>"
             return envelope.make_error_response(
                 ErrorCode.E_RELOAD_IN_PROGRESS.value,
-                f"插件 {requested_plugin_ids} 批量重载请求被拒绝：已有重载任务正在执行",
+                f"插件 {requested_plugin_ids} 批量重载请求被拒绝：插件正在加载或停止",
             )
 
-        async with self._reload_lock:
+        async with self._lifecycle_lock:
+            if self._shutting_down:
+                return envelope.make_error_response(ErrorCode.E_SHUTTING_DOWN.value, "Runner 已进入关停流程")
             result = await self._reload_plugins_by_ids(
                 list(payload.plugin_ids),
                 payload.reason,
@@ -2773,7 +3134,16 @@ def main() -> None:
     """进程入口（python -m src.plugin_runtime.runner.runner_main）"""
     initialize_logging(verbose=False)
     _disable_runner_console_logging()
-    asyncio.run(_async_main())
+    logger.info(
+        f"Runner 进程启动: pid={os.getpid()} group={os.environ.get(ENV_RUNNER_GROUP, 'unknown')} "
+        f"python={sys.version.split()[0]} platform={sys.platform}"
+    )
+    try:
+        asyncio.run(_async_main())
+    except Exception:
+        # 握手前 IPC 日志尚未接通，必须先把完整异常写入 Runner 自己的日志文件。
+        logger.exception("Runner 进程异常退出")
+        raise
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from src.chat.replyer.maisaka_generator_base import BaseMaisakaReplyGenerator
@@ -7,10 +9,11 @@ def test_build_system_prompt_injects_reference_info(monkeypatch: pytest.MonkeyPa
     """Replyer 应把工具传入的长期记忆参考写入 system prompt。"""
 
     generator = object.__new__(BaseMaisakaReplyGenerator)
+    generator.chat_stream = SimpleNamespace(is_group_session=True)
     captured_context: dict[str, str] = {}
 
     monkeypatch.setattr(generator, "_resolve_session_id", lambda stream_id: "session-a")
-    monkeypatch.setattr(generator, "_build_group_chat_attention_block", lambda session_id: "")
+    monkeypatch.setattr(generator, "_build_chat_attention_block", lambda session_id: "")
     monkeypatch.setattr(generator, "_build_replyer_output_instruction", lambda: "output")
     monkeypatch.setattr(generator, "_build_personality_prompt", lambda: "identity")
     monkeypatch.setattr(generator, "_select_reply_style", lambda: "style")

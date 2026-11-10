@@ -113,27 +113,11 @@ describe('menuSections 菜单结构', () => {
     expect(advancedToolsSection?.items).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ path: '/statistics' })])
     )
-    expect(advancedToolsSection?.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          label: 'sidebar.menu.replyEffects',
-          path: '/reply-effects',
-          featureFlag: 'replyEffects',
-        }),
-      ])
-    )
   })
 
-  it('行为学习与回复效果入口分别受特性开关控制', () => {
-    const flaggedItems = allItems.filter((item) => item.featureFlag !== undefined)
-
-    expect(flaggedItems).toHaveLength(2)
-    expect(flaggedItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: '/resource/behavior', featureFlag: 'behaviorLearning' }),
-        expect.objectContaining({ path: '/reply-effects', featureFlag: 'replyEffects' }),
-      ])
-    )
+  it('菜单只保留当前注册的工作区入口', () => {
+    expect(allItems.map((item) => item.path)).not.toContain('/computer')
+    expect(allItems.map((item) => item.path)).not.toContain('/agent')
   })
 
   it('searchDescription 均为 search.items 命名空间的 i18n key', () => {

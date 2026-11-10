@@ -6,10 +6,16 @@ from typing import Any, Optional
 
 import inspect
 
+from src.common.paths import get_instance_root, resource_path
 from src.common.i18n import get_locale
 from src.common.i18n.loaders import DEFAULT_LOCALE, normalize_locale
 from src.common.logger import get_logger
-from src.common.prompt_i18n import get_prompt_cache_revision, list_prompt_templates, load_prompt_template
+from src.common.prompt_i18n import (
+    get_custom_prompt_storage_name,
+    get_prompt_cache_revision,
+    list_prompt_templates,
+    load_prompt_template,
+)
 
 
 logger = get_logger("Prompt")
@@ -17,11 +23,10 @@ logger = get_logger("Prompt")
 _LEFT_BRACE = chr(0xFDE9)
 _RIGHT_BRACE = chr(0xFDEA)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROMPTS_DIR = PROJECT_ROOT / "prompts"
+PROJECT_ROOT = get_instance_root()
+PROMPTS_DIR = resource_path("prompts")
 DATA_DIR = PROJECT_ROOT / "data"
 CUSTOM_PROMPTS_DIR = DATA_DIR / "custom_prompts"
-PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 CUSTOM_PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 SUFFIX_PROMPT = ".prompt"
 
@@ -40,11 +45,13 @@ def _get_prompt_locale_from_path(prompt_path: Path) -> str | None:
 
 
 def _custom_prompt_path(prompt_name: str, locale: str | None = None) -> Path:
-    return CUSTOM_PROMPTS_DIR / _normalize_prompt_locale(locale) / f"{prompt_name}{SUFFIX_PROMPT}"
+    storage_name = get_custom_prompt_storage_name(prompt_name)
+    return CUSTOM_PROMPTS_DIR / _normalize_prompt_locale(locale) / f"{storage_name}{SUFFIX_PROMPT}"
 
 
 def _legacy_custom_prompt_path(prompt_name: str) -> Path:
-    return CUSTOM_PROMPTS_DIR / f"{prompt_name}{SUFFIX_PROMPT}"
+    storage_name = get_custom_prompt_storage_name(prompt_name)
+    return CUSTOM_PROMPTS_DIR / f"{storage_name}{SUFFIX_PROMPT}"
 
 
 def _iter_custom_prompt_candidates(prompt_name: str, locale: str | None = None) -> list[Path]:
@@ -361,7 +368,9 @@ class PromptManager:
                 except Exception as exc:
                     logger.error(f"加载 Prompt 文件 '{prompt_template.path}' 时出错，错误信息: {exc}")
                     raise
-            loaded_custom_prompts = set(prompt_templates)
+            loaded_custom_prompts = set(prompt_templates) | {
+                get_custom_prompt_storage_name(name) for name in prompt_templates
+            }
             for prompt_dir in _iter_active_custom_prompt_dirs():
                 if not prompt_dir.exists():
                     continue

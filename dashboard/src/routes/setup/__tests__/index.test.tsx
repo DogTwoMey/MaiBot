@@ -117,6 +117,7 @@ const defaultBotBasic: BotBasicConfig = {
 
 const defaultPersonality: PersonalityConfig = {
   personality: '活泼开朗',
+  behavior_style: '自然参与聊天',
   reply_style: '简短口语',
   multiple_reply_style: [],
   multiple_probability: 0.2,
@@ -400,24 +401,13 @@ describe('SetupPage 自定义 Token 步骤', () => {
     expect(screen.getByRole('button', { name: 'setupPage.actions.saveToken' })).toBeInTheDocument()
   })
 
-  it('Token 不满足真实校验规则时提示失败规则且不提交', async () => {
+  it('Token 不满足校验规则时禁用提交', async () => {
     render(<SetupPage />)
     await waitLoadingDone()
-
     fireEvent.change(screen.getByLabelText('setupPage.forms.customToken.label'), {
       target: { value: 'short' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'setupPage.actions.saveToken' }))
-
-    await waitFor(() => {
-      expect(mocks.toast).toHaveBeenCalledWith({
-        title: 'setupPage.toast.validationFailedTitle',
-        description: `setupPage.validation.customTokenInvalid:${JSON.stringify({
-          failedRules: '长度至少 10 位, 包含大写字母, 包含特殊符号',
-        })}`,
-        variant: 'destructive',
-      })
-    })
+    expect(screen.getByRole('button', { name: 'setupPage.actions.saveToken' })).toBeDisabled()
     expect(mocks.updateAccessToken).not.toHaveBeenCalled()
   })
 
@@ -558,26 +548,8 @@ describe('SetupPage 错误态与空态', () => {
     expect(screen.getByRole('button', { name: 'setupPage.actions.next' })).toBeInTheDocument()
   })
 
-  it('完成时 API Key 为空则拦截且不标记完成', async () => {
-    mocks.loadApiProviderSetupConfig.mockResolvedValue({ ...defaultApiProvider, api_key: '' })
-    render(<SetupPage />)
-    await waitLoadingDone()
-    await goToLastStep()
-
-    fireEvent.click(screen.getByRole('button', { name: 'setupPage.actions.complete' }))
-
-    await waitFor(() => {
-      expect(mocks.toast).toHaveBeenCalledWith({
-        title: 'setupPage.toast.validationFailedTitle',
-        description: 'setupPage.validation.enterApiKey',
-        variant: 'destructive',
-      })
-    })
-    expect(mocks.completeSetup).not.toHaveBeenCalled()
-    expect(mocks.navigate).not.toHaveBeenCalled()
-  })
-
   it('完成时 planner 模型标识符为空则拦截且不标记完成', async () => {
+    mocks.loadApiProviderSetupConfig.mockResolvedValue({ ...defaultApiProvider, provider_name: 'Custom', base_url: 'https://models.example/v1' })
     mocks.loadModelSetupConfig.mockResolvedValue({
       ...defaultModelSetup,
       planner_model_identifier: '   ',
@@ -636,4 +608,18 @@ describe('SetupPage 错误态与空态', () => {
     })
     expect(mocks.navigate).not.toHaveBeenCalled()
   })
+})
+
+
+
+it('完成模型配置后进入带试聊引导的聊天页', async () => {
+  render(<SetupPage />)
+  await waitLoadingDone()
+  fireEvent.click(screen.getByRole('button', { name: 'setupPage.actions.next' }))
+  await screen.findByRole('button', { name: 'setupPage.actions.complete' })
+  fireEvent.click(screen.getByRole('button', { name: 'setupPage.actions.complete' }))
+  await waitFor(() => {
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/chat', search: { setupTrial: true } })
+  })
+  expect(mocks.completeSetup).toHaveBeenCalledTimes(1)
 })

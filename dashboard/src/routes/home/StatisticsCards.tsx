@@ -23,6 +23,7 @@ import {
   YAxis,
 } from 'recharts'
 
+import { SegmentedControl } from '@/components/ui/management'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
@@ -35,7 +36,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ZoomableChart } from '@/components/ui/zoomable-chart'
 import { ThemeProviderContext } from '@/lib/theme-context'
-import { cn } from '@/lib/utils'
 
 import { useDashboardData } from './hooks/useDashboardData'
 import {
@@ -103,7 +103,6 @@ interface StatisticsCardFrameProps {
   title: string
   icon: ComponentType<{ className?: string }>
   state: StatisticsCardData
-  titleless?: boolean
   children: (data: DashboardData) => ReactNode
 }
 
@@ -139,32 +138,13 @@ function TimeRangeTextSwitch({
   }
 
   return (
-    <div
-      data-home-time-range="true"
-      className="flex shrink-0 items-center text-xs"
+    <SegmentedControl
       aria-label={t('home.stats.timeRange')}
-    >
-      {TIME_RANGES.map((hours, index) => (
-        <span key={hours} className="inline-flex items-center">
-          {index > 0 && (
-            <span className="text-border px-2" aria-hidden="true">
-              |
-            </span>
-          )}
-          <button
-            type="button"
-            aria-pressed={value === hours}
-            className={cn(
-              'text-muted-foreground hover:text-foreground whitespace-nowrap transition-colors',
-              value === hours && 'text-primary font-semibold'
-            )}
-            onClick={() => onChange(hours)}
-          >
-            {labels[hours]}
-          </button>
-        </span>
-      ))}
-    </div>
+      value={String(value)}
+      onValueChange={(next) => onChange(Number(next))}
+      size="xs"
+      options={TIME_RANGES.map((hours) => ({ value: String(hours), label: labels[hours] }))}
+    />
   )
 }
 
@@ -172,34 +152,20 @@ function StatisticsCardFrame({
   title,
   icon: Icon,
   state,
-  titleless = false,
   children,
 }: StatisticsCardFrameProps) {
   return (
     <Card className="relative flex h-full min-h-0 flex-col">
-      {!titleless && (
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-3">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Icon className="h-4 w-4" />
-              {title}
-            </CardTitle>
-          </div>
-          <TimeRangeTextSwitch value={state.timeRange} onChange={state.setTimeRange} />
-        </CardHeader>
-      )}
-      <CardContent
-        data-home-titleless-content={titleless ? 'true' : undefined}
-        className={cn(
-          'flex min-h-0 flex-1 flex-col',
-          titleless && 'relative pt-4 sm:pt-5'
-        )}
-      >
-        {titleless && (
-          <div className="absolute top-3 right-4 z-10">
-            <TimeRangeTextSwitch value={state.timeRange} onChange={state.setTimeRange} />
-          </div>
-        )}
+      <CardHeader className="flex shrink-0 flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 text-sm font-medium">
+            <Icon className="h-4 w-4" />
+            {title}
+          </CardTitle>
+        </div>
+        <TimeRangeTextSwitch value={state.timeRange} onChange={state.setTimeRange} />
+      </CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col">
         {state.loading && !state.data ? (
           <div className="space-y-3">
             <Skeleton className="h-24 w-full" />
@@ -217,7 +183,7 @@ function StatisticsCardFrame({
   )
 }
 
-function formatNumber(value: number, locale: string): string {
+export function formatNumber(value: number, locale: string): string {
   const absoluteValue = Math.abs(value)
   if (absoluteValue >= 1_000_000) {
     return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value / 1_000_000)}M`
@@ -237,7 +203,7 @@ function formatDateTime(value: string, locale: string): string {
   })
 }
 
-function formatCacheRate(value: number | null): string {
+export function formatCacheRate(value: number | null): string {
   return value === null ? 'N/A' : `${(value * 100).toFixed(2)}%`
 }
 
@@ -253,9 +219,9 @@ function SummaryMetric({
   detailOnHover?: boolean
 }) {
   const metricLine = (
-    <div className="flex min-w-0 items-baseline justify-center gap-2.5 text-base leading-none">
-      <span className="text-muted-foreground min-w-0 truncate font-bold">{label}</span>
-      <span className="text-primary shrink-0 text-xl leading-none font-black">
+    <div className="flex min-w-0 flex-col items-start justify-center gap-1 text-xs leading-tight">
+      <span className="text-muted-foreground max-w-full truncate font-bold">{label}</span>
+      <span className="text-primary shrink-0 text-xl leading-tight font-black tabular-nums">
         {value}
       </span>
     </div>
@@ -295,10 +261,10 @@ function PrimarySummaryMetric({
   return (
     <div
       data-home-summary-primary="true"
-      className="flex min-h-0 min-w-0 flex-col justify-center px-3 py-1"
+      className="flex min-w-0 flex-col justify-center px-3 py-1"
     >
       <div className="text-muted-foreground truncate text-xs font-bold">{label}</div>
-      <div className="text-primary mt-1 truncate text-3xl leading-none font-black tracking-[-0.04em] tabular-nums">
+      <div className="text-primary mt-1 shrink-0 truncate text-3xl leading-tight font-black tracking-[-0.04em] tabular-nums">
         {value}
       </div>
     </div>
@@ -315,16 +281,15 @@ export function StatisticsOverviewCard() {
       title={t('home.stats.overviewTitle')}
       icon={BarChart3}
       state={state}
-      titleless
     >
       {({ summary }) => (
         <div
           data-home-statistics-overview="true"
-          className="grid min-h-0 flex-1 grid-rows-2"
+          className="grid min-h-0 flex-1 grid-rows-[auto_1fr]"
         >
           <div
             data-home-summary-primary-group="true"
-            className="divide-border grid min-h-0 w-full grid-cols-2 divide-x pr-28 sm:w-3/5"
+            className="divide-border grid min-h-0 w-full grid-cols-2 divide-x"
           >
             <PrimarySummaryMetric
               label={t('home.stats.totalRequests')}
@@ -424,6 +389,7 @@ function StatisticsChartLegend({ config }: { config: ChartConfig }) {
   return (
     <div
       data-home-chart-guide="true"
+      data-chart-legend="true"
       className="flex h-7 shrink-0 items-center gap-4 px-2 text-[11px]"
     >
       {Object.entries(config).map(([key, item]) => (

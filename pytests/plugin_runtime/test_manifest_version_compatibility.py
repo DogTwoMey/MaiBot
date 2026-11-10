@@ -1,4 +1,8 @@
 import json
+import asyncio
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 from pathlib import Path
 from typing import Any, Dict
 
@@ -7,7 +11,7 @@ from src.plugin_runtime.compat_policy import (
     parse_force_plugin_compatibility_env,
 )
 from src.plugin_runtime.runner.plugin_loader import PluginLoader
-from src.plugin_runtime.runner.manifest_validator import ManifestValidator, VersionComparator
+from src.plugin_runtime.runner.manifest_validator import ManifestValidator
 from src.plugin_runtime.update_compatibility_notice import _is_host_compatible
 
 
@@ -47,32 +51,26 @@ def _build_validator(
     )
 
 
-def test_higher_patch_version_uses_compatibility_mode() -> None:
-    validator = _build_validator("1.0.1")
-
-    assert validator.parse_manifest(_build_manifest()) is not None
-    assert validator.errors == []
-    assert validator.warnings == ["当前版本 1.0.1 以兼容模式加载插件（插件声明的 Host 最高支持版本为 1.0.0）"]
-
-
-def test_higher_minor_version_is_incompatible() -> None:
-    validator = _build_validator("1.1.0")
-
-    assert validator.parse_manifest(_build_manifest()) is None
-    assert validator.warnings == []
-    assert validator.errors == ["Host 版本不兼容: 版本 1.1.0 高于最大支持 1.0.0 (当前 Host: 1.1.0)"]
-
-
-def test_patch_compatibility_requires_same_major_and_minor() -> None:
-    assert VersionComparator.is_same_major_minor_higher_version("1.0.1", "1.0.0") is True
-    assert VersionComparator.is_same_major_minor_higher_version("1.1.0", "1.0.9") is False
-    assert VersionComparator.is_same_major_minor_higher_version("2.0.0", "1.0.9") is False
-    assert VersionComparator.is_same_major_higher_version("1.1.0", "1.0.9") is False
-
-
-def test_update_notice_uses_same_patch_compatibility_rule() -> None:
-    assert _is_host_compatible("1.0.1", "1.0.0", "1.0.0") is True
-    assert _is_host_compatible("1.1.0", "1.0.0", "1.0.9") is False
+@pytest.mark.parametrize("version,allowed", [
+    ("1.0.1", True), ("1.1.0", True), ("1.1.99", True),
+    ("1.2.0", False), ("2.0.0", False), ("0.9.0", False),
+])
+def test_host_upgrade_window_and_update_notice_agree(version: str, allowed: bool, monkeypatch) -> None:
+    warning_log = Mock()
+    monkeypatch.setattr("src.plugin_runtime.runner.manifest_validator.logger.warning", warning_log)
+    monkeypatch.setattr(ManifestValidator, "_LOGGED_WARNING_KEYS", set())
+    validator = ManifestValidator(host_version=version, sdk_version="2.0.0",
+                                  validate_python_package_dependencies=False, log_errors=False)
+    assert (validator.parse_manifest(_build_manifest()) is not None) is allowed
+    assert _is_host_compatible(version, "1.0.0", "1.0.0") is allowed
+    if allowed:
+        assert not validator.errors
+        assert "请及时更新" in validator.warnings[0]
+        assert "开发者尽快迁移" in validator.warnings[0]
+        warning_log.assert_called_once()
+        assert "maibot-team.version-compatibility-test" in warning_log.call_args.args[0]
+    else:
+        assert any("Host 版本不兼容" in error for error in validator.errors)
 
 
 def test_force_compatibility_loads_plugin_out_of_host_and_sdk_range() -> None:
@@ -91,21 +89,22 @@ def test_force_compatibility_loads_plugin_out_of_host_and_sdk_range() -> None:
     ]
 
 
-def test_force_compatibility_still_blocks_python_package_conflicts() -> None:
-    """强制插件兼容只放开版本范围校验，不放开 Python 包依赖冲突。"""
+@pytest.mark.parametrize("force_compatibility", [False, True])
+def test_installed_python_package_version_mismatch_only_warns(force_compatibility: bool) -> None:
+    """已有依赖沿用当前版本，普通和强制兼容模式均允许插件尝试加载。"""
 
     manifest = _build_manifest()
     manifest["host_application"] = {"min_version": "1.0.0", "max_version": "1.2.3"}
     manifest["dependencies"] = [{"type": "python_package", "name": "packaging", "version_spec": ">=999.0.0"}]
     validator = _build_validator(
-        "2.0.0",
-        force_plugin_compatibility=True,
+        "1.0.0",
+        force_plugin_compatibility=force_compatibility,
         validate_python_package_dependencies=True,
     )
 
-    assert validator.parse_manifest(manifest) is None
-    assert len(validator.errors) == 1
-    assert validator.errors[0].startswith("Python 包依赖冲突: packaging 需要 >=999.0.0")
+    assert validator.parse_manifest(manifest) is not None
+    assert validator.errors == []
+    assert any(warning.startswith("Python 包依赖版本不匹配: packaging 需要 >=999.0.0") for warning in validator.warnings)
 
 
 def test_plugin_loader_force_compatibility_loads_incompatible_plugin(tmp_path: Path) -> None:
@@ -140,3 +139,53 @@ def test_force_plugin_compatibility_env_accepts_common_values() -> None:
         assert parse_force_plugin_compatibility_env(raw_value) is True
     for raw_value in ("", "0", "false", "off", "unknown", None):
         assert parse_force_plugin_compatibility_env(raw_value) is False
+
+
+@pytest.mark.parametrize("sdk_version", ["1.0.0", "3.0.0"])
+def test_sdk_outside_declared_range_only_warns_once(monkeypatch, sdk_version):
+    from src.plugin_runtime.runner import manifest_validator as module
+
+    monkeypatch.setattr(ManifestValidator, "_LOGGED_WARNING_KEYS", set())
+    warning = Mock()
+    monkeypatch.setattr(module.logger, "warning", warning)
+    validator = ManifestValidator(host_version="1.0.0", sdk_version=sdk_version,
+                                  validate_python_package_dependencies=False)
+    for _ in range(2):
+        assert validator.parse_manifest(_build_manifest()) is not None
+        assert validator.errors == []
+        assert len(validator.warnings) == 1
+    warning.assert_called_once()
+    assert "已放行" in warning.call_args.args[0]
+
+
+@pytest.mark.parametrize("valid_token", [True, False])
+def test_runner_sdk_mismatch_does_not_skip_authentication(valid_token):
+    from src.plugin_runtime.host.rpc_server import RPCServer
+    from src.plugin_runtime.protocol.envelope import Envelope, MessageType
+
+    server = RPCServer(transport=Mock(), session_token="test-token", host_version="1.0.0")
+    server._logger = Mock()
+    hello = Envelope(request_id=1, message_type=MessageType.REQUEST, method="runner.hello", payload={
+        "runner_id": "test", "sdk_version": "9999.0.0",
+        "session_token": "test-token" if valid_token else "wrong-token",
+    })
+    conn = Mock(recv_frame=AsyncMock(return_value=server._codec.encode_envelope(hello)), send_frame=AsyncMock())
+    assert asyncio.run(server._handle_handshake(conn)) is valid_token
+    response = server._codec.decode_envelope(conn.send_frame.call_args.args[0])
+    assert response.payload["accepted"] is valid_token
+    assert server._logger.warning.call_count == int(valid_token)
+
+
+@pytest.mark.parametrize("sdk", [
+    {"min_version": "999.0.0", "max_version": "999.99.99"},
+    {"min_version": "0.0.0", "max_version": "0.0.1"},
+])
+def test_local_plugin_discovery_allows_sdk_range_mismatch(tmp_path, sdk):
+    plugin_dir = tmp_path / "plugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "plugin.py").write_text("def create_plugin():\n    return object()\n", encoding="utf-8")
+    (plugin_dir / "_manifest.json").write_text(json.dumps({**_build_manifest(), "sdk": sdk}), encoding="utf-8")
+    loader = PluginLoader(host_version="1.0.0")
+    candidates, duplicates = loader.discover_candidates([str(tmp_path)])
+    assert set(candidates) == {"maibot-team.version-compatibility-test"}
+    assert duplicates == {}

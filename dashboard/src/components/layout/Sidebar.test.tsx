@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,9 +12,22 @@ const mocks = vi.hoisted(() => ({
   inheritedFrom: 'sidebar',
 }))
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+vi.mock('@tanstack/react-router', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@tanstack/react-router')>(),
+  Link: ({
+    to,
+    activeOptions: _activeOptions,
+    ...props
+  }: ComponentPropsWithoutRef<'a'> & { to: string; activeOptions: unknown }) => (
+    <a href={to} {...props} />
+  ),
 }))
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' } }),
+}))
+
+vi.mock('@/components/use-theme', () => ({ useTheme: () => ({ themeConfig: { dashboardStyle: 'classic' } }) }))
 
 vi.mock('@/hooks/use-background', () => ({
   useBackground: () => ({
@@ -66,7 +79,10 @@ vi.mock('./use-menu-sections', () => ({
   useMenuSections: () => [
     {
       title: 'sidebar.groups.overview',
-      items: [{ path: '/', label: '首页' }],
+      items: [
+        { path: '/', label: '首页' },
+        { path: '/chat', label: '聊天' },
+      ],
     },
     {
       title: 'sidebar.groups.resources',
@@ -93,6 +109,7 @@ describe('LogoArea 与 Sidebar', () => {
     const { rerender } = render(<LogoArea sidebarOpen />)
 
     expect(screen.getByText('MAIBOT')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'sidebar.menu.home' })).toHaveAttribute('href', '/')
     expect(document.querySelector('[data-dashboard-logo-spectrum="true"]')).toBeInTheDocument()
     expect(
       document.querySelector('[data-dashboard-logo-spectrum-block="true"]')
@@ -122,7 +139,8 @@ describe('LogoArea 与 Sidebar', () => {
     expect(screen.getByRole('navigation')).toHaveAttribute('aria-label', 'a11y.sidebarNav')
     expect(screen.getByText('sidebar.groups.overview').parentElement).toHaveClass('hidden')
     expect(screen.getByText('sidebar.groups.resources')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '首页' })).toHaveAttribute(
+    expect(screen.queryByRole('button', { name: '首页' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '聊天' })).toHaveAttribute(
       'data-sidebar-open',
       'true'
     )
@@ -200,7 +218,7 @@ describe('LogoArea 与 Sidebar', () => {
       'lg:mb-[var(--layout-sidebar-section-title-margin-bottom-collapsed)]'
     )
     expect(container.querySelector('.border-t')).toHaveClass('lg:opacity-0')
-    expect(screen.getByRole('button', { name: '首页' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '聊天' })).toHaveAttribute(
       'data-sidebar-open',
       'true'
     )

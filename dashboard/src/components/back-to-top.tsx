@@ -10,6 +10,7 @@ const HIDDEN_TRANSLATE_X = 128
 const DRAG_THRESHOLD = 4
 const VIEWPORT_MARGIN = 16
 const BACK_TO_TOP_OFFSET_STORAGE_KEY = 'maibot-back-to-top-offset-y'
+const PAGE_SCROLLER_SELECTOR = '[data-dashboard-main="true"], [data-dashboard-page-scroll="true"] > [data-radix-scroll-area-viewport]'
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
@@ -31,27 +32,23 @@ export function BackToTop() {
   const scrollerRef = useRef<HTMLElement | null>(null)
   const suppressClickRef = useRef(false)
   const locationKey = useRouterState({
-    select: (state) => state.location.pathname,
+    select: (state) => state.location.href,
   })
   const prefersTouchDrag = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 
   useEffect(() => {
     const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement
-      
-      // 简单的启发式：如果是主要滚动容器（通常高度较大）
-      // 我们假设页面中主要的滚动区域是高度最大的那个，或者就是当前触发滚动的这个
-      // 只要它有足够的滚动空间
-      if (target.scrollHeight > target.clientHeight + 100) {
-         scrollerRef.current = target
-         
-         const scrollTop = target.scrollTop
-         const height = target.scrollHeight - target.clientHeight
-         const scrolled = height > 0 ? (scrollTop / height) * 100 : 0
-         
-         setProgress(scrolled)
-         setVisible(scrollTop > 300)
-      }
+      const target = e.target
+
+      // 只跟随主滚动区或明确标记的页面滚动区，排除表格、弹窗与隐藏的页面面板。
+      if (!(target instanceof HTMLElement) || !target.matches(PAGE_SCROLLER_SELECTOR)
+        || target.closest('[inert], [aria-hidden="true"]')) return
+
+      scrollerRef.current = target
+      const scrollTop = target.scrollTop
+      const height = target.scrollHeight - target.clientHeight
+      setProgress(height > 0 ? (scrollTop / height) * 100 : 0)
+      setVisible(height > 100 && scrollTop > 300)
     }
 
     const handleNavigation = () => {
@@ -60,7 +57,7 @@ export function BackToTop() {
       setVisible(false)
     }
 
-    // 使用捕获阶段监听所有滚动事件，因为 scroll 事件不冒泡
+    // scroll 不冒泡，在捕获阶段接收事件后只处理页面滚动区。
     window.addEventListener('scroll', handleScroll, { capture: true, passive: true })
     window.addEventListener('popstate', handleNavigation)
     window.addEventListener('hashchange', handleNavigation)
@@ -74,8 +71,16 @@ export function BackToTop() {
   useEffect(() => {
     scrollerRef.current = null
     const frameId = window.requestAnimationFrame(() => {
-      setProgress(0)
-      setVisible(false)
+      // 返回市场时可能保留原滚动位置，无需再次滚动即可恢复回顶按钮。
+      const scrollers = Array.from(document.querySelectorAll<HTMLElement>(PAGE_SCROLLER_SELECTOR))
+      const target = scrollers.reverse().find((element) => (
+        !element.closest('[inert], [aria-hidden="true"]')
+        && element.scrollHeight > element.clientHeight + 100
+      ))
+      scrollerRef.current = target ?? null
+      const height = target ? target.scrollHeight - target.clientHeight : 0
+      setProgress(target && height > 0 ? (target.scrollTop / height) * 100 : 0)
+      setVisible(!!target && target.scrollTop > 300)
     })
 
     return () => window.cancelAnimationFrame(frameId)
@@ -164,7 +169,8 @@ export function BackToTop() {
   return (
     <div 
       className={cn(
-        "fixed right-6 bottom-24 z-50 transition-[transform,opacity] ease-in-out",
+        // 手机上底部是标签栏，回到顶部的悬浮按钮会与之重叠，因此只在桌面端显示
+        "fixed right-6 bottom-24 z-50 transition-[transform,opacity] ease-in-out max-lg:hidden",
         dragging ? "duration-75" : "duration-500",
         visible ? "opacity-100" : "pointer-events-none opacity-0"
       )}

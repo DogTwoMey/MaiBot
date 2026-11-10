@@ -42,7 +42,7 @@ from src.platform_io import DeliveryBatch, DriverKind, get_platform_io_manager
 from src.platform_io.route_key_factory import RouteKeyFactory
 from src.plugin_runtime.hook_payloads import deserialize_modified_session_message, serialize_session_message
 from src.plugin_runtime.hook_schema_utils import build_object_schema
-from src.plugin_runtime.host.hook_dispatcher import HookDispatchResult
+from src.plugin_runtime.host.hook_dispatcher import HookAbortedError, HookDispatchResult
 from src.plugin_runtime.host.hook_spec_registry import HookSpec, HookSpecRegistry
 
 logger = get_logger("send_service")
@@ -233,6 +233,11 @@ async def _invoke_send_hook(
     """
 
     serialized_message = serialize_session_message(message)
+    if hook_name == "send_service.after_send" and kwargs.get("sent"):
+        from src.common.runtime_loop import run_on_main_loop
+        from src.desktop_pet.service import desktop_pet_service
+
+        await run_on_main_loop(desktop_pet_service.notify_reply(serialized_message))
     hook_result = await _get_runtime_manager().invoke_hook(
         hook_name,
         message=serialized_message,
@@ -276,12 +281,8 @@ def _inherit_platform_io_route_metadata(target_stream: BotChatSession) -> Dict[s
                 if normalized_value:
                     inherited_metadata[key] = value
 
-    # 当目标会话没有可继承的上下文消息时，至少补齐当前平台账号，
-    # 让按 ``platform + account_id`` 绑定的路由仍有机会命中。
-    if not RouteKeyFactory.extract_components(inherited_metadata)[0]:
-        bot_account = get_bot_account(target_stream.platform, target_stream.account_id)
-        if bot_account:
-            inherited_metadata["platform_io_account_id"] = bot_account
+    # 账号和作用域通过出站消息正式字段继承，不再写入 additional_config。
+    # 暂时保留旧上下文元数据的透传以兼容尚未迁移的适配器，下个版本移除。
 
     if target_stream.group_id and (normalized_group_id := str(target_stream.group_id).strip()):
         inherited_metadata["platform_io_target_group_id"] = normalized_group_id
@@ -561,11 +562,11 @@ def _build_outbound_session_message(
             and target_stream.context.message.message_info.group_info
         ):
             group_name = target_stream.context.message.message_info.group_info.group_name
-        if group_name:
-            group_info = GroupInfo(
-                group_id=target_stream.group_id,
-                group_name=group_name,
-            )
+        # 群名仅用于显示；官方适配器可能不提供群名，仍须保留群 ID 以按群聊发送。
+        group_info = GroupInfo(
+            group_id=target_stream.group_id,
+            group_name=group_name,
+        )
 
     additional_config: Dict[str, object] = _inherit_platform_io_route_metadata(target_stream)
     if selected_expressions is not None:
@@ -576,6 +577,8 @@ def _build_outbound_session_message(
         timestamp=datetime.fromtimestamp(current_time),
         platform=target_stream.platform,
     )
+    outbound_message.account_id = bot_user_id
+    outbound_message.scope = target_stream.scope
     outbound_message.message_info = MessageInfo(
         user_info=UserInfo(
             user_id=bot_user_id,
@@ -675,10 +678,31 @@ async def _prepare_message_for_platform_io(
 
     if set_reply or not message.processed_plain_text:
         message.processed_plain_text = _build_processed_plain_text(message)
+    from src.files.service import disk_call, get_file_service
+
+    # 所有出站驱动共用归属检查，包括 WebUI、本地驱动和转发节点。
+    pending = list(message.raw_message.components)
+    while pending:
+        component = pending.pop()
+        if isinstance(component, ForwardNodeComponent):
+            for node in component.forward_components:
+                pending.extend(node.content)
+        elif isinstance(component, FileComponent) and component.file_ref:
+            file_service = get_file_service()
+            file_service.require_enabled()
+            asset = await disk_call(file_service.store.get, component.file_ref, message.session_id)
+            component.name, component.size, component.mime_type = asset.name, str(asset.size), asset.mime_type
+            component.url, component.base64_data = "", ""
     if typing:
+        # 纯图片分段与表情包一样使用固定等待，避免按图片描述长度模拟打字。
+        components = message.raw_message.components
+        is_image = any(isinstance(component, ImageComponent) for component in components) and not any(
+            isinstance(component, TextComponent) and component.text.strip() for component in components
+        )
         typing_time = calculate_typing_time(
             input_string=message.processed_plain_text or "",
             is_emoji=message.is_emoji,
+            is_image=is_image,
         )
         await asyncio.sleep(typing_time)
 
@@ -834,6 +858,7 @@ async def _send_via_platform_io(
     reply_message: Optional[MaiMessage] = None,
     storage_message: bool,
     show_log: bool,
+    raise_on_hook_abort: bool = False,
 ) -> Optional[SessionMessage]:
     """通过 Platform IO 发送消息。
 
@@ -859,6 +884,8 @@ async def _send_via_platform_io(
     )
     if before_send_result.aborted:
         logger.info(f"[SendService] 消息 {message.message_id} 在发送前被 Hook 中止")
+        if raise_on_hook_abort:
+            raise HookAbortedError(before_send_result)
         return None
 
     before_kwargs = before_send_result.kwargs
@@ -915,7 +942,8 @@ async def _send_via_platform_io(
     )
 
     if delivery_batch.has_success:
-        _record_sent_emoji_usage(message)
+        if any(isinstance(component, EmojiComponent) for component in message.raw_message.components):
+            await asyncio.to_thread(_record_sent_emoji_usage, message)
         if storage_message:
             await _store_sent_message(message)
         await _notify_memory_automation_on_message_sent(message)
@@ -925,10 +953,26 @@ async def _send_via_platform_io(
         )
         if should_log_delivery:
             successful_driver_ids = [receipt.driver_id or "unknown" for receipt in delivery_batch.sent_receipts]
+            logger.debug(
+                f"投递成功 平台={route_key.platform} 驱动={', '.join(successful_driver_ids)}"
+            )
+            # 网关驱动 ID 形如 gateway:插件ID:网关名，INFO 只展示网关名。
+            driver_names = ",".join(
+                driver_id.rsplit(":", 1)[-1] if driver_id.startswith("gateway:") else driver_id
+                for driver_id in successful_driver_ids
+            )
+            group_info = message.message_info.group_info
+            user_info = message.message_info.user_info
+            session_name = _chat_manager.get_session_name(message.session_id)
+            if not session_name:
+                session_name = (
+                    group_info.group_name or group_info.group_id
+                    if group_info is not None
+                    else f"{user_info.user_nickname or user_info.user_id}的私聊"
+                )
             logger.info(
-                f"已通过 Platform IO 将消息发往平台 '{route_key.platform}' "
-                f"(drivers: {', '.join(successful_driver_ids)}) "
-                f"message={_build_outbound_log_preview(message)}"
+                f"[{route_key.account_id or ''}:{route_key.platform}:{driver_names}] "
+                f"[{session_name}] {global_config.bot.nickname}: {_build_outbound_log_preview(message)}"
             )
         return message
 
@@ -947,8 +991,9 @@ async def send_session_message_with_message(
     show_log: bool = True,
     sync_to_maisaka_history: bool = False,
     maisaka_source_kind: str = "outbound_send",
+    raise_on_hook_abort: bool = False,
 ) -> Optional[SessionMessage]:
-    """统一发送一条内部消息，并返回最终发送成功的消息对象。"""
+    """统一发送消息；raise_on_hook_abort 允许调用方接收带原因的 HookAbortedError。"""
     if not message.message_id:
         logger.error("[SendService] 消息缺少 message_id，无法发送")
         raise ValueError("消息缺少 message_id，无法发送")
@@ -961,6 +1006,7 @@ async def send_session_message_with_message(
         reply_message=reply_message,
         storage_message=storage_message,
         show_log=show_log,
+        raise_on_hook_abort=raise_on_hook_abort,
     )
     if sent_message is not None and sync_to_maisaka_history:
         _sync_sent_message_to_maisaka_history(
@@ -1065,6 +1111,9 @@ async def _send_to_target_with_message(
     selected_expressions: Optional[List[int]] = None,
     sync_to_maisaka_history: bool = False,
     maisaka_source_kind: str = "outbound_send",
+    raise_on_hook_abort: bool = False,
+    *,
+    quote_message: Optional[MaiMessage] = None,
 ) -> Optional[SessionMessage]:
     """向指定目标构建并发送消息。
 
@@ -1078,12 +1127,15 @@ async def _send_to_target_with_message(
         storage_message: 是否将发送结果写入消息存储。
         show_log: 是否输出发送日志。
         selected_expressions: 可选的表情候选索引列表。
+        raise_on_hook_abort: 为 True 时向调用方传递带原因的 Hook 中止。
+        quote_message: 独立的显示引用目标；未指定时引用 reply_message，不改变被动回复锚点。
 
     Returns:
         bool: 发送成功返回 ``True``，否则返回 ``False``。
     """
     try:
-        if set_reply and reply_message is None:
+        reference_message = quote_message if quote_message is not None else reply_message
+        if set_reply and reference_message is None:
             logger.warning("[SendService] 使用引用回复，但未提供回复消息")
             return None
 
@@ -1112,6 +1164,8 @@ async def _send_to_target_with_message(
         )
         if after_build_result.aborted:
             logger.info(f"[SendService] 消息 {outbound_message.message_id} 在构建后被 Hook 中止")
+            if raise_on_hook_abort:
+                raise HookAbortedError(after_build_result)
             return None
 
         after_build_kwargs = after_build_result.kwargs
@@ -1124,12 +1178,13 @@ async def _send_to_target_with_message(
             outbound_message,
             typing=typing,
             set_reply=set_reply,
-            reply_message_id=reply_message.message_id if reply_message is not None else None,
-            reply_message=reply_message,
+            reply_message_id=reference_message.message_id if reference_message is not None else None,
+            reply_message=reference_message,
             storage_message=storage_message,
             show_log=show_log,
             sync_to_maisaka_history=sync_to_maisaka_history,
             maisaka_source_kind=maisaka_source_kind,
+            raise_on_hook_abort=raise_on_hook_abort,
         )
         if sent_message is not None:
             logger.debug(f"[SendService] 成功发送消息到 {stream_id}")
@@ -1137,6 +1192,8 @@ async def _send_to_target_with_message(
 
         logger.error("[SendService] 发送消息失败")
         return None
+    except HookAbortedError:
+        raise
     except Exception as exc:
         logger.exception(f"[SendService] 发送消息时出错: {exc}")
         return None
@@ -1216,6 +1273,7 @@ async def emoji_to_stream_with_message(
     reply_message: Optional[MaiMessage] = None,
     sync_to_maisaka_history: bool = False,
     maisaka_source_kind: str = "outbound_send",
+    raise_on_hook_abort: bool = False,
 ) -> Optional[SessionMessage]:
     """向指定流发送表情消息，并返回发送成功后的消息对象。"""
     return await _send_to_target_with_message(
@@ -1227,6 +1285,7 @@ async def emoji_to_stream_with_message(
         reply_message=reply_message,
         sync_to_maisaka_history=sync_to_maisaka_history,
         maisaka_source_kind=maisaka_source_kind,
+        raise_on_hook_abort=raise_on_hook_abort,
     )
 
 

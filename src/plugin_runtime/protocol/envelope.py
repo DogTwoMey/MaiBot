@@ -10,14 +10,15 @@ from typing import Any, Dict, List, Optional
 import logging as stdlib_logging
 import time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from src.plugin_runtime.desktop_pet_buttons import DesktopPetButton
 from src.plugin_runtime.webui_schema import WebUIExtension
 
 
 # ====== 协议常量 ======
 PROTOCOL_VERSION = "1.0.0"
-# 支持的 SDK 版本范围（Host 在握手时校验）
+# 建议的 SDK 版本范围（Host 握手时超出范围仅警告，不拒绝连接）
 MIN_SDK_VERSION = "1.0.0"
 MAX_SDK_VERSION = "2.99.99"
 
@@ -190,7 +191,7 @@ class ComponentDeclaration(BaseModel):
     name: str = Field(description="组件名称")
     """组件名称"""
     component_type: str = Field(
-        description="组件类型：ACTION/COMMAND/TOOL/EVENT_HANDLER/HOOK_HANDLER/MESSAGE_GATEWAY/HOME_CARD/REPLY_EXTENSION"
+        description="组件类型：COMMAND/TOOL/EVENT_HANDLER/HOOK_HANDLER/MESSAGE_GATEWAY/HOME_CARD/REPLY_EXTENSION"
     )
     """组件协议类型，包括随 reply 注册参数与消息处理器的 REPLY_EXTENSION。"""
     plugin_id: str = Field(description="所属插件 ID")
@@ -227,6 +228,7 @@ class RegisterPluginPayload(BaseModel):
 
     plugin_id: str = Field(description="插件 ID")
     """插件 ID"""
+    display_name: str = Field(default="", description="插件清单中的可读名称")
     webui: Optional[WebUIExtension] = None
     """可选的声明式 WebUI 扩展，随插件注册和卸载同步。"""
     plugin_version: str = Field(default="1.0.0", description="插件版本")
@@ -247,6 +249,24 @@ class RegisterPluginPayload(BaseModel):
     """插件默认配置"""
     config_schema: Dict[str, Any] = Field(default_factory=dict, description="插件配置 Schema")
     """插件配置 Schema"""
+    config_error: str = Field(default="", description="配置错误；非空时仅加载配置管理，不启用业务")
+    desktop_pet_buttons: List[DesktopPetButton] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_desktop_pet_buttons(self) -> "RegisterPluginPayload":
+        ids = [button.id for button in self.desktop_pet_buttons]
+        if len(ids) != len(set(ids)):
+            raise ValueError("桌宠按钮 ID 重复")
+        if self.config_error and self.desktop_pet_buttons:
+            raise ValueError("配置错误的插件不能注册桌宠按钮")
+        return self
+
+
+class RegisterPluginResultPayload(BaseModel):
+    """plugin.register_components 响应，accepted 必须由 Host 明确给出。"""
+
+    accepted: bool = Field(strict=True, description="Host 是否接受本次插件注册")
+    reason: Optional[str] = Field(default=None, description="拒绝注册时的具体原因")
 
 
 class BootstrapPluginPayload(BaseModel):
@@ -340,6 +360,22 @@ class RunnerReadyPayload(BaseModel):
     """仅因插件自身配置禁用而未激活的插件列表，不包含依赖阻塞"""
 
 
+class RunnerStartupProgressPayload(RunnerReadyPayload):
+    """runner.startup_progress 广播：本轮已完成结果和仍在等待的插件。"""
+
+    loading_plugins: List[str] = Field(default_factory=list, description="尚未完成初始化的插件列表")
+
+    def completed_result(self) -> RunnerReadyPayload:
+        """提取已完成的插件结果，进度和最终就绪使用同一份结果结构。"""
+        return RunnerReadyPayload(
+            loaded_plugins=self.loaded_plugins,
+            failed_plugins=self.failed_plugins,
+            failed_plugin_reasons=self.failed_plugin_reasons,
+            inactive_plugins=self.inactive_plugins,
+            explicitly_disabled_plugins=self.explicitly_disabled_plugins,
+        )
+
+
 # ====== 配置更新 ======
 class ConfigUpdatedPayload(BaseModel):
     """plugin.config_updated 事件 payload"""
@@ -375,6 +411,7 @@ class InspectPluginConfigResultPayload(BaseModel):
 
     success: bool = Field(description="是否解析成功")
     """是否解析成功"""
+    config_error: str = Field(default="", description="配置解析或校验的具体错误")
     default_config: Dict[str, Any] = Field(default_factory=dict, description="插件默认配置")
     """插件默认配置"""
     config_schema: Dict[str, Any] = Field(default_factory=dict, description="插件配置 Schema")

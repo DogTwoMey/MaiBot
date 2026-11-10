@@ -3,12 +3,13 @@ from typing import TYPE_CHECKING, Any, Optional
 from rich.traceback import install
 
 import asyncio
-import sys
 import time
 
 from src.common.i18n import t
 from src.common.logger import get_logger
+from src.common.runtime_context import report_phase
 from src.common.runtime_loop import set_main_loop
+from src.common.startup_diagnostics import diagnostic_stage, monitor_startup_loop
 from src.config.config import config_manager, global_config
 from src.manager.async_task_manager import async_task_manager
 from src.prompt.prompt_manager import prompt_manager
@@ -26,8 +27,7 @@ logger = get_logger("main")
 
 if TYPE_CHECKING:
     from maim_message import MessageServer
-    from src.common.message_server.server import Server
-    from src.webui.webui_server import ThreadedWebUIServer
+    from src.common.http_service.server import ThreadedHTTPServer
 
 
 async def _wait_for_plugin_runners_spawned(
@@ -51,22 +51,19 @@ class MainSystem:
     def __init__(self) -> None:
         # 使用消息API替代直接的FastAPI实例
         self.app: MessageServer | None = None
-        self.server: Server | None = None
-        self.webui_server: ThreadedWebUIServer | None = None  # 独立线程中的 WebUI 服务器
+        self.http_server: ThreadedHTTPServer | None = None  # 独立线程中的公共 HTTP 服务器
         self._message_handlers_registered = False
         self.watchdog_task: Optional[asyncio.Task[None]] = None
 
     def _ensure_message_server(self) -> None:
         """按需初始化消息 API，避免阻塞主启动链路的早期阶段。"""
 
-        if self.app is not None and self.server is not None:
+        if self.app is not None:
             return
 
         from src.common.message_server import get_global_api
-        from src.common.message_server.server import get_global_server
 
         self.app = get_global_api()
-        self.server = get_global_server()
 
     def _register_message_handlers(self) -> None:
         """注册主消息处理器；消息服务实际调度前完成即可。"""
@@ -84,38 +81,51 @@ class MainSystem:
         self.app.register_custom_message_handler("message_id_echo", chat_bot.echo_message_process)
         self._message_handlers_registered = True
 
-    def _start_webui_server(self) -> None:
-        """启动独立线程中的 WebUI 服务器。"""
-        from src.config.config import global_config
+    def _start_http_server(self) -> None:
+        """启动公共 HTTP 线程；WebUI 开关只决定是否挂载管理子应用。"""
+        from src.common.http_service.server import get_threaded_http_server
 
-        if not global_config.webui.enabled:
-            logger.info(t("startup.webui_disabled"))
-            return
-
-        try:
-            from src.webui.webui_server import get_threaded_webui_server
-
-            self.webui_server = get_threaded_webui_server()
-            self.webui_server.start()
-
-        except Exception as e:
-            logger.error(t("startup.webui_server_init_failed", error=e))
+        self.http_server = get_threaded_http_server()
+        self.http_server.start()
 
     async def initialize(self) -> None:
         """初始化系统组件"""
         logger.info(t("startup.waking_up", nickname=global_config.bot.nickname))
 
-        try:
-            from src.services.tool_record_cleanup_service import run_startup_tool_record_vacuum_if_needed
+        # 主循环看门狗提前覆盖启动阶段；独立采样线程补充阻塞当时的调用栈。
+        # HTTP 循环另有一份看门狗，挂在公共 HTTP 服务器启动处。
+        from src.common.event_loop_watchdog import start_watchdog
 
-            await asyncio.to_thread(run_startup_tool_record_vacuum_if_needed)
-            await self._init_components()
+        self.watchdog_task = start_watchdog("main")
+        from src.common.memory_diagnostics import start_memory_diagnostics
+
+        start_memory_diagnostics()
+
+        try:
+            # 启动现场采样默认开启，完成初始化后关闭；常驻看门狗仍由原配置控制。
+            with monitor_startup_loop():
+                from src.services.tool_record_cleanup_service import run_startup_tool_record_vacuum_if_needed
+
+                with diagnostic_stage("startup.database_maintenance"):
+                    await asyncio.to_thread(run_startup_tool_record_vacuum_if_needed)
+                    from src.files.service import get_file_service
+
+                    await asyncio.to_thread(lambda: get_file_service().store.cleanup(startup=True))
+                await self._init_components()
+                # HTTP 在线程中并行启动；初始化成功前确认监听就绪，避免文件传输不可用却报启动成功。
+                if self.http_server is not None:
+                    await self.http_server.wait_started()
         except Exception:
-            if self.webui_server:
-                await self.webui_server.shutdown()
+            if self.http_server:
+                await self.http_server.shutdown()
             raise
 
         logger.info(t("startup.initialization_completed_banner", nickname=global_config.bot.nickname))
+        if global_config.maim_message.enabled:
+            self._register_message_handlers()
+            await self.app.run()
+        # 消息协议与 HTTP 均已就绪，宿主才能开始转发。
+        report_phase("ready")
 
     async def _init_components(self) -> None:
         """初始化其他组件"""
@@ -124,21 +134,37 @@ class MainSystem:
         await config_manager.start_file_watcher()
 
         # 插件 Runner 启动最重，尽早发起以便和后续初始化并行。
-        from src.plugin_runtime.integration import get_plugin_runtime_manager
+        with diagnostic_stage("startup.import_plugin_runtime"):
+            from src.plugin_runtime.integration import get_plugin_runtime_manager
 
         plugin_runtime_manager = get_plugin_runtime_manager()
         plugin_runtime_task = asyncio.create_task(plugin_runtime_manager.start(), name="plugin_runtime_start")
-        await _wait_for_plugin_runners_spawned(plugin_runtime_manager, plugin_runtime_task)
+        with diagnostic_stage("startup.wait_runner_spawn"):
+            await _wait_for_plugin_runners_spawned(plugin_runtime_manager, plugin_runtime_task)
 
-        from src.A_memorix.host_service import a_memorix_host_service
-        from src.mcp_module.service import get_mcp_service
+        # 数据库启动维护已完成；让 HTTP 服务及可选 WebUI 在线程中加载，与后续组件初始化并行，
+        # 无需等待全部插件就绪后才开放管理页面。
+        with diagnostic_stage("startup.http"):
+            self._start_http_server()
+
+        with diagnostic_stage("startup.import_memory_host"):
+            from src.A_memorix.host_service import a_memorix_host_service
+        with diagnostic_stage("startup.import_mcp"):
+            from src.mcp_module.service import get_mcp_service
+        with diagnostic_stage("startup.import_expression_vector"):
+            from src.services.expression_vector_service import expression_vector_service
 
         a_memorix_host_service.register_config_reload_callback()
         get_mcp_service().register_config_reload_callback()
+        with diagnostic_stage("startup.expression_vector_schedule"):
+            expression_vector_service.start()
         a_memorix_task = asyncio.create_task(a_memorix_host_service.start(), name="a_memorix_start")
 
-        await asyncio.sleep(0)
-        prompt_manager.load_prompts()
+        with diagnostic_stage("startup.first_background_dispatch"):
+            await asyncio.sleep(0)
+        # 模板扫描、路径解析和文件读取在线程中完成，避免占住主循环导致 Runner 握手超时。
+        with diagnostic_stage("startup.load_prompts"):
+            await asyncio.to_thread(prompt_manager.load_prompts)
 
         from src.emoji_system.emoji_manager import emoji_manager
 
@@ -149,8 +175,9 @@ class MainSystem:
         # logger.info("API服务器启动成功")
 
         try:
-            await asyncio.gather(plugin_runtime_task, a_memorix_task)
-            await emoji_load_task
+            with diagnostic_stage("startup.wait_components"):
+                await asyncio.gather(plugin_runtime_task, a_memorix_task)
+                await emoji_load_task
         except Exception:
             for task in (plugin_runtime_task, a_memorix_task, emoji_load_task):
                 if not task.done():
@@ -176,6 +203,13 @@ class MainSystem:
         logger.info(t("startup.chat_manager_initialized"))
         await memory_automation_service.start()
 
+        from src.agent.service import agent_service
+        from src.desktop_pet.service import desktop_pet_service
+
+        await agent_service.start()
+
+        await desktop_pet_service.start()
+
         # await asyncio.sleep(0.5) #防止logger输出飞了
 
         # 触发 ON_START 事件，事件总线会统一桥接到 IPC 插件运行时。
@@ -184,8 +218,6 @@ class MainSystem:
 
         await event_bus.emit(event_type=EventType.ON_START)
         # logger.info("已触发 ON_START 事件")
-
-        self._start_webui_server()
 
         from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
 
@@ -200,11 +232,6 @@ class MainSystem:
 
         await async_task_manager.add_task(TelemetryHeartBeatTask())
         await async_task_manager.add_task(TelemetryStatsUploadTask())
-
-        # 主循环卡顿看门狗；WebUI 循环另有一份，挂在 WebUI 服务器启动处。
-        from src.common.event_loop_watchdog import start_watchdog
-
-        self.watchdog_task = start_watchdog("main")
 
         try:
             init_time = int(1000 * (time.time() - init_start_time))
@@ -224,29 +251,20 @@ class MainSystem:
                 run_image_path_maintenance_background,
                 should_schedule_image_path_maintenance_background,
             )
-            from src.webui.routers.data_transfer import periodic_transfer_temp_cleanup
+            from src.files.service import periodic_file_cleanup
 
             # 在独立线程中巡检推理图片，空闲时也能清理旧版本遗留的孤立缓存。
             PromptPreviewLogger.start()
-            self._register_message_handlers()
-            if self.app is None or self.server is None:
-                raise RuntimeError("消息服务未初始化")
 
             tasks = [
                 emoji_manager.periodic_emoji_maintenance(),
                 periodic_emoji_cache_cleanup(),
                 periodic_image_cache_cleanup(),
-                periodic_transfer_temp_cleanup(),
-                self.app.run(),
+                periodic_file_cleanup(),
             ]
             if global_config.debug.enable_console_input:
-                if sys.stdin.isatty():
-                    from src.cli.bot_console import BotConsole
-
-                    logger.info("已启用终端输入，可输入普通消息或 /clear、/pm 等指令；输入 exit() 关闭终端输入")
-                    tasks.append(BotConsole().run())
-                else:
-                    logger.warning("终端输入已配置为启用，但当前 stdin 不是交互式终端，已跳过")
+                # Worker 不读取 stdin，宿主通过专用 IPC 接口投递本地操作员消息。
+                logger.info("终端输入已启用：请在宿主终端使用 /use 选择此 Bot")
             image_path_maintenance_needed = await asyncio.to_thread(should_schedule_image_path_maintenance_background)
             if image_path_maintenance_needed:
                 tasks.append(run_image_path_maintenance_background())
@@ -265,8 +283,24 @@ async def main() -> None:
         await system.initialize()
         await system.schedule_tasks()
     finally:
-        if system.webui_server:
-            await system.webui_server.shutdown()
+        from src.chat.heart_flow.heartflow_manager import heartflow_manager
+        from src.common.logger import stop_ws_broadcasts
+        from src.common.shutdown import request_shutdown
+        from src.agent.service import agent_service
+        from src.desktop_pet.service import desktop_pet_service
+
+        request_shutdown("main_finally")
+        from src.common.http_service.console import close_console
+
+        await close_console()
+        await stop_ws_broadcasts()
+        await desktop_pet_service.stop()
+        if system.app is not None:
+            await system.app.stop()
+        await heartflow_manager.shutdown()
+        await agent_service.stop()
+        if system.http_server:
+            await system.http_server.shutdown()
         if system.watchdog_task is not None:
             system.watchdog_task.cancel()
             system.watchdog_task = None
@@ -275,10 +309,12 @@ async def main() -> None:
         from src.emoji_system.emoji_manager import emoji_manager
         from src.mcp_module.service import get_mcp_service
         from src.plugin_runtime.integration import get_plugin_runtime_manager
+        from src.services.expression_vector_service import expression_vector_service
         from src.services.memory_flow_service import memory_automation_service
 
         emoji_manager.shutdown()
         await image_manager.shutdown()
+        await expression_vector_service.stop()
         await memory_automation_service.shutdown()
         await a_memorix_host_service.stop()
         await get_plugin_runtime_manager().bridge_event("on_stop")

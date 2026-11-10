@@ -1,104 +1,73 @@
-from fastapi import Response
-from starlette.requests import Request
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from src.webui.app import create_app
-from src.webui.core import auth
+from fastapi import FastAPI, Request, Response
+from fastapi.testclient import TestClient
+import pytest
 
-
-class _FakeTokenManager:
-    def __init__(self, token: str) -> None:
-        self.token = token
-
-    def get_token(self) -> str:
-        return self.token
-
-    def verify_token(self, token: str) -> bool:
-        return token == self.token
+from src.host.authentication import HostCredentials
+from src.host.proxy import BotProxy, register_bot_proxy
+from src.host.sessions import HostSessions
+from src.host.webui_auth import register_host_auth
 
 
-def _build_request_with_cookies(cookies: dict[str, str]) -> Request:
-    cookie_header = "; ".join(f"{key}={value}" for key, value in cookies.items()).encode("latin-1")
-    return Request(
-        {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [(b"cookie", cookie_header)],
-            "query_string": b"",
-            "scheme": "http",
-            "server": ("testserver", 80),
-            "client": ("testclient", 50000),
-        }
-    )
+@pytest.mark.parametrize("secure", [False, True])
+def test_host_cookie_isolation_and_plugin_proxy(tmp_path, monkeypatch, secure):
+    credentials = HostCredentials(tmp_path / "webui.json")
+    credentials.update("固定Password!123")
+    sessions = HostSessions(tmp_path, credentials=credentials, secure_cookie=secure)
+    other = HostSessions(tmp_path / "other", credentials=credentials)
+    assert other.cookie_name != sessions.cookie_name
+    proxy = BotProxy(SimpleNamespace(), sessions)
+    forward = AsyncMock(return_value=Response("ok"))
+    monkeypatch.setattr(proxy, "_forward_http", forward)
+    app = FastAPI()
+    register_bot_proxy(app, proxy, management=True)
+    def require_session(request: Request):
+        proxy._require_session(request)
+    register_host_auth(app, sessions, credentials, require_session)
+    token = sessions.create_session()
+    paths = ["api/webui/plugins/config/test/widgets", "api/webui/plugins/runtime/webui",
+             "api/webui/plugins/install", "api/webui/plugins/market"]
+    for cookie, expected in [(sessions.cookie_name, 200), (other.cookie_name, 401), ("maibot_session", 401)]:
+        with TestClient(app, base_url="https://testserver") as client:
+            client.cookies.set(cookie, token)
+            for path in paths:
+                url = f"/api/host/bots/{'a' * 32}/proxy/{path}"
+                assert client.get(url).status_code == expected
+                assert client.post(url, json={}).status_code == expected
+    with TestClient(app, base_url="https://testserver") as client:
+        response = client.post("/api/webui/auth/verify", json={"token": credentials.token})
+        assert response.json()["valid"]
+        cookie = response.headers["set-cookie"]
+        assert "HttpOnly" in cookie and "SameSite=lax" in cookie
+        assert ("Secure" in cookie) == secure
+        session = client.cookies.get(sessions.cookie_name)
+        assert session != credentials.token
+        assert client.get("/api/webui/auth/check").json()["authenticated"]
+        restored = HostSessions(tmp_path, credentials=HostCredentials(credentials.path))
+        assert restored.valid(session)
+        assert client.post("/api/webui/auth/logout").status_code == 200
+        assert not sessions.valid(session)
+        assert not client.get("/api/webui/auth/check").json()["authenticated"]
 
 
-def test_auth_cookie_name_is_derived_from_access_token_hash() -> None:
-    first_name = auth.build_auth_cookie_name("first-token")
-    second_name = auth.build_auth_cookie_name("second-token")
+def test_host_statistics_report_requires_session(tmp_path):
+    import asyncio
+    from src.host.config import HostConfig
+    from src.host.webui import create_host_app
 
-    assert first_name.startswith(f"{auth.COOKIE_NAME_PREFIX}_")
-    assert second_name.startswith(f"{auth.COOKIE_NAME_PREFIX}_")
-    assert first_name != second_name
-    assert "first-token" not in first_name
-    assert "second-token" not in second_name
-
-
-def test_auth_cookie_value_reads_only_current_token_cookie(monkeypatch) -> None:
-    current_token = "current-token"
-    other_token = "other-token"
-    monkeypatch.setattr(auth, "get_token_manager", lambda: _FakeTokenManager(current_token))
-
-    request = _build_request_with_cookies(
-        {
-            auth.LEGACY_COOKIE_NAME: other_token,
-            auth.build_auth_cookie_name(other_token): other_token,
-        }
-    )
-
-    assert auth.get_auth_cookie_value(request) is None
-    assert not auth.is_token_valid(request)
-
-    current_cookie_name = auth.build_auth_cookie_name(current_token)
-    request = _build_request_with_cookies(
-        {
-            auth.LEGACY_COOKIE_NAME: other_token,
-            auth.build_auth_cookie_name(other_token): other_token,
-            current_cookie_name: current_token,
-        }
-    )
-
-    assert auth.get_auth_cookie_value(request) == current_token
-    assert auth.is_token_valid(request)
-
-
-def test_set_auth_cookie_uses_token_scoped_name_and_clears_legacy_cookie(monkeypatch) -> None:
-    token = "current-token"
-    monkeypatch.setattr(auth, "_is_secure_environment", lambda: False)
-
-    response = Response()
-    auth.set_auth_cookie(response, token)
-
-    set_cookie_headers = [
-        value.decode("latin-1")
-        for key, value in response.raw_headers
-        if key.lower() == b"set-cookie"
-    ]
-
-    assert any(header.startswith(f"{auth.build_auth_cookie_name(token)}={token};") for header in set_cookie_headers)
-    assert any(header.startswith(f"{auth.LEGACY_COOKIE_NAME}=") and "Max-Age=0" in header for header in set_cookie_headers)
-
-
-def test_create_app_registers_dashboard_api_routes() -> None:
-    app = create_app(enable_static=False)
-    routes = {
-        (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-    }
-
-    assert ("GET", "/api/webui/auth/check") in routes
-    assert ("POST", "/api/webui/auth/verify") in routes
-    assert ("GET", "/api/webui/config/bot") in routes
-    assert ("GET", "/api/webui/config/schema/bot") in routes
-    assert ("GET", "/api/webui/plugins/config/{plugin_id}/bundle") in routes
-    assert ("GET", "/api/webui/plugins/local-changelog/{plugin_id}") in routes
+    credentials = HostCredentials(tmp_path / "webui.json")
+    sessions = HostSessions(tmp_path, credentials=credentials)
+    workspace = SimpleNamespace(root=tmp_path)
+    supervisor = SimpleNamespace(workspace=workspace)
+    app = create_host_app(supervisor, SimpleNamespace(supervisor=supervisor), sessions, credentials, asyncio.Event(), config=HostConfig())
+    with TestClient(app) as client:
+        assert client.get("/maibot_statistics.html").status_code == 401
+        client.cookies.set(sessions.cookie_name, sessions.create_session())
+        assert client.get("/maibot_statistics.html").status_code == 404
+        (tmp_path / "maibot_statistics.html").write_text("<h1>Statistics</h1>")
+        response = client.get("/maibot_statistics.html")
+        assert response.status_code == 200
+        assert response.text == "<h1>Statistics</h1>"
+        assert response.headers["x-robots-tag"] == "noindex, nofollow"

@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from 'react'
 import { restartMaiBot } from './system-api'
+import { resolveApiPath } from './api-base'
 
 // ============ 类型定义 ============
 
@@ -58,6 +59,8 @@ export interface TriggerRestartOptions {
   message?: string
   /** 跳过 API 调用（用于后端已触发重启的情况） */
   skipApiCall?: boolean
+  /** 本次重启的最大健康检查次数（用于自更新等耗时更长的重启） */
+  maxAttempts?: number
 }
 
 // ============ 配置常量 ============
@@ -156,7 +159,7 @@ export function RestartProvider({
           CONFIG.CHECK_TIMEOUT
         )
 
-        const response = await fetch(healthCheckUrl, {
+        const response = await fetch(await resolveApiPath(healthCheckUrl), {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -174,7 +177,7 @@ export function RestartProvider({
   )
 
   // 开始健康检查循环
-  const startHealthCheck = useCallback(() => {
+  const startHealthCheck = useCallback((attemptLimit: number = maxAttempts) => {
     let currentAttempt = 0
 
     const doCheck = async () => {
@@ -199,13 +202,13 @@ export function RestartProvider({
         // 延迟后跳转
         setTimeout(() => {
           onRestartComplete?.()
-          // 默认跳转到 auth 页面
+          // 重启后重新加载页面，清空旧连接并检查登录状态。
           window.location.href = '/auth'
         }, CONFIG.SUCCESS_REDIRECT_DELAY)
-      } else if (currentAttempt >= maxAttempts) {
+      } else if (currentAttempt >= attemptLimit) {
         // 失败
         clearAllTimers()
-        const error = `健康检查超时 (${currentAttempt}/${maxAttempts})`
+        const error = `健康检查超时 (${currentAttempt}/${attemptLimit})`
         setState((prev) => ({
           ...prev,
           status: 'failed',
@@ -230,13 +233,13 @@ export function RestartProvider({
       checkAttempts: 0,
       error: undefined,
     }))
-    startHealthCheck()
-  }, [startHealthCheck])
+    startHealthCheck(state.maxAttempts)
+  }, [startHealthCheck, state.maxAttempts])
 
   // 触发重启
   const triggerRestart = useCallback(
     async (options?: TriggerRestartOptions) => {
-      const { delay = 0, skipApiCall = false } = options ?? {}
+      const { delay = 0, skipApiCall = false, maxAttempts: attemptLimit = maxAttempts } = options ?? {}
 
       // 已经在重启中，忽略
       if (state.status !== 'idle' && state.status !== 'failed') {
@@ -250,7 +253,7 @@ export function RestartProvider({
         progress: 0,
         elapsedTime: 0,
         checkAttempts: 0,
-        maxAttempts,
+        maxAttempts: attemptLimit,
       })
 
       // 可选延迟
@@ -297,7 +300,7 @@ export function RestartProvider({
 
       // 延迟后开始健康检查
       setTimeout(() => {
-        startHealthCheck()
+        startHealthCheck(attemptLimit)
       }, CONFIG.INITIAL_DELAY)
     },
     [state.status, clearAllTimers, maxAttempts, startHealthCheck]

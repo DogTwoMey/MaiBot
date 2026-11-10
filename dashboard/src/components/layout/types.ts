@@ -4,7 +4,7 @@ export interface LayoutProps {
   children: ReactNode
 }
 
-export type WorkspaceMode = 'settings' | 'chat' | 'logs' | `plugin:${string}`
+export type WorkspaceMode = 'settings' | 'chat' | 'logs'
 
 export type MenuIcon = ComponentType<{
   className?: string
@@ -20,7 +20,7 @@ export interface MenuItem {
   external?: boolean
   searchDescription?: string
   tourId?: string
-  featureFlag?: 'behaviorLearning' | 'replyEffects'
+  featureFlag?: 'agent' | 'files'
 }
 
 export interface MenuSection {

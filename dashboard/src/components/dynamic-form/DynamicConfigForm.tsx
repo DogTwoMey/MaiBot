@@ -39,7 +39,7 @@ function buildFieldPath(basePath: string, fieldName: string) {
 }
 
 function resolveSectionTitle(schema: ConfigSchema) {
-  return schema.uiLabel || schema.classDoc || schema.className
+  return schema.uiSectionLabel || schema.uiLabel || schema.classDoc || schema.className
 }
 
 function resolveFieldSectionTitle(field: FieldSchema) {
@@ -66,7 +66,6 @@ function orderInlineFields(schema: ConfigSchema, fields: FieldSchema[]) {
     .map(({ field }) => field)
 }
 
-const CHAT_TALK_RULE_FIELD_NAMES = new Set(['enable_talk_value_rules', 'talk_value_rules'])
 
 export function AdvancedSettingsButton({
   active,
@@ -289,6 +288,16 @@ export const DynamicConfigForm: React.FC<DynamicConfigFormProps> = ({
 
   const renderField = (field: FieldSchema) => {
     const fieldPath = buildFieldPath(basePath, field.name)
+    if (
+      basePath === 'chat.reply_timing' && values.planner_message_steering === true &&
+      (field.name === 'message_debounce_mode' || field.name === 'private_message_debounce_mode')
+    ) {
+      field = { ...field, readOnly: true }
+    }
+    const dependsOn = field['x-depends-on']
+    if (dependsOn && values[dependsOn] !== true) {
+      field = { ...field, readOnly: true }
+    }
     const nestedSchema = schema.nested?.[field.name]
 
     if (hooks.has(fieldPath)) {
@@ -460,17 +469,23 @@ export const DynamicConfigForm: React.FC<DynamicConfigFormProps> = ({
         const rowKey = row[0]['x-row']
         const isBotIdentityRow = rowKey === 'bot-identity'
         const isVisualImageCompressionRow = rowKey === 'visual-image-compression'
+        // 字段元数据声明的列数：x-row-columns
+        const declaredColumns = row[0]['x-row-columns']
+        const hasDeclaredColumns = !isBotIdentityRow && !isVisualImageCompressionRow && Boolean(declaredColumns)
 
         return row.length > 1 ? (
             <div
               key={row.map((field) => field.name).join('|')}
               data-config-row={rowKey}
+              style={hasDeclaredColumns ? ({ '--row-cols': declaredColumns } as React.CSSProperties) : undefined}
               className={cn(
                 "grid min-w-0 items-stretch gap-3 py-0.5",
                 isBotIdentityRow
                   ? "grid-cols-[minmax(0,1fr)_auto]"
                   : isVisualImageCompressionRow
                   ? "grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.1fr)] items-center"
+                  : hasDeclaredColumns
+                  ? "items-center md:grid-cols-[repeat(var(--row-cols),minmax(0,1fr))]"
                   : "md:grid-cols-2 xl:grid-cols-3",
               )}
             >
@@ -481,7 +496,7 @@ export const DynamicConfigForm: React.FC<DynamicConfigFormProps> = ({
                     "flex min-w-0 items-stretch",
                     isBotIdentityRow
                       ? ""
-                      : isVisualImageCompressionRow
+                      : isVisualImageCompressionRow || hasDeclaredColumns
                       ? fieldIndex > 0 && "md:border-l md:border-border/50 md:pl-3"
                       : horizontalSeparatorClassName,
                   )}
@@ -497,11 +512,77 @@ export const DynamicConfigForm: React.FC<DynamicConfigFormProps> = ({
     </>
   )
 
+  const isFullWidthControlRow = (row: FieldSchema[]) => {
+    if (row.length !== 1) return false
+    const field = row[0]
+    return field['x-layout'] !== 'inline-right' &&
+      ['input', 'number', 'password', 'select', 'textarea', undefined].includes(field['x-widget']) &&
+      ['string', 'number', 'integer', 'select', 'textarea'].includes(field.type)
+  }
+
+  /** 相邻且 x-column-group 相同的字段，按 x-column 分成并排的几列，每列带标题。 */
+  const splitColumnBlocks = (fields: FieldSchema[]) => {
+    const blocks: { key?: string; fields: FieldSchema[]; columns?: { title: string; fields: FieldSchema[] }[] }[] = []
+    for (const field of fields) {
+      const groupKey = field['x-column-group']
+      const last = blocks[blocks.length - 1]
+      if (!groupKey) {
+        if (last && !last.key) last.fields.push(field)
+        else blocks.push({ fields: [field] })
+        continue
+      }
+      const title = field['x-column'] ?? ''
+      const block = last?.key === groupKey ? last : { key: groupKey, fields: [], columns: [] }
+      if (block !== last) blocks.push(block)
+      const column = block.columns?.find((item) => item.title === title)
+      if (column) column.fields.push(field)
+      else block.columns?.push({ title, fields: [field] })
+    }
+    return blocks
+  }
+
   const renderFieldList = (fields: FieldSchema[]) => (
     <>
-      {groupFieldsByRow(fields).map((row, index) => (
+      {splitColumnBlocks(fields).map((block, blockIndex) => (
+        <React.Fragment key={block.key ?? block.fields.map((field) => field.name).join('|')}>
+          {blockIndex > 0 && <Separator className="my-1.5 bg-border/50" />}
+          {block.columns ? (
+            <div
+              data-config-columns={block.key}
+              style={{ '--cols': block.columns.length } as React.CSSProperties}
+              className="grid min-w-0 gap-x-6 gap-y-4 py-2 lg:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+            >
+              {block.columns.map((column, columnIndex) => (
+                <section
+                  key={column.title}
+                  className={cn("min-w-0", columnIndex > 0 && "lg:border-l lg:border-border/50 lg:pl-6")}
+                >
+                  {column.title && (
+                    <h3 className="mb-1 border-b border-border/50 pb-2 text-sm font-semibold tracking-wide">
+                      {column.title}
+                    </h3>
+                  )}
+                  {renderPlainFieldList(column.fields)}
+                </section>
+              ))}
+            </div>
+          ) : (
+            renderPlainFieldList(block.fields)
+          )}
+        </React.Fragment>
+      ))}
+    </>
+  )
+
+  const renderPlainFieldList = (fields: FieldSchema[]) => (
+    <>
+      {groupFieldsByRow(fields).map((row, index, rows) => (
         <React.Fragment key={row.map((field) => field.name).join('|')}>
-          {index > 0 && <Separator className="my-1.5 bg-border/50" />}
+          {index > 0 && basePath !== 'personality' && (
+            isFullWidthControlRow(rows[index - 1]) && isFullWidthControlRow(row)
+              ? <div className="h-3" aria-hidden="true" />
+              : <Separator className="my-1.5 bg-border/50" />
+          )}
           {renderRows([row])}
           {row.map((field) => {
             const fieldPath = buildFieldPath(basePath, field.name)
@@ -517,35 +598,12 @@ export const DynamicConfigForm: React.FC<DynamicConfigFormProps> = ({
     </>
   )
 
-  const renderVisibleFields = () => {
-    if (basePath !== 'chat.reply_timing') {
-      return renderFieldList(visibleFields)
-    }
-
-    const talkRuleFields = visibleFields.filter((field) => CHAT_TALK_RULE_FIELD_NAMES.has(field.name))
-    if (talkRuleFields.length === 0) {
-      return renderFieldList(visibleFields)
-    }
-
-    const commonFields = visibleFields.filter((field) => !CHAT_TALK_RULE_FIELD_NAMES.has(field.name))
-    if (commonFields.length === 0) {
-      return renderFieldList(talkRuleFields)
-    }
-
-    return (
-      <div className="min-w-0 space-y-4">
-        {renderFieldList(commonFields)}
-        <Separator className="my-2 bg-border/50" />
-        {renderFieldList(talkRuleFields)}
-      </div>
-    )
-  }
 
   return (
     <div className="min-w-0 space-y-4">
       {visibleFields.length > 0 && (
         <div>
-          {renderVisibleFields()}
+          {renderFieldList(visibleFields)}
         </div>
       )}
 

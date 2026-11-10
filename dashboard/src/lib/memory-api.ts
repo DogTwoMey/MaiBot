@@ -1,5 +1,7 @@
 import type { PluginConfigSchema } from '@/lib/plugin-api'
+import type { VectorSpace, VectorSpaceList } from '@/types/vector-space'
 
+import { scopeBotResourcePath } from '@/host/state'
 import { backendApi } from '@/lib/http'
 import type { HttpMethod } from '@/lib/http'
 
@@ -309,6 +311,10 @@ export interface MemoryVectorStoreSnapshot {
 }
 
 export interface MemoryVectorMigrationProgress extends Record<string, unknown> {
+  retrying?: boolean
+  paragraph_failed?: number
+  entity_failed?: number
+  relation_failed?: number
   total?: number
   processed?: number
   percent?: number
@@ -317,6 +323,7 @@ export interface MemoryVectorMigrationProgress extends Record<string, unknown> {
 }
 
 export interface MemoryVectorAutoMigrationStatus {
+  task?: 'sync' | 'rebuild'
   running?: boolean
   attempted?: boolean
   success?: boolean
@@ -2115,6 +2122,16 @@ export async function getMemoryRuntimeConfig(): Promise<MemoryRuntimeConfigPaylo
   return requestJson<MemoryRuntimeConfigPayload>('/runtime/config')
 }
 
+export type MemoryVectorSpace = VectorSpace
+
+export async function getMemoryVectorSpaces(): Promise<VectorSpaceList> {
+  return requestJson('/runtime/vectors/spaces')
+}
+
+export async function deleteMemoryVectorSpace(spaceId: string): Promise<{ success: boolean }> {
+  return requestJson(`/runtime/vectors/spaces/${encodeURIComponent(spaceId)}`, { method: 'DELETE' })
+}
+
 export async function refreshMemoryRuntimeSelfCheck(): Promise<MemoryRuntimeSelfCheckPayload> {
   return requestJson<MemoryRuntimeSelfCheckPayload>('/runtime/self-check/refresh', {
     method: 'POST',
@@ -2539,7 +2556,7 @@ export async function getMemoryImage(assetId: string): Promise<MemoryImageDetail
 }
 
 export function getMemoryImageContentUrl(assetId: string): string {
-  return `${API_BASE}/images/${encodeURIComponent(assetId)}/content`
+  return scopeBotResourcePath(`${API_BASE}/images/${encodeURIComponent(assetId)}/content`)
 }
 
 export async function reindexMemoryImages(): Promise<

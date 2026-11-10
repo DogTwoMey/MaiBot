@@ -10,7 +10,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Header } from './Header'
-import type { WebUIExtension } from '@/lib/plugin-webui'
 
 const mocks = vi.hoisted(() => ({
   pathname: '/',
@@ -48,6 +47,11 @@ vi.mock('@tanstack/react-router', () => ({
     select: (state: { location: { pathname: string } }) => unknown
   }) => select({ location: { pathname: mocks.pathname } }),
 }))
+
+vi.mock('@/lib/theme/tokens', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/theme/tokens')>()
+  return { ...actual, DEFAULT_DASHBOARD_STYLE: 'future-retro' }
+})
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -126,7 +130,21 @@ vi.mock('@/components/electron/BackendManager', () => ({
 }))
 
 vi.mock('@/components/search-dialog', () => ({
-  SearchDialog: ({ open }: { open: boolean }) => (open ? <div>搜索对话框已打开</div> : null),
+  SearchDialog: ({
+    open,
+    onOpenChange,
+  }: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+  }) =>
+    open ? (
+      <>
+        <div>搜索对话框已打开</div>
+        <button type="button" onClick={() => onOpenChange(false)}>
+          关闭搜索对话框
+        </button>
+      </>
+    ) : null,
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
@@ -219,11 +237,9 @@ function makeProps(
 ): Parameters<typeof Header>[0] {
   return {
     sidebarOpen: true,
-    mobileMenuOpen: false,
     searchOpen: false,
     actualTheme: 'dark',
     onSidebarToggle: vi.fn(),
-    onMobileMenuToggle: vi.fn(),
     onSearchOpenChange: vi.fn(),
     onThemeChange: vi.fn(),
     onTopbarToggle: vi.fn(),
@@ -235,27 +251,6 @@ function makeProps(
 }
 
 describe('Header', () => {
-  it('插件顶部标签保留原始标题并通过宿主工作区切换导航', () => {
-    const extension: WebUIExtension = { plugin_id: 'test.plugin', workspace_title: '消息统计', pages: [{
-      id: 'overview', title: '概览', description: '', placement: 'workspace', icon: 'chart', queries: {}, actions: {}, content: [],
-    }] }
-    const props = makeProps({ extensions: [extension] })
-    render(<Header {...props} />)
-    fireEvent.click(screen.getByRole('tab', { name: '消息统计' }))
-    expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/extensions/test.plugin/overview')
-    expect(mocks.t).not.toHaveBeenCalledWith('消息统计')
-  })
-
-  it('当前插件工作区保持可见，其余插件收进更多菜单', () => {
-    const extensions: WebUIExtension[] = ['first', 'second'].map((plugin_id) => ({ plugin_id, workspace_title: plugin_id, pages: [{
-      id: 'overview', title: 'Overview', description: '', placement: 'workspace', icon: 'puzzle', queries: {}, actions: {}, content: [],
-    }] }))
-    render(<Header {...makeProps({ extensions, workspaceMode: 'plugin:second' })} />)
-    expect(screen.getByRole('tab', { name: 'second' })).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'first' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'pluginWebUI.more' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).not.toHaveClass('hidden')
-  })
   beforeEach(() => {
     mocks.pathname = '/'
     mocks.electron = false
@@ -278,7 +273,7 @@ describe('Header', () => {
     vi.useRealTimers()
   })
 
-  it('触发顶栏主要操作、工作区切换、语言和主题变更', async () => {
+  it('触发顶栏主要操作、工作区切换、设置入口和主题变更', async () => {
     const props = makeProps()
     render(<Header {...props} />)
 
@@ -286,28 +281,27 @@ describe('Header', () => {
     expect(document.querySelector('[data-dashboard-header="true"]')).toHaveClass('bg-background')
     expect(document.querySelector('[data-dashboard-header="true"]')).not.toHaveClass('bg-card/80')
 
-    fireEvent.click(screen.getByRole('button', { name: 'a11y.closeMenu' }))
+    expect(screen.queryByRole('button', { name: 'a11y.closeMenu' })).not.toBeInTheDocument()
     const sidebarModeButton = screen.getByRole('button', {
       name: 'header.switchSidebarToHover',
     })
     expect(sidebarModeButton.querySelector('svg')).toHaveClass('lucide-chevron-left', 'h-5', 'w-5')
     fireEvent.click(sidebarModeButton)
-    fireEvent.click(screen.getByRole('button', { name: 'header.collapseTopbar' }))
+    for (const button of screen.getAllByRole('button', { name: 'header.collapseTopbar' })) {
+      fireEvent.click(button)
+    }
     fireEvent.click(screen.getByRole('button', { name: 'header.searchPlaceholder' }))
     fireEvent.click(screen.getByRole('button', { name: 'header.viewDocs' }))
     fireEvent.click(screen.getAllByRole('button', { name: 'header.switchToLight' })[0])
-    fireEvent.click(screen.getAllByRole('button', { name: 'English' })[0])
-    fireEvent.click(screen.getByRole('button', { name: 'header.logout' }))
+    expect(screen.getByTitle('sidebar.menu.settings')).toHaveAttribute('href', '/settings')
     fireEvent.click(screen.getByRole('tab', { name: 'workspace.logs' }))
 
-    expect(props.onMobileMenuToggle).toHaveBeenCalledOnce()
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
     expect(props.onTopbarToggle).toHaveBeenCalledOnce()
     expect(props.onSearchOpenChange).toHaveBeenCalledWith(true)
     expect(window.open).toHaveBeenCalledWith('https://docs.mai-mai.org', '_blank')
     expect(mocks.toggleTheme).toHaveBeenCalledWith('light', props.onThemeChange, expect.anything())
-    expect(mocks.changeLanguage).toHaveBeenCalledWith('en')
-    expect(mocks.logout).toHaveBeenCalledOnce()
+    expect(screen.getByTitle('sidebar.menu.settings')).toHaveAttribute('aria-label', 'sidebar.menu.settings')
     expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/logs')
   })
 
@@ -318,7 +312,10 @@ describe('Header', () => {
 
     expect(container.querySelector('[data-dashboard-header-collapsed="true"]')).toBeInTheDocument()
     expect(screen.queryByTestId('background-header')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'header.searchPlaceholder' }).closest('.hidden')).toBeInTheDocument()
+    // 顶栏搜索是常驻输入框，折叠态由整块顶栏内容容器隐藏
+    expect(
+      container.querySelector('[data-dashboard-header-collapsed="true"] > div.hidden')
+    ).toContainElement(screen.getByRole('button', { name: 'header.searchPlaceholder' }))
 
     expect(screen.queryByRole('button', { name: 'header.expandSidebar' })).not.toBeInTheDocument()
     fireEvent.click(screen.getAllByRole('button', { name: 'header.expandTopbar' })[0])
@@ -342,55 +339,50 @@ describe('Header', () => {
     await waitFor(() => expect(screen.getByText('搜索对话框已打开')).toBeInTheDocument())
   })
 
-  it('搜索打开时高亮顶栏搜索区域', () => {
+  it('搜索面板打开时不抢占顶栏高亮，当前工作区保持选中', () => {
     mocks.pathname = '/settings'
     const { rerender } = render(<Header {...makeProps({ searchOpen: false })} />)
 
+    const settingsTab = screen.getByRole('tab', { name: 'workspace.settings' })
     expect(document.querySelector('[data-header-action-highlighted="true"]')).toBeNull()
+    expect(settingsTab).toHaveAttribute('data-workspace-highlighted', 'true')
 
     rerender(<Header {...makeProps({ searchOpen: true })} />)
-    expect(document.querySelector('[data-header-action-highlighted="true"]')).toHaveAttribute(
-      'aria-label',
-      'header.searchPlaceholder'
-    )
+    // 顶栏搜索已改为内联输入框，没有对应的顶栏操作按钮，选中胶囊应留在当前工作区标签上
+    expect(document.querySelector('[data-header-action-highlighted="true"]')).toBeNull()
+    expect(settingsTab).toHaveAttribute('data-workspace-highlighted', 'true')
+    expect(settingsTab.querySelector('[data-layout-id="topbar-selection-pill"]')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-layout-id="topbar-selection-pill"]')).toHaveLength(1)
   })
 
-  it('语言菜单打开时高亮语言按钮，并支持日韩切换', () => {
+  it('设置入口悬停高亮，语言选择由设置页管理', () => {
     render(<Header {...makeProps()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: '打开语言菜单' }))
-    expect(document.querySelector('[data-header-action-highlighted="true"]')).toHaveAttribute(
-      'aria-label',
-      'header.switchLanguage'
-    )
-
-    fireEvent.click(screen.getAllByRole('button', { name: '日本語' })[0])
-    fireEvent.click(screen.getAllByRole('button', { name: '한국어' })[0])
-    expect(mocks.changeLanguage).toHaveBeenCalledWith('ja')
-    expect(mocks.changeLanguage).toHaveBeenCalledWith('ko')
+    const settingsLink = screen.getByTitle('sidebar.menu.settings')
+    fireEvent.pointerEnter(settingsLink)
+    expect(settingsLink).toHaveAttribute('data-header-action-highlighted', 'true')
+    expect(settingsLink).toHaveAttribute('href', '/settings')
+    expect(screen.queryByRole('button', { name: 'header.switchLanguage' })).not.toBeInTheDocument()
   })
 
-  it('亮色主题走夜间切换，移动端更多菜单也能改主题并登出', () => {
+  it('亮色主题走夜间切换，移动端更多菜单也能改主题和进入设置', () => {
     const props = makeProps({ actualTheme: 'light' })
     render(<Header {...props} />)
 
     fireEvent.click(screen.getAllByRole('button', { name: 'header.switchToDark' })[0])
     fireEvent.click(screen.getAllByRole('button', { name: 'header.switchToDark' })[1])
-    fireEvent.click(screen.getByRole('button', { name: 'header.logoutLabel' }))
+    expect(screen.getAllByRole('link', { name: 'sidebar.menu.settings' })).toHaveLength(2)
 
     expect(mocks.toggleTheme).toHaveBeenCalledTimes(2)
     expect(mocks.toggleTheme).toHaveBeenNthCalledWith(1, 'dark', props.onThemeChange, expect.anything())
-    expect(mocks.logout).toHaveBeenCalledOnce()
+    expect(mocks.logout).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'header.moreActions' })).toBeInTheDocument()
   })
 
-  it('日志工作区保留移动导航，日志槽位可见', () => {
+  it('日志工作区隐藏侧栏切换，日志槽位可见；手机导航交给底部标签栏，顶栏不再有菜单按钮', () => {
     const props = makeProps({ workspaceMode: 'logs', sidebarOpen: true })
     render(<Header {...props} />)
 
-    expect(screen.getByRole('button', { name: 'a11y.closeMenu' })).toHaveClass('lg:hidden')
-    fireEvent.click(screen.getByRole('button', { name: 'a11y.closeMenu' }))
-    expect(props.onMobileMenuToggle).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'a11y.closeMenu' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'header.switchSidebarToHover' })).toHaveClass(
       'lg:hidden'
     )
@@ -410,14 +402,17 @@ describe('Header', () => {
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
   })
 
-  it('提交搜索时保持窗口打开，并显示 Electron 未连接状态', async () => {
+  it('搜索已打开时再次提交保持打开、由搜索对话框关闭，Electron 无后端名时回退未连接文案', async () => {
     mocks.electron = true
     mocks.getActiveBackend.mockResolvedValue(null)
     const props = makeProps({ searchOpen: true })
     render(<Header {...props} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'header.searchPlaceholder' }))
-    expect(props.onSearchOpenChange).toHaveBeenCalledWith(true)
+    expect(props.onSearchOpenChange).toHaveBeenCalledTimes(1)
+    expect(props.onSearchOpenChange).toHaveBeenLastCalledWith(true)
+    fireEvent.click(await screen.findByRole('button', { name: '关闭搜索对话框' }))
+    expect(props.onSearchOpenChange).toHaveBeenLastCalledWith(false)
     expect(await screen.findByText('header.notConnected')).toBeInTheDocument()
   })
 
@@ -489,18 +484,18 @@ describe('Header', () => {
     render(<Header {...props} />)
 
     const logsTab = screen.getByRole('tab', { name: 'workspace.logs' })
-    const searchButton = screen.getByRole('search', { name: 'header.searchPlaceholder' })
+    const docsButton = screen.getByRole('button', { name: 'header.viewDocs' })
 
     fireEvent.pointerEnter(logsTab)
-    fireEvent.pointerEnter(searchButton)
-    expect(searchButton).toHaveAttribute('data-header-action-highlighted', 'true')
+    fireEvent.pointerEnter(docsButton)
+    expect(docsButton).toHaveAttribute('data-header-action-highlighted', 'true')
     expect(logsTab.querySelector('[data-layout-id="topbar-selection-pill"]')).not.toBeInTheDocument()
 
-    fireEvent.pointerLeave(searchButton)
+    fireEvent.pointerLeave(docsButton)
     act(() => {
       vi.advanceTimersByTime(600)
     })
-    expect(searchButton).toHaveAttribute('data-header-action-highlighted', 'false')
+    expect(docsButton).toHaveAttribute('data-header-action-highlighted', 'false')
   })
 
   it('日志工作区根据切换器间距压缩标签，并在间隙足够后恢复', () => {
@@ -644,36 +639,41 @@ describe('Header', () => {
     })
   })
 
-  it('顶栏按钮悬停定时器可被再次进入打断，并触发工作区/语言/文档等剩余回调', () => {
+  it('顶栏按钮悬停定时器可被再次进入打断，并触发工作区/设置/文档等回调', () => {
     vi.useFakeTimers()
     const props = makeProps()
     render(<Header {...props} />)
 
-    const searchButton = screen.getByRole('button', { name: 'header.searchPlaceholder' })
+    const settingsAction = screen.getByTitle('sidebar.menu.settings')
     const docsButton = screen.getByRole('button', { name: 'header.viewDocs' })
-    const languageButton = screen.getByRole('button', { name: 'header.switchLanguage' })
+    const settingsButton = screen.getByTitle('sidebar.menu.settings')
     const themeButton = screen.getAllByRole('button', { name: 'header.switchToLight' })[0]
-    const logoutButton = screen.getByRole('button', { name: 'header.logout' })
+    const moreButton = screen.getByRole('button', { name: 'header.moreActions' })
     const settingsLink = screen.getByRole('tab', { name: 'workspace.settings' })
 
-    fireEvent.pointerEnter(searchButton)
-    fireEvent.pointerLeave(searchButton)
-    fireEvent.pointerLeave(searchButton)
-    fireEvent.pointerEnter(searchButton)
+    fireEvent.pointerEnter(settingsAction)
+    fireEvent.pointerLeave(settingsAction)
+    fireEvent.pointerLeave(settingsAction)
+    fireEvent.pointerEnter(settingsAction)
+    // 再次进入会清掉未完成的离开定时器，高亮不会被延迟清除
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+    expect(settingsAction).toHaveAttribute('data-header-action-highlighted', 'true')
 
     fireEvent.pointerEnter(docsButton)
     fireEvent.pointerLeave(docsButton)
-    fireEvent.pointerEnter(languageButton)
-    fireEvent.click(languageButton)
+    fireEvent.pointerEnter(settingsButton)
+    fireEvent.click(settingsButton)
     fireEvent.pointerEnter(themeButton)
     fireEvent.pointerLeave(themeButton)
-    fireEvent.pointerEnter(logoutButton)
-    fireEvent.pointerLeave(logoutButton)
+    fireEvent.pointerEnter(moreButton)
+    fireEvent.pointerLeave(moreButton)
     fireEvent.click(settingsLink)
-    fireEvent.click(screen.getAllByRole('button', { name: 'English' })[1])
+    fireEvent.click(docsButton)
 
     expect(settingsLink).toHaveAttribute('href', '/')
-    expect(mocks.changeLanguage).toHaveBeenCalledWith('en')
+    expect(window.open).toHaveBeenCalledWith('https://docs.mai-mai.org', '_blank')
 
     act(() => {
       vi.advanceTimersByTime(600)
@@ -726,11 +726,11 @@ describe('Header', () => {
     )
   })
 
-  it('语言代码为空时回退中文并勾选中文项', () => {
-    mocks.language = ''
+  it('界面语言不会改变工作区与设置入口的路由', () => {
+    mocks.language = 'ja'
     render(<Header {...makeProps()} />)
-    const zhItem = screen.getAllByRole('button', { name: /中文/ })[0]
-    expect(zhItem.querySelector('svg')).toBeTruthy()
+    expect(screen.getByTitle('sidebar.menu.settings')).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('tab', { name: 'workspace.logs' })).toHaveAttribute('href', '/logs')
   })
 })
 

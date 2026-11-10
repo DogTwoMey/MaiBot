@@ -105,6 +105,35 @@ def _request(method: str, payload: Dict[str, Any], plugin_id: str = "") -> Envel
     return Envelope(request_id=1, message_type=MessageType.REQUEST, method=method, plugin_id=plugin_id, payload=payload)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disable_via_reload", [False, True])
+async def test_reload_aware_plugin_gets_final_cleanup_when_disabled(activation_runtime, disable_via_reload):
+    runner, transport, paths = activation_runtime
+    source_path = paths[_UNRELATED] / "plugin.py"
+    source = source_path.read_text(encoding="utf-8")
+    source = source.replace("self.unloads = 0", "self.unloads = 0\n        self.unload_modes = []")
+    source = source.replace("async def on_unload(self):", "async def on_unload(self, *, for_reload=False):")
+    source = source.replace("self.unloads += 1", "self.unloads += 1\n        self.unload_modes.append(for_reload)")
+    source_path.write_text(source, encoding="utf-8")
+    await runner.run()
+    for _ in range(3):
+        previous = runner._loader.get_plugin(_UNRELATED)
+        result = await _reload(runner, "single", [_UNRELATED])
+        assert result.success
+        assert previous.instance.unload_modes == [True]
+    current = runner._loader.get_plugin(_UNRELATED)
+    if disable_via_reload:
+        _configure(paths[_UNRELATED], enabled=False)
+        result = await _reload(runner, "single", [_UNRELATED])
+        assert result.success
+        assert current.instance.unload_modes == [True, False]
+    else:
+        await runner._unload_plugins_by_ids([_UNRELATED], "disabled")
+        assert current.instance.unload_modes == [False]
+    assert runner._loader.get_plugin(_UNRELATED) is None
+    assert _UNRELATED not in transport.registered
+
+
 def _write_plugin(root: Path, plugin_id: str, dependencies: List[str] | None = None) -> Path:
     plugin_dir = root / plugin_id
     plugin_dir.mkdir()
@@ -208,6 +237,7 @@ class _HostTransport:
         self.runner = runner
         self.ready: RunnerReadyPayload | None = None
         self.registered: Set[str] = set()
+        self.registrations: Dict[str, Dict[str, Any]] = {}
         self.registration_failures: Counter[str] = Counter()
         self.handlers: Dict[str, Any] = {}
         self.disconnected = False
@@ -217,6 +247,9 @@ class _HostTransport:
 
     def register_method(self, method: str, handler: Any) -> None:
         self.handlers[method] = handler
+
+    async def send_event(self, method: str, **kwargs: Any) -> None:
+        assert method == "runner.startup_progress"
 
     async def disconnect(self) -> None:
         self.disconnected = True
@@ -229,11 +262,12 @@ class _HostTransport:
                 self.registration_failures[plugin_id] -= 1
                 return request.make_error_response("E_INTERNAL", "registration refused")
             self.registered.add(plugin_id)
+            self.registrations[plugin_id] = request.payload
         elif method == "plugin.unregister":
             self.registered.discard(plugin_id)
+            self.registrations.pop(plugin_id, None)
         elif method == "runner.ready":
             self.ready = RunnerReadyPayload.model_validate(request.payload)
-            self.runner._shutting_down = True
         elif method != "plugin.bootstrap":
             raise AssertionError(f"Unexpected RPC method: {method}")
         return request.make_response(payload={"accepted": True})
@@ -258,6 +292,8 @@ def activation_runtime(tmp_path: Path, monkeypatch):
         pass
 
     monkeypatch.setattr(runner, "_uninstall_log_handler", no_process_logging)
+    # 只执行启动阶段，不伪造真实关停状态；后续测试仍会调用重载接口。
+    monkeypatch.setattr(runner, "_wait_for_shutdown", no_process_logging)
     # Loading may install the SDK's legacy import hook. Keep it local to this test.
     monkeypatch.setattr(sys, "meta_path", list(sys.meta_path))
     try:
@@ -297,6 +333,62 @@ async def test_startup_distinguishes_self_disable_from_transitive_dependency_blo
     assert transport.registered == {_UNRELATED}
     assert runner._loader.list_plugins() == [_UNRELATED]
     assert runner._loader.get_plugin(_UNRELATED).instance.loads == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_toml", ['[greeting]\nmessage = []\n', '[greeting\nmessage = "hi"\n'])
+async def test_config_error_loads_management_only_and_repair_activates_business(
+    activation_runtime, invalid_toml: str,
+) -> None:
+    runner, transport, paths = activation_runtime
+    plugin_dir = _write_config_model_plugin(paths[_UNRELATED].parent)
+    paths[_CONFIG_MODEL] = plugin_dir
+    source = _CONFIG_MODEL_PLUGIN_SOURCE.replace(
+        '    config_model = DemoConfig',
+        '    config_model = DemoConfig\n'
+        '    def __init__(self):\n'
+        '        super().__init__()\n'
+        '        self.loads = 0\n'
+        '        self.unloads = 0\n'
+        '    def get_components(self):\n'
+        '        return [{"name": "sample", "type": "tool"}]',
+    ).replace('    async def on_load(self):\n        pass', '    async def on_load(self):\n        self.loads += 1')
+    source = source.replace('    async def on_unload(self):\n        pass', '    async def on_unload(self):\n        self.unloads += 1')
+    (plugin_dir / "plugin.py").write_text(source, encoding="utf-8")
+    config_path = plugin_dir / "config.toml"
+    config_path.write_text('[plugin]\nconfig_version = "1.0.0"\n' + invalid_toml, encoding="utf-8")
+    original = config_path.read_bytes()
+
+    await runner.run()
+    invalid_meta = runner._loader.get_plugin(_CONFIG_MODEL)
+    assert invalid_meta is not None and invalid_meta.config_error
+    assert invalid_meta.instance.loads == 0
+    registration = transport.registrations[_CONFIG_MODEL]
+    assert registration["config_error"] == invalid_meta.config_error
+    assert registration["components"] == []
+    assert registration["capabilities_required"] == []
+    assert registration["config_schema"] == {}
+    snapshot = await _inspect(runner, _CONFIG_MODEL)
+    assert snapshot.config_error and not snapshot.enabled
+    assert snapshot.normalized_config == {} and snapshot.config_schema == {}
+    assert config_path.read_bytes() == original
+
+    _configure_config_model(plugin_dir, enabled=True)
+    result = await _reload(runner, "single", [_CONFIG_MODEL])
+    assert result.success
+    repaired_meta = runner._loader.get_plugin(_CONFIG_MODEL)
+    assert repaired_meta.config_error == ""
+    assert repaired_meta.instance.loads == 1
+    assert invalid_meta.instance.unloads == 0
+    assert transport.registrations[_CONFIG_MODEL]["components"][0]["name"] == "sample"
+
+    # 再次写坏配置必须卸载已运行业务，不能保留之前的工具和调度。
+    config_path.write_bytes(original)
+    result = await _reload(runner, "single", [_CONFIG_MODEL])
+    assert result.success
+    assert repaired_meta.instance.unloads == 1
+    assert runner._loader.get_plugin(_CONFIG_MODEL).instance.loads == 0
+    assert transport.registrations[_CONFIG_MODEL]["components"] == []
 
 
 @pytest.mark.asyncio
@@ -562,7 +654,41 @@ async def test_startup_honours_disk_enabled_of_sdk_config_model_plugin(activatio
 
 
 @pytest.mark.asyncio
-async def test_config_version_upgrade_keeps_disk_disable_of_sdk_config_model_plugin(activation_runtime) -> None:
+@pytest.mark.parametrize("plugin_id", [_DEPENDENCY, _ADAPTER])
+async def test_disabled_plugin_skips_import_and_missing_dependencies(activation_runtime, plugin_id: str) -> None:
+    runner, transport, paths = activation_runtime
+    plugin_dir = paths[plugin_id]
+    _configure(plugin_dir, enabled=False)
+    original_source = (plugin_dir / "plugin.py").read_text(encoding="utf-8")
+    (plugin_dir / "plugin.py").write_text('raise RuntimeError("disabled plugin imported")\n', encoding="utf-8")
+    manifest_path = plugin_dir / "_manifest.json"
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+    manifest = json.loads(original_manifest)
+    manifest["dependencies"] = [
+        {"type": "plugin", "id": "test.missing", "version_spec": ">=1"},
+        {"type": "python_package", "name": "missing-disabled-plugin-package", "version_spec": ">=1"},
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    await runner.run()
+
+    assert transport.ready is not None
+    assert plugin_id in transport.ready.explicitly_disabled_plugins
+    assert plugin_id not in transport.ready.failed_plugins
+    assert plugin_id not in transport.registered
+    assert runner._loader.get_plugin(plugin_id) is None
+
+    # 恢复合法代码和依赖后，重新启用仍通过正常导入、配置与激活流程。
+    (plugin_dir / "plugin.py").write_text(original_source, encoding="utf-8")
+    manifest_path.write_text(original_manifest, encoding="utf-8")
+    _configure(plugin_dir, enabled=True)
+    result = await _reload(runner, "batch", [plugin_id])
+    assert result.success
+    assert plugin_id in result.reloaded_plugins
+
+
+@pytest.mark.asyncio
+async def test_disabled_sdk_config_model_plugin_skips_config_version_upgrade(activation_runtime) -> None:
     runner, transport, paths = activation_runtime
     paths[_CONFIG_MODEL] = _write_config_model_plugin(paths[_UNRELATED].parent)
     _configure_config_model(paths[_CONFIG_MODEL], enabled=False, config_version="0.9.0")
@@ -571,11 +697,11 @@ async def test_config_version_upgrade_keeps_disk_disable_of_sdk_config_model_plu
 
     assert transport.ready is not None
     assert _CONFIG_MODEL in transport.ready.explicitly_disabled_plugins
-    assert _read_config(paths[_CONFIG_MODEL])["plugin"] == {"config_version": "1.0.0", "enabled": False}
+    assert _read_config(paths[_CONFIG_MODEL])["plugin"] == {"config_version": "0.9.0", "enabled": False}
 
 
 @pytest.mark.asyncio
-async def test_config_version_upgrade_keeps_disk_disable_of_plugin_without_config_normalization(
+async def test_disabled_plugin_without_config_normalization_skips_config_version_upgrade(
     activation_runtime,
 ) -> None:
     runner, transport, paths = activation_runtime
@@ -587,7 +713,7 @@ async def test_config_version_upgrade_keeps_disk_disable_of_plugin_without_confi
     assert transport.ready is not None
     assert _PLAIN_VERSIONED in transport.ready.explicitly_disabled_plugins
     assert _PLAIN_VERSIONED not in transport.registered
-    assert _read_config(paths[_PLAIN_VERSIONED])["plugin"] == {"config_version": "1.0.0", "enabled": False}
+    assert _read_config(paths[_PLAIN_VERSIONED])["plugin"] == {"config_version": "0.9.0", "enabled": False}
 
 
 @pytest.mark.asyncio
@@ -624,6 +750,7 @@ async def test_host_config_change_unloads_sdk_config_model_plugin_disabled_on_di
     supervisor = SimpleNamespace(
         _registered_plugins=transport.registered,
         get_loaded_plugin_ids=lambda: list(transport.registered),
+        get_plugin_config_error=lambda plugin_id: runner._loader.get_plugin(plugin_id).config_error,
         inspect_plugin_config=inspect_plugin_config,
         notify_plugin_config_updated=notify_plugin_config_updated,
     )

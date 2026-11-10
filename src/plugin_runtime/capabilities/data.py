@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import asyncio
 import random
 import re
 import time
@@ -331,22 +332,17 @@ class RuntimeDataCapabilityMixin:
         try:
             from src.chat.message_receive.chat_manager import chat_manager
 
-            existing_session_ids = chat_manager.resolve_session_ids_by_target(
+            session, created = await chat_manager.open_session(
                 platform=platform,
-                target_id=group_id if chat_type == "group" else user_id,
-                chat_type=chat_type,
-            )
-            session = await chat_manager.get_or_create_session(
-                platform=platform,
-                user_id=user_id or "",
-                group_id=group_id or None,
+                user_id=user_id if chat_type == "private" else "",
+                group_id=group_id if chat_type == "group" else None,
                 account_id=account_id,
                 scope=scope,
             )
             serialized_stream = self._serialize_stream(session)
             return {
                 "success": True,
-                "created": session.session_id not in existing_session_ids,
+                "created": created,
                 "stream": serialized_stream,
                 **serialized_stream,
             }
@@ -437,12 +433,13 @@ class RuntimeDataCapabilityMixin:
         try:
             chat_id = str(args.get("chat_id") or args.get("stream_id") or "").strip()
             include_binary_data = bool(args.get("include_binary_data", False))
-            message = message_service.get_message_by_id(
+            message = await asyncio.to_thread(
+                message_service.get_message_by_id,
                 message_id=message_id,
                 chat_id=chat_id or None,
             )
             serialized_message = (
-                self._serialize_messages([message], include_binary_data=include_binary_data)[0]
+                (await asyncio.to_thread(self._serialize_messages, [message], include_binary_data=include_binary_data))[0]
                 if message is not None
                 else None
             )
@@ -825,7 +822,9 @@ class RuntimeDataCapabilityMixin:
         from src.chat.heart_flow.heartflow_manager import heartflow_manager
 
         heartflow_chat = heartflow_manager.heartflow_chat_list.get(chat_id)
-        return 1.0 if heartflow_chat is None else heartflow_chat._talk_frequency_adjust
+        if heartflow_chat is None or not heartflow_chat.chat_stream.is_group_session:
+            return 1.0
+        return heartflow_chat._talk_frequency_adjust
 
     async def _cap_frequency_get_current_talk_value(self, plugin_id: str, capability: str, args: Dict[str, Any]) -> Any:
         from src.common.utils.utils_config import ChatConfigUtils

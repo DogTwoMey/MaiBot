@@ -7,6 +7,7 @@ import { SecurityTab } from '../SecurityTab'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  logout: vi.fn(),
   toast: vi.fn(),
   validateToken: vi.fn((token: string) => ({
     isValid: token === 'ValidToken!123',
@@ -36,6 +37,8 @@ vi.mock('react-i18next', () => {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
 }))
+
+vi.mock('@/lib/auth', () => ({ logout: mocks.logout }))
 
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mocks.toast }),
@@ -91,6 +94,11 @@ vi.mock('@/components/ui/alert-dialog', () => ({
 }))
 
 describe('SecurityTab', () => {
+  it('安全设置提供退出登录入口', () => {
+    render(<SecurityTab />)
+    fireEvent.click(screen.getByRole('button', { name: 'header.logoutLabel' }))
+    expect(mocks.logout).toHaveBeenCalledOnce()
+  })
   const clipboardWrite = vi.fn()
   const fetchMock = vi.fn()
 
@@ -123,9 +131,9 @@ describe('SecurityTab', () => {
     render(<SecurityTab />)
 
     fireEvent.click(screen.getAllByTitle('settings.security.show')[0])
-    expect(mocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'settings.security.cannotView' })
-    )
+    expect(screen.getByLabelText('settings.security.newTokenLabel')).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByTitle('settings.security.hide'))
+    expect(screen.getByLabelText('settings.security.newTokenLabel')).toHaveAttribute('type', 'password')
 
     const input = screen.getByLabelText('settings.security.newTokenLabel')
     fireEvent.change(input, { target: { value: 'short' } })
@@ -248,46 +256,21 @@ describe('SecurityTab', () => {
     )
   })
 
-  it('未生成 Token 时复制按钮禁用；生成后复制成功并在超时后还原图标', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue({ success: true, token: 'generated-token' }),
-    })
+  it('生成 Token 前无可复制值，生成后可复制且保留成功状态直到关闭', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ success: true, token: 'generated-token' }) })
     clipboardWrite.mockResolvedValue(undefined)
     render(<SecurityTab />)
-
-    const currentCopyButton = screen.getByTitle('settings.security.copyTip')
-    expect(currentCopyButton).toBeDisabled()
-
+    expect(screen.queryByRole('button', { name: 'settings.security.copyToken' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'settings.security.confirmGenerate' }))
-    await screen.findByText('generated-token')
-    expect(currentCopyButton).toBeEnabled()
-
-    vi.useFakeTimers()
-    fireEvent.click(currentCopyButton)
-    await act(async () => {
-      await Promise.resolve()
-    })
-
-    expect(clipboardWrite).toHaveBeenCalledWith('generated-token')
-    expect(mocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'settings.security.copySuccess' })
-    )
-    expect(currentCopyButton.querySelector('.lucide-check')).not.toBeNull()
-
-    act(() => {
-      vi.advanceTimersByTime(2000)
-    })
-    expect(currentCopyButton.querySelector('.lucide-copy')).not.toBeNull()
-
-    fireEvent.click(screen.getAllByTitle('settings.security.show')[0])
-    expect(screen.getByLabelText('settings.security.yourToken')).toHaveAttribute('type', 'text')
-    expect(screen.getByLabelText('settings.security.yourToken')).toHaveValue('generated-token')
-    fireEvent.click(screen.getByTitle('settings.security.hide'))
-    expect(screen.getByLabelText('settings.security.yourToken')).toHaveAttribute('type', 'password')
+    const copyButton = await screen.findByRole('button', { name: 'settings.security.copyToken' })
+    fireEvent.click(copyButton)
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith('generated-token'))
+    expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'settings.security.copySuccess' }))
+    expect(screen.getByRole('button', { name: 'settings.security.copied' })).toBeInTheDocument()
+    expect(screen.getByText('generated-token')).toBeInTheDocument()
   })
 
-  it('复制当前 Token 失败时给出破坏性提示', async () => {
+  it('复制生成的 Token 失败时给出破坏性提示', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ success: true, token: 'generated-token' }),
@@ -298,7 +281,7 @@ describe('SecurityTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'settings.security.confirmGenerate' }))
     await screen.findByText('generated-token')
 
-    fireEvent.click(screen.getByTitle('settings.security.copyTip'))
+    fireEvent.click(screen.getByRole('button', { name: 'settings.security.copyToken' }))
     await waitFor(() =>
       expect(mocks.toast).toHaveBeenCalledWith(
         expect.objectContaining({

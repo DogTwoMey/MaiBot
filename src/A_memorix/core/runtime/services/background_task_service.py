@@ -5,6 +5,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Tuple
 import asyncio
 import time
 
+from src.common.async_work import run_sync_work
 from src.common.logger import get_logger
 
 from ...utils import profile_policy
@@ -242,11 +243,13 @@ class MemoryBackgroundTaskService(KernelServiceBase):
             if self._background_stopping:
                 break
             try:
-                self._maintenance_service._reconcile_relation_graph_projection_jobs()
+                # 图通道初始化失败的原因已在启动时记录；清理任务继续运行，投影等待图通道可用。
+                if self.graph_store is not None:
+                    await run_sync_work(self._maintenance_service._reconcile_relation_graph_projection_jobs)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning(f"relation graph projection loop 异常，将在下一轮重试: {exc}")
+                logger.exception(f"relation graph projection loop 异常，将在下一轮重试: {exc}")
             try:
                 result = await self._delete_admin_service.process_pending_storage_cleanup_jobs(limit=100)
                 if int(result.get("failed", 0) or 0) > 0:
@@ -370,15 +373,7 @@ class MemoryBackgroundTaskService(KernelServiceBase):
     async def _embedding_probe_loop(self) -> None:
         try:
             while not self._background_stopping:
-                startup_deferred = self._is_startup_self_check_deferred()
-                vector_fingerprint_pending = (
-                    str(self._vector_health.get("error_code", "") or "")
-                    == "embedding_fingerprint_unavailable"
-                )
-                should_probe = (
-                    (self._embedding_fallback_enabled() or startup_deferred or vector_fingerprint_pending)
-                    and (self._is_embedding_degraded() or startup_deferred or vector_fingerprint_pending)
-                )
+                should_probe = self.embedding_manager is not None
                 if should_probe:
                     try:
                         await self._recover_embedding_once()

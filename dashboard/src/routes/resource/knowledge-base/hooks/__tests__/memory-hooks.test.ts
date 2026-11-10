@@ -15,7 +15,6 @@ import type {
   MemoryImportTaskPayload,
   MemoryRuntimeConfigPayload,
 } from '@/lib/memory-api'
-import type { MemoryProgressEvent } from '@/lib/memory-progress-client'
 
 import {
   IMPORT_CHUNK_PAGE_SIZE,
@@ -28,58 +27,8 @@ import type { UseMemoryCorrectionOptions } from '../useMemoryCorrection'
 
 const toastMock = vi.hoisted(() => vi.fn())
 
-const progressState = vi.hoisted(() => {
-  const handlers: Array<(event: MemoryProgressEvent) => void> = []
-  let subscribeImpl:
-    | ((
-        handler: (event: MemoryProgressEvent) => void,
-        topics?: string[],
-      ) => Promise<() => Promise<void>>)
-    | null = null
-
-  return {
-    handlers,
-    setSubscribe(
-      impl: (
-        handler: (event: MemoryProgressEvent) => void,
-        topics?: string[],
-      ) => Promise<() => Promise<void>>,
-    ) {
-      subscribeImpl = impl
-    },
-    reset() {
-      handlers.length = 0
-      subscribeImpl = null
-    },
-    subscribe(
-      handler: (event: MemoryProgressEvent) => void,
-      topics?: string[],
-    ): Promise<() => Promise<void>> {
-      if (subscribeImpl) {
-        return subscribeImpl(handler, topics)
-      }
-      handlers.push(handler)
-      return Promise.resolve(async () => {
-        const index = handlers.indexOf(handler)
-        if (index >= 0) {
-          handlers.splice(index, 1)
-        }
-      })
-    },
-  }
-})
-
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastMock }),
-}))
-
-vi.mock('@/lib/memory-progress-client', () => ({
-  memoryProgressClient: {
-    subscribe: (
-      handler: (event: MemoryProgressEvent) => void,
-      topics?: string[],
-    ) => progressState.subscribe(handler, topics),
-  },
 }))
 
 vi.mock('@/lib/memory-api', () => ({
@@ -279,7 +228,6 @@ async function waitForSelectedPlan(
 
 beforeEach(() => {
   toastMock.mockReset()
-  progressState.reset()
 
   vi.mocked(memoryApi.getMemoryImportSettings).mockResolvedValue({
     success: true,
@@ -381,14 +329,13 @@ describe('useImportQueue', () => {
     expect(result.current.selectedImportChunks).toEqual([makeChunk()])
   })
 
-  it('非激活时不拉任务、不订阅进度', async () => {
+  it('非激活时不拉任务', async () => {
     renderQueue({ active: false })
     await act(async () => {
       await Promise.resolve()
     })
 
     expect(memoryApi.getMemoryImportTasks).not.toHaveBeenCalled()
-    expect(progressState.handlers).toHaveLength(0)
   })
 
   it('刷新时空队列会清空选中任务与分块', async () => {
@@ -671,13 +618,8 @@ describe('useImportQueue', () => {
     expect(result.current.importChunkOffset).toBe(IMPORT_CHUNK_PAGE_SIZE)
     vi.mocked(memoryApi.getMemoryImportTaskChunks).mockClear()
 
-    await waitFor(() => expect(progressState.handlers.length).toBeGreaterThan(0))
     await act(async () => {
-      progressState.handlers[0]({
-        topic: 'import_progress',
-        event: 'progress',
-        data: { task_id: 'task-1' },
-      })
+      await result.current.refreshImportQueue(true)
     })
 
     await waitFor(() =>
@@ -688,25 +630,6 @@ describe('useImportQueue', () => {
         IMPORT_CHUNK_PAGE_SIZE,
       ),
     )
-  })
-
-  it('import_progress 会失效任务列表；其它 topic 不触发刷新', async () => {
-    const { result } = renderQueue()
-    await waitForSelectedTask(result, 'task-1')
-    await waitFor(() => expect(progressState.handlers.length).toBeGreaterThan(0))
-    vi.mocked(memoryApi.getMemoryImportTasks).mockClear()
-
-    await act(async () => {
-      progressState.handlers[0]({
-        topic: 'delete_progress',
-        event: 'progress',
-        data: {},
-      })
-    })
-    expect(memoryApi.getMemoryImportTasks).not.toHaveBeenCalled()
-
-    result.current.invalidate()
-    await waitFor(() => expect(memoryApi.getMemoryImportTasks).toHaveBeenCalled())
   })
 
   it('轮询间隔取 settings.poll_interval_ms，且不低于 200ms', async () => {
@@ -859,43 +782,6 @@ describe('useImportQueue', () => {
         description: '加载分块详情失败',
       }),
     )
-  })
-
-  it('卸载时若订阅尚未完成会立刻执行 cleanup', async () => {
-    let resolveSubscribe: ((cleanup: () => Promise<void>) => void) | undefined
-    const cleanupFn = vi.fn(async () => undefined)
-    progressState.setSubscribe(
-      () =>
-        new Promise((resolve) => {
-          resolveSubscribe = resolve
-        }),
-    )
-
-    const { unmount } = renderQueue()
-    await waitFor(() => expect(resolveSubscribe).toBeTypeOf('function'))
-    unmount()
-    await act(async () => {
-      resolveSubscribe?.(cleanupFn)
-      await Promise.resolve()
-    })
-    expect(cleanupFn).toHaveBeenCalledOnce()
-  })
-
-  it('订阅失败只打 warn，不阻断队列', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    progressState.setSubscribe(async () => {
-      throw new Error('ws down')
-    })
-
-    const { result } = renderQueue()
-    await waitForSelectedTask(result, 'task-1')
-    await waitFor(() =>
-      expect(warn).toHaveBeenCalledWith(
-        '订阅长期记忆 WebSocket 失败，已退化到轮询兜底',
-        expect.any(Error),
-      ),
-    )
-    warn.mockRestore()
   })
 })
 
@@ -1066,7 +952,7 @@ describe('useMemoryCorrection', () => {
     await waitFor(() => expect(configured.result.current.candidateLimit).toBe('8'))
     act(() => {
       configured.result.current.setRequestText('改')
-      configured.result.current.setPersonId('p1')
+      configured.result.current.setPersonLookupMode('id'); configured.result.current.setPersonId('p1')
       configured.result.current.setScope('memory')
       configured.result.current.setCandidateLimit('   ')
     })
@@ -1090,7 +976,7 @@ describe('useMemoryCorrection', () => {
     await waitFor(() => expect(unconfigured.result.current.candidateLimit).toBe(''))
     act(() => {
       unconfigured.result.current.setRequestText('改')
-      unconfigured.result.current.setPersonId('p1')
+      unconfigured.result.current.setPersonLookupMode('id'); unconfigured.result.current.setPersonId('p1')
     })
     await act(async () => {
       await unconfigured.result.current.submitPreview()
@@ -1170,7 +1056,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(result, 'plan-1')
     act(() => {
       result.current.setRequestText('改成杭州')
-      result.current.setPersonId('person-1')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('person-1')
     })
     await act(async () => {
       await result.current.submitPreview()
@@ -1207,7 +1093,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(first.result, 'plan-1')
     act(() => {
       first.result.current.setRequestText('改')
-      first.result.current.setPersonId('p')
+      first.result.current.setPersonLookupMode('id'); first.result.current.setPersonId('p')
     })
     await act(async () => {
       await first.result.current.submitPreview()
@@ -1227,7 +1113,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(second.result, 'plan-1')
     act(() => {
       second.result.current.setRequestText('改')
-      second.result.current.setPersonId('p')
+      second.result.current.setPersonLookupMode('id'); second.result.current.setPersonId('p')
     })
     await act(async () => {
       await second.result.current.submitPreview()
@@ -1248,7 +1134,7 @@ describe('useMemoryCorrection', () => {
     await waitForSelectedPlan(result, 'plan-1')
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()
@@ -1271,7 +1157,7 @@ describe('useMemoryCorrection', () => {
     vi.mocked(memoryApi.getMemoryCorrectionPlan).mockRejectedValue(new Error('同步超时'))
     act(() => {
       result.current.setRequestText('改')
-      result.current.setPersonId('p')
+      result.current.setPersonLookupMode('id'); result.current.setPersonId('p')
     })
     await act(async () => {
       await result.current.submitPreview()

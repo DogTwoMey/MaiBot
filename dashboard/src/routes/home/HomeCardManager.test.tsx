@@ -256,7 +256,7 @@ describe('HomeCardManager 布局持久化', () => {
 
     const separator = screen.getByText('一言内容').closest('[data-home-card-id]')
     expect(separator).toHaveAttribute('data-home-card-variant', 'separator')
-    expect(separator?.parentElement?.getAttribute('style')).toContain('34px')
+    expect(separator?.parentElement?.getAttribute('style')).toContain('70px')
 
     await user.click(screen.getByRole('button', { name: 'home.cards.edit' }))
     expect(screen.getByRole('button', { name: '拖拽排序：一言' })).toBeInTheDocument()
