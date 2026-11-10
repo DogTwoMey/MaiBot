@@ -1,253 +1,73 @@
-from http.cookies import SimpleCookie
-from typing import Optional
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
-
 import pytest
 
-from src.config.config import global_config
-from src.webui.app import create_app
-from src.webui.core import auth as auth_module
-from src.webui.dependencies import require_auth
+from src.host.authentication import HostCredentials
+from src.host.proxy import BotProxy, register_bot_proxy
+from src.host.sessions import HostSessions
+from src.host.webui_auth import register_host_auth
 
 
-def test_plugin_webui_routes_use_instance_cookie(monkeypatch) -> None:
-    from src.webui.routers.plugin import config_routes, support, webui_extensions
-
-    async def run_inline(coroutine):
-        return await coroutine
-
-    async def empty_result(*args):
-        return {"success": True, "extensions": []}
-
-    monkeypatch.setattr(webui_extensions, "run_on_main_loop", run_inline)
-    monkeypatch.setattr(webui_extensions, "_list_extensions", empty_result)
-    monkeypatch.setattr(webui_extensions, "_invoke", empty_result)
-    monkeypatch.setattr(config_routes, "_request_config_widgets", empty_result)
+@pytest.mark.parametrize("secure", [False, True])
+def test_host_cookie_isolation_and_plugin_proxy(tmp_path, monkeypatch, secure):
+    credentials = HostCredentials(tmp_path / "webui.json")
+    credentials.update("固定Password!123")
+    sessions = HostSessions(tmp_path, credentials=credentials, secure_cookie=secure)
+    other = HostSessions(tmp_path / "other", credentials=credentials)
+    assert other.cookie_name != sessions.cookie_name
+    proxy = BotProxy(SimpleNamespace(), sessions)
+    forward = AsyncMock(return_value=Response("ok"))
+    monkeypatch.setattr(proxy, "_forward_http", forward)
     app = FastAPI()
-    app.include_router(webui_extensions.router)
-    app.include_router(config_routes.router)
-    other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
-    with patch.object(support, "get_token_manager") as manager:
-        manager.return_value.verify_cookie_token.side_effect = lambda token: token == "test-token"
-        for cookie_name, expected in (
-            (auth_module.COOKIE_NAME, 200),
-            (auth_module.build_auth_cookie_name(other_port), 401),
-            ("maibot_session", 401),
-            (None, 401),
-        ):
-            with TestClient(app) as client:
-                if cookie_name:
-                    client.cookies.set(cookie_name, "test-token")
-                assert client.get("/config/test/widgets").status_code == expected
-                assert client.post("/config/test/widgets/refresh").status_code == expected
-                assert client.get("/runtime/webui").status_code == expected
-                assert client.post("/runtime/webui/test/page/queries/summary", json={}).status_code == expected
+    register_bot_proxy(app, proxy, management=True)
+    def require_session(request: Request):
+        proxy._require_session(request)
+    register_host_auth(app, sessions, credentials, require_session, lambda request: "127.0.0.1")
+    token = sessions.create_session()
+    paths = ["api/webui/plugins/config/test/widgets", "api/webui/plugins/runtime/webui",
+             "api/webui/plugins/install", "api/webui/plugins/market"]
+    for cookie, expected in [(sessions.cookie_name, 200), (other.cookie_name, 401), ("maibot_session", 401)]:
+        with TestClient(app, base_url="https://testserver") as client:
+            client.cookies.set(cookie, token)
+            for path in paths:
+                url = f"/api/host/bots/{'a' * 32}/proxy/{path}"
+                assert client.get(url).status_code == expected
+                assert client.post(url, json={}).status_code == expected
+    with TestClient(app, base_url="https://testserver") as client:
+        response = client.post("/api/webui/auth/verify", json={"token": credentials.token})
+        assert response.json()["valid"]
+        cookie = response.headers["set-cookie"]
+        assert "HttpOnly" in cookie and "SameSite=lax" in cookie
+        assert ("Secure" in cookie) == secure
+        session = client.cookies.get(sessions.cookie_name)
+        assert session != credentials.token
+        assert client.get("/api/webui/auth/check").json()["authenticated"]
+        restored = HostSessions(tmp_path, credentials=HostCredentials(credentials.path))
+        assert restored.valid(session)
+        assert client.post("/api/webui/auth/logout").status_code == 200
+        assert not sessions.valid(session)
+        assert not client.get("/api/webui/auth/check").json()["authenticated"]
 
 
-def test_auth_cookie_name_is_isolated_by_webui_port() -> None:
-    assert auth_module.build_auth_cookie_name(8001) == "maibot_session_8001"
-    assert auth_module.build_auth_cookie_name(8101) == "maibot_session_8101"
+def test_host_statistics_report_requires_session(tmp_path):
+    import asyncio
+    from src.host.config import HostConfig
+    from src.host.webui import create_host_app
 
-
-def test_auth_dependency_reads_only_current_instance_cookie() -> None:
-    app = FastAPI()
-
-    @app.get("/")
-    async def protected_route(token: str = Depends(require_auth)) -> dict[str, str]:
-        return {"token": token}
-
-    other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
-    current_client = TestClient(app)
-    current_client.cookies.set(auth_module.COOKIE_NAME, "current-token")
-    legacy_client = TestClient(app)
-    legacy_client.cookies.set("maibot_session", "current-token")
-    other_instance_client = TestClient(app)
-    other_instance_client.cookies.set(auth_module.build_auth_cookie_name(other_port), "current-token")
-
-    with patch.object(auth_module, "is_token_valid", side_effect=lambda token: token == "current-token"):
-        current_response = current_client.get("/")
-        legacy_response = legacy_client.get("/")
-        other_instance_response = other_instance_client.get("/")
-
-    assert current_response.status_code == 200
-    assert current_response.json() == {"token": "current-token"}
-    assert legacy_response.status_code == 401
-    assert other_instance_response.status_code == 401
-
-
-def test_set_and_clear_auth_cookie_use_current_instance_name() -> None:
-    set_response = Response()
-    clear_response = Response()
-
-    with patch.object(auth_module, "_is_secure_environment", return_value=False):
-        auth_module.set_auth_cookie(set_response, "test-token")
-        auth_module.clear_auth_cookie(clear_response)
-
-    set_cookie_header = set_response.headers["set-cookie"]
-    clear_cookie_header = clear_response.headers["set-cookie"]
-
-    assert set_cookie_header.startswith(f"{auth_module.COOKIE_NAME}=test-token;")
-    assert clear_cookie_header.startswith(f'{auth_module.COOKIE_NAME}="";')
-    assert "Max-Age=0" in clear_cookie_header
-
-
-def test_get_auth_cookie_value_reads_current_instance_cookie() -> None:
-    app = FastAPI()
-
-    @app.get("/")
-    async def read_cookie(request: Request) -> dict[str, str | None]:
-        return {"token": auth_module.get_auth_cookie_value(request)}
-
-    client = TestClient(app)
-    client.cookies.set(auth_module.COOKIE_NAME, "current-token")
-
-    assert client.get("/").json() == {"token": "current-token"}
-
-
-def test_create_app_registers_dashboard_api_routes() -> None:
-    app = create_app(enable_static=False)
-    routes = {
-        (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-    }
-
-    assert ("GET", "/api/webui/auth/check") in routes
-    assert ("GET", "/api/webui/plugins/config/{plugin_id}/bundle") in routes
-
-
-def test_plugin_release_list_uses_current_instance_cookie(monkeypatch) -> None:
-    from src.webui.routers.plugin import marketplace
-
-    async def load_empty_catalog(*args):
-        return {"success": True, "plugins": [], "releases": []}
-
-    monkeypatch.setattr(marketplace.service, "get_detail", load_empty_catalog)
-    app = FastAPI()
-    app.include_router(marketplace.router)
-    other_port = 8101 if auth_module.COOKIE_NAME != "maibot_session_8101" else 8001
-    with patch.object(auth_module, "is_token_valid", side_effect=lambda token: token == "test-token"):
-        for cookie_name, expected in (
-            (auth_module.COOKIE_NAME, 200),
-            (auth_module.build_auth_cookie_name(other_port), 401),
-            ("maibot_session", 401),
-            (None, 401),
-        ):
-            client = TestClient(app)
-            if cookie_name:
-                client.cookies.set(cookie_name, "test-token")
-            assert client.get("/marketplace/test.plugin").status_code == expected
-
-
-def test_plugin_install_and_market_routes_use_current_instance_cookie() -> None:
-    from src.webui.routers.plugin import management, marketplace, zip_install
-
-    app = FastAPI()
-    for router in (management.router, marketplace.router, zip_install.router):
-        app.include_router(router)
-    paths = app.openapi()["paths"]
-    for path, method in (
-        ("/install", "post"),
-        ("/update", "post"),
-        ("/uninstall", "post"),
-        ("/marketplace/source", "get"),
-        ("/marketplace/source", "put"),
-        ("/marketplace", "get"),
-        ("/marketplace/{plugin_id}", "get"),
-        ("/install-zip", "post"),
-    ):
-        cookies = [parameter["name"] for parameter in paths[path][method]["parameters"] if parameter["in"] == "cookie"]
-        assert cookies == [auth_module.COOKIE_NAME]
-
-
-@pytest.mark.parametrize(
-    ("mode", "secure_cookie", "scheme", "forwarded_proto", "expected_secure"),
-    [
-        ("development", True, "http", None, True),
-        ("production", False, "http", None, False),
-        ("production", False, "https", None, False),
-        ("production", False, "http", "https", False),
-        ("production", True, "http", None, True),
-        ("production", True, "https", None, True),
-        ("production", True, "http", "https", True),
-        ("development", True, "http", "https", True),
-        ("development", True, "https", None, True),
-        ("development", False, "http", None, False),
-    ],
-)
-def test_cookie_security_follows_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-    mode: str,
-    secure_cookie: bool,
-    scheme: str,
-    forwarded_proto: Optional[str],
-    expected_secure: bool,
-) -> None:
-    monkeypatch.setattr(global_config.webui, "mode", mode)
-    monkeypatch.setattr(global_config.webui, "secure_cookie", secure_cookie)
-    headers = [] if forwarded_proto is None else [(b"x-forwarded-proto", forwarded_proto.encode())]
-    request = Request(
-        {"type": "http", "scheme": scheme, "server": ("example.com", 7999), "path": "/", "headers": headers}
-    )
-    response = Response()
-
-    auth_module.set_auth_cookie(response, "test-session-token", request)
-    cookie = SimpleCookie(response.headers["set-cookie"])[auth_module.COOKIE_NAME]
-    assert bool(cookie["secure"]) is expected_secure
-    assert cookie["httponly"]
-
-    cleared = Response()
-    auth_module.clear_auth_cookie(cleared)
-    assert bool(SimpleCookie(cleared.headers["set-cookie"])[auth_module.COOKIE_NAME]["secure"]) is expected_secure
-
-
-def test_unicode_password_cookie_preserves_plugin_instance_auth(monkeypatch, tmp_path):
-    import json
-    from src.webui.core.security import TokenManager
-    from src.webui.routers.plugin import support, webui_extensions
-
-    password = "测试日文かな-Emoji😀"
-    path = tmp_path / "webui.json"
-    path.write_text(json.dumps({"access_token": password, "token_source": "configured"}), encoding="utf-8")
-    manager = TokenManager(path)
-    assert manager.verify_token(password)
-    encoded = manager.encode_cookie_token(password)
-    assert encoded.isascii() and encoded != password
-    assert manager.verify_cookie_token(encoded)
-    assert not manager.verify_cookie_token(password)
-    monkeypatch.setattr(support, "get_token_manager", lambda: manager)
-
-    async def run_inline(coroutine):
-        return await coroutine
-
-    async def empty_result(*args):
-        return {"success": True, "extensions": []}
-
-    monkeypatch.setattr(webui_extensions, "run_on_main_loop", run_inline)
-    monkeypatch.setattr(webui_extensions, "_list_extensions", empty_result)
-    app = FastAPI()
-    app.include_router(webui_extensions.router)
+    credentials = HostCredentials(tmp_path / "webui.json")
+    sessions = HostSessions(tmp_path, credentials=credentials)
+    workspace = SimpleNamespace(root=tmp_path)
+    supervisor = SimpleNamespace(workspace=workspace)
+    app = create_host_app(supervisor, SimpleNamespace(supervisor=supervisor), sessions, credentials, asyncio.Event(), config=HostConfig())
     with TestClient(app) as client:
-        client.cookies.set(auth_module.COOKIE_NAME, encoded)
-        assert client.get("/runtime/webui").status_code == 200
-        client.cookies.clear()
-        client.cookies.set("maibot_session", encoded)
-        assert client.get("/runtime/webui").status_code == 401
-
-
-def test_instance_cookie_name_follows_shared_http_port() -> None:
-    assert auth_module.COOKIE_NAME == auth_module.build_auth_cookie_name(global_config.http.port)
-
-
-def test_request_auth_reads_only_current_instance_cookie(monkeypatch):
-    from types import SimpleNamespace
-
-    manager = SimpleNamespace(verify_cookie_token=lambda token: token == "test-token")
-    monkeypatch.setattr(auth_module, "get_token_manager", lambda: manager)
-    other_port = 8101 if global_config.http.port != 8101 else 8001
-    for name, expected in ((auth_module.COOKIE_NAME, True), (auth_module.build_auth_cookie_name(other_port), False), ("maibot_session", False)):
-        request = Request({"type": "http", "headers": [(b"cookie", f"{name}=test-token".encode())]})
-        assert auth_module.is_token_valid(request) is expected
+        assert client.get("/maibot_statistics.html").status_code == 401
+        client.cookies.set(sessions.cookie_name, sessions.create_session())
+        assert client.get("/maibot_statistics.html").status_code == 404
+        (tmp_path / "maibot_statistics.html").write_text("<h1>Statistics</h1>")
+        response = client.get("/maibot_statistics.html")
+        assert response.status_code == 200
+        assert response.text == "<h1>Statistics</h1>"
+        assert response.headers["x-robots-tag"] == "noindex, nofollow"

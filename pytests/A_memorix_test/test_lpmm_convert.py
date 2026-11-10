@@ -18,7 +18,7 @@ from src.A_memorix.core.utils.web_import_manager import ImportTaskManager
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONVERT_SCRIPT = REPO_ROOT / "src" / "A_memorix" / "scripts" / "convert_lpmm.py"
-CONFIG_PATH = REPO_ROOT / "config" / "a_memorix.toml"
+CONFIG_PATH = Path(os.environ.get("MAIBOT_INSTANCE_DIR", REPO_ROOT)) / "config" / "a_memorix.toml"
 
 
 @pytest.fixture(scope="module", autouse=True)

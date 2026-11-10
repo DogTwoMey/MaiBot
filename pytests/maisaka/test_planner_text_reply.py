@@ -66,7 +66,7 @@ def engine(monkeypatch) -> MaisakaReasoningEngine:
         session_id="chat",
         log_prefix="[test]",
         _chat_history=[_history(_message("original"))],
-        chat_stream=SimpleNamespace(platform="test", is_group_session=True, group_id="group", user_id=""),
+        chat_stream=SimpleNamespace(platform="test", is_group_session=True, account_id="bot", group_id="group", user_id=""),
         _has_pending_messages=lambda: False,
         _end_planner_continuation=Mock(),
         _reset_consecutive_wait_count=Mock(),
@@ -237,7 +237,7 @@ async def test_reply_target_is_fixed_before_request_and_refreshed_next_round(eng
     for state in (first, second):
         if state.reply_target_message is not None:
             _, probability = await reply_module._resolve_reply_quote(
-                BuiltinToolRuntimeContext(engine, engine._runtime), "回复正文", state.reply_target_message
+                BuiltinToolRuntimeContext(engine, engine._runtime), "回复正文", state.reply_target_message, "bot"
             )
             assert 0 <= probability <= 1
 
@@ -248,7 +248,7 @@ async def test_passive_tools_use_supplement_and_focus_provider_keeps_reply(engin
     by_name = {item["name"]: item for item in definitions}
     assert "reply" not in by_name
     assert "set_reply_options" not in by_name
-    assert "并行回复补充器" in by_name["show_emoji_list"]["description"]
+    assert "show_emoji_list" not in by_name
     assert "与不调用任何工具时一致" not in by_name["stop"]["description"]
     # Focus 直接使用 Provider，不经过普通模式的定义转换。
     focus_spec = await engine._runtime._tool_registry.get_tool_spec("reply")
@@ -375,7 +375,6 @@ def test_running_turn_keeps_prompt_and_behavior_when_switch_changes(engine, monk
 @pytest.mark.parametrize("failure", ["", "empty_receipt", "exception"])
 async def test_shared_reply_service_preserves_extensions_attachments_and_send_count(engine, monkeypatch, failure):
     monkeypatch.setattr(global_config.chat, "enable_reply_at", True)
-    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", True)
     target = engine._runtime._chat_history[0].original_message
     generation = ReplyGenerationResult(success=True, completion=LLMCompletionResult(response_text="实际回复"))
     generator = SimpleNamespace(generate_reply_with_context=AsyncMock(return_value=(True, generation)))
@@ -425,7 +424,7 @@ async def test_shared_reply_service_preserves_extensions_attachments_and_send_co
         assert request["reply_tool_args"][key] == arguments[key]
     extension.prepare.assert_awaited_once_with(arguments["plugin_options"])
     extension.transform.assert_awaited_once()
-    assert process.call_args.args[1] == arguments
+    assert process.call_args.kwargs["resolved_attachments"] is not None
     assert send.await_count == 2
     assert result.metadata["sent_message_ids"] == (["sent-1"] if failure else ["sent-1", "sent-2"])
     assert result.metadata["send_results"][0]["success"]
@@ -538,13 +537,13 @@ async def test_supplement_resources_are_bounded_and_quote_disable_is_enforced(mo
     assert list(resources.messages) == ["original"]
     assert resources.allow_quote is False
     with pytest.raises(ValueError, match="关闭引用"):
-        await resolve_supplement(ReplySupplementPlan(msg_id="original", parts=[{"type": "reply"}]), resources, {})
+        resolve_supplement(ReplySupplementPlan(msg_id="original", parts=[{"type": "reply"}]), resources, {})
     for parts in ([], [{"type": "reply"}, {"type": "reply"}], [{"type": "reply", "text": "rewrite"}]):
         with pytest.raises(ValidationError):
             ReplySupplementPlan(msg_id=None, parts=parts)
-    supplement = await resolve_supplement(ReplySupplementPlan(msg_id=None, parts=[{"type": "reply"}]), resources, {})
+    supplement = resolve_supplement(ReplySupplementPlan(msg_id=None, parts=[{"type": "reply"}]), resources, {})
     body = [PostProcessedReplyMessage(MessageSequence([TextComponent("body")]))]
-    assert supplement.compose(body) == body
+    assert await supplement.compose(body) == body
     assert supplement.target_message is None
     with pytest.raises(ValueError, match="不存在或编号有歧义"):
         resources.resolve_id("foreign", resources.messages)

@@ -9,13 +9,6 @@ import pytest
 
 from src.chat.replyer import retro_prompt
 from src.chat.replyer.maisaka_generator_base import BaseMaisakaReplyGenerator
-from src.chat.replyer.retro_prompt import (
-    RETRO_GROUP_LIGHT_PROMPT,
-    RETRO_GROUP_PROMPT,
-    RETRO_PRIVATE_PROMPT,
-    RETRO_PRIVATE_SELF_PROMPT,
-    SHORT_REPLY_STYLE,
-)
 from src.common.i18n import set_locale
 from src.common.data_models.message_component_data_model import (
     AtComponent,
@@ -43,8 +36,8 @@ GROUP_PLACEHOLDERS = {
     "bot_name",
     "dialogue_prompt",
     "expression_habits_block",
-    "extra_info_block",
     "keywords_reaction_prompt",
+    "extra_info_block",
     "planner_reasoning",
     "reply_style",
     "reply_target_block",
@@ -336,7 +329,6 @@ def isolate_retro_blocks(generator: BaseMaisakaReplyGenerator, monkeypatch: pyte
     """隔离注意事项块和关键词反应块，避免测试依赖聊天流与关键词配置。"""
 
     monkeypatch.setattr(generator, "_build_chat_attention_block", lambda session_id: "")
-    monkeypatch.setattr(generator, "_build_keyword_reaction_prompt", lambda **kwargs: "")
 
 
 @pytest.mark.parametrize(
@@ -389,7 +381,7 @@ def test_retro_request_messages_fill_single_template(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.parametrize("locale", RETRO_LOCALES)
 @pytest.mark.parametrize(
-    "prompt_name", [RETRO_GROUP_PROMPT, RETRO_GROUP_LIGHT_PROMPT, RETRO_PRIVATE_PROMPT, RETRO_PRIVATE_SELF_PROMPT]
+    "prompt_name", ["reply_group_mai_replier", "reply_group", "reply_private_mai_replier", "reply_private_followup_mai_replier"]
 )
 def test_retro_keeps_persona_in_system_and_reply_style_in_user(
     locale: str, prompt_name: str, monkeypatch: pytest.MonkeyPatch
@@ -450,7 +442,6 @@ def test_retro_keeps_sent_bot_messages_and_discards_planner_output(
         keyword_history.extend(kwargs["chat_history"])
         return ""
 
-    monkeypatch.setattr(generator, "_build_keyword_reaction_prompt", capture_keyword_history)
     items = generator._build_retro_request_messages(
         mai_replier=True,
         chat_history=chat_history,
@@ -476,11 +467,11 @@ def test_retro_keeps_sent_bot_messages_and_discards_planner_output(
 @pytest.mark.parametrize(
     ("is_group_session", "think_level", "reply_tool_args", "is_self_target", "expected_prompt_name"),
     [
-        (True, 1, {}, False, RETRO_GROUP_PROMPT),
-        (True, 0, {}, False, RETRO_GROUP_PROMPT),
-        (True, 1, {"reply_style": SHORT_REPLY_STYLE}, False, RETRO_GROUP_PROMPT),
-        (False, 1, {}, False, RETRO_PRIVATE_PROMPT),
-        (False, 1, {}, True, RETRO_PRIVATE_SELF_PROMPT),
+        (True, 1, {}, False, "reply_group_mai_replier"),
+        (True, 0, {}, False, "reply_group_mai_replier"),
+        (True, 1, {"reply_style": "short"}, False, "reply_group_mai_replier"),
+        (False, 1, {}, False, "reply_private_mai_replier"),
+        (False, 1, {}, True, "reply_private_followup_mai_replier"),
     ],
 )
 def test_select_retro_prompt_name(
@@ -492,15 +483,13 @@ def test_select_retro_prompt_name(
     expected_prompt_name: str,
 ) -> None:
     generator = build_retro_generator(is_group_session=is_group_session)
-    monkeypatch.setattr(retro_prompt, "is_bot_self", lambda platform, user_id: is_self_target)
+    monkeypatch.setattr(retro_prompt, "is_bot_self", lambda platform, user_id, **kwargs: is_self_target)
     reply_message = build_fake_target_message() if is_self_target else None
 
     prompt_name = generator._select_retro_prompt_name(
         mai_replier=True,
         reply_message=reply_message,
         stream_id="session-1",
-        think_level=think_level,
-        reply_tool_args=reply_tool_args,
     )
 
     assert prompt_name == expected_prompt_name
@@ -522,8 +511,8 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
     assert [item.role for item in retro_items] == [RoleType.System, RoleType.User]
     retro_prompt_text = read_item_text(retro_items[1])
     assert generator._select_retro_prompt_name(
-        reply_message=None, stream_id="session-1", think_level=0, reply_tool_args={}
-    ) == RETRO_GROUP_LIGHT_PROMPT
+        reply_message=None, stream_id="session-1",
+    ) == "reply_group"
     assert "小明在问晚饭" in retro_prompt_text
 
     monkeypatch.setattr(global_config.chat, "creative_mode", False)
@@ -575,12 +564,12 @@ def test_reply_reference_takes_priority_over_planner_content(
 
 def test_retro_templates_are_localized_consistently() -> None:
     expected_names = [
-        RETRO_GROUP_PROMPT,
-        RETRO_GROUP_LIGHT_PROMPT,
-        RETRO_PRIVATE_PROMPT,
-        RETRO_PRIVATE_SELF_PROMPT,
+        "reply_group_mai_replier",
+        "reply_group",
+        "reply_private_mai_replier",
+        "reply_private_followup_mai_replier",
     ]
-    private_names = {RETRO_PRIVATE_PROMPT, RETRO_PRIVATE_SELF_PROMPT}
+    private_names = {"reply_private_mai_replier", "reply_private_followup_mai_replier"}
 
     for locale in RETRO_LOCALES:
         prompt_templates = list_prompt_templates(locale=locale)

@@ -1,16 +1,18 @@
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowRight,
-  Brain,
-  Bot,
   CheckCircle2,
   Globe,
-  ShieldCheck,
 } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { HostSetup } from '@/host/HostSetup'
+import { useHostRuntime } from '@/host/state'
+import { DashboardStylePicker } from '@/components/dashboard-style-picker'
+import { useTheme } from '@/components/use-theme'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { SetupWizardLayout } from './SetupWizardLayout'
 import {
   AlertDialog,
@@ -35,12 +37,15 @@ import { APP_NAME } from '@/lib/version'
 import { useToast } from '@/hooks/use-toast'
 import { validateToken } from '@/lib/token-validator'
 import type { ModelListItem } from '@/lib/config-api'
+import type { DashboardStyle } from '@/lib/theme/tokens'
 import type {
   ApiProviderSetupConfig,
+  BasicSetupConfig,
   SetupStep,
   BotBasicConfig,
   ModelSetupConfig,
   PersonalityConfig,
+  SetupModelRole,
 } from './types'
 import {
   ApiProviderSetupForm,
@@ -52,19 +57,28 @@ import {
 } from './StepForms'
 import {
   loadBotBasicConfig,
+  loadBasicSetupConfig,
   loadSetupStatus,
   loadPersonalityConfig,
   loadApiProviderSetupConfig,
   loadModelSetupConfig,
   saveBotBasicConfig,
+  saveBasicSetupConfig,
+  saveDesktopPetEnabled,
   savePersonalityConfig,
   saveApiProviderSetupConfig,
   saveModelSetupConfig,
   completeSetup,
   fetchSetupModels,
+  testSetupModel,
   updateAccessToken,
 } from './api'
+import { ConnectionTestPanel } from './ConnectionTestPanel'
+import type { ConnectionTestState } from './ConnectionTestPanel'
 
+const MODEL_FETCH_MAX_ATTEMPTS = 3
+const PERSONALITY_MODES = ['template', 'manual'] as const
+type PersonalityMode = (typeof PERSONALITY_MODES)[number]
 const LANGUAGE_CODES = ['zh', 'en', 'ja', 'ko'] as const
 const LANGUAGE_NAMES: Record<(typeof LANGUAGE_CODES)[number], string> = {
   zh: '中文',
@@ -74,15 +88,17 @@ const LANGUAGE_NAMES: Record<(typeof LANGUAGE_CODES)[number], string> = {
 }
 
 export function SetupPage() {
-  return <SetupPageContent />
+  return useHostRuntime().host
+    ? <HostSetup><SetupPageContent /></HostSetup>
+    : <SetupPageContent />
 }
 
 // 内部实现组件
 function SetupPageContent() {
   const navigate = useNavigate()
-  const reduceMotion = useReducedMotion()
   const { t, i18n: i18nInstance } = useTranslation()
   const { toast } = useToast()
+  const { themeConfig, updateThemeConfig } = useTheme()
   const currentLang = i18nInstance.resolvedLanguage || i18nInstance.language || 'zh'
   const createDefaultPersonalityConfig = (): PersonalityConfig => ({
     personality: t('setupPage.defaults.personality.personality'),
@@ -102,6 +118,11 @@ function SetupPageContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [requiresCustomToken, setRequiresCustomToken] = useState(false)
   const [customToken, setCustomToken] = useState('')
+  const [customTokenConfirmation, setCustomTokenConfirmation] = useState('')
+  const [basicSettings, setBasicSettings] = useState<BasicSetupConfig | null>(null)
+  const [desktopPetDraft, setDesktopPetDraft] = useState<boolean | null>(null)
+  const [dashboardStyleDraft, setDashboardStyleDraft] = useState<DashboardStyle | null>(null)
+  const [definedModel, setDefinedModel] = useState('')
 
   // 步骤1：Bot基础信息
   const [botBasic, setBotBasic] = useState<BotBasicConfig>({
@@ -116,6 +137,27 @@ function SetupPageContent() {
   const [personality, setPersonality] = useState<PersonalityConfig>(() =>
     createDefaultPersonalityConfig()
   )
+  const [personalityMode, setPersonalityMode] = useState<PersonalityMode | null>(null)
+  const [personalityDrafts, setPersonalityDrafts] = useState<Partial<Record<PersonalityMode, PersonalityConfig>>>({})
+  const [personalityPresetId, setPersonalityPresetId] = useState('default')
+  const personalityDraft = personalityMode ? personalityDrafts[personalityMode] : undefined
+
+  const choosePersonalityMode = (mode: PersonalityMode) => {
+    setPersonalityDrafts((drafts) => {
+      if (drafts[mode]) return drafts
+      const defaults = createDefaultPersonalityConfig()
+      return {
+        ...drafts,
+        [mode]: {
+          ...personality,
+          personality: mode === 'template' ? defaults.personality : '',
+          behavior_style: mode === 'template' ? defaults.behavior_style : '',
+          reply_style: mode === 'template' ? defaults.reply_style : '',
+        },
+      }
+    })
+    setPersonalityMode(mode)
+  }
 
   // 步骤3：API 提供商配置
   const [apiProviderSetup, setApiProviderSetup] = useState<ApiProviderSetupConfig>({
@@ -136,33 +178,31 @@ function SetupPageContent() {
     replyer_thinking: false,
   })
 
-  const setupSteps: SetupStep[] = [
+  const profile = { id: 'profile', label: t('setupPage.steps.botProfile.title') }
+  const models = { id: 'models', label: t('setupPage.steps.modelSetup.title') }
+  const basics = { id: 'basics', label: t('setupPage.steps.basicSettings.title') }
+  const step = (id: string, key: string, group?: SetupStep['group']): SetupStep => ({
+    id, group,
+    title: t(`setupPage.steps.${key}.title`),
+    description: t(`setupPage.steps.${key}.description`),
+  })
+  const steps = [
+    ...(requiresCustomToken ? [step('custom-token', 'customToken')] : []),
+    step('nickname', 'nickname', profile),
     {
-      id: 'bot-profile',
-      title: t('setupPage.steps.botProfile.title'),
-      description: t('setupPage.steps.botProfile.description'),
-      icon: Bot,
+      ...step('personality', 'personality', profile),
+      description: t(personalityMode ? 'setupPage.steps.personality.description' : 'setupPage.steps.personality.choose'),
     },
-    {
-      id: 'model-setup',
-      title: t('setupPage.steps.modelSetup.title'),
-      description: t('setupPage.steps.modelSetup.description'),
-      icon: Brain,
-    },
+    step('define-model', 'defineModel', models),
+    step('replyer', 'replyer', models),
+    step('planner', 'planner', models),
+    step('group-replies', 'groupReplies', basics),
+    step('private-replies', 'privateReplies', basics),
+    step('desktop-and-appearance', 'desktopAndAppearance', basics),
   ]
-  const steps: SetupStep[] = requiresCustomToken
-    ? [
-        {
-          id: 'custom-token',
-          title: t('setupPage.steps.customToken.title'),
-          description: t('setupPage.steps.customToken.description'),
-          icon: ShieldCheck,
-        },
-        ...setupSteps,
-      ]
-    : setupSteps
 
   const currentStepId = steps[currentStep]?.id
+  const configuringModels = steps[currentStep]?.group?.id === models.id
   const [availableModels, setAvailableModels] = useState<ModelListItem[]>([])
   const [modelFetchStatus, setModelFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [modelFetchError, setModelFetchError] = useState('')
@@ -170,6 +210,7 @@ function SetupPageContent() {
   // DeepSeek 的角色默认值在选择提供商后立即生效，不依赖 Key 或模型列表请求。
   useEffect(() => {
     if (findTemplateByBaseUrl(apiProviderSetup.base_url)?.id !== 'deepseek') return
+    setDefinedModel('deepseek-flash')
     setModelSetup((previous) => ({
       ...previous,
       planner_model_identifier: 'deepseek-flash',
@@ -184,10 +225,10 @@ function SetupPageContent() {
   }, [apiProviderSetup.base_url])
 
   useEffect(() => {
-    if (currentStepId !== 'model-setup') return
+    if (!configuringModels) return
     setAvailableModels([])
     setModelFetchError('')
-    if (!apiProviderSetup.base_url.trim() || !apiProviderSetup.api_key.trim()) {
+    if (!apiProviderSetup.base_url.trim()) {
       setModelFetchStatus('idle')
       return
     }
@@ -195,7 +236,9 @@ function SetupPageContent() {
     setModelFetchStatus('loading')
     let cancelled = false
     let timer: ReturnType<typeof window.setTimeout>
+    let attempt = 0
     const fetchModels = async () => {
+      attempt += 1
       try {
         const models = await fetchSetupModels({
           provider_name: '',
@@ -204,33 +247,17 @@ function SetupPageContent() {
         })
         if (cancelled) return
         setAvailableModels(models)
-        if (findTemplateByBaseUrl(apiProviderSetup.base_url)?.id === 'deepseek') {
-          if (!models.some((model) => model.id === 'deepseek-flash')) {
-            throw new Error('提供商返回的模型列表中没有 deepseek-flash，请检查模型列表或手动选择可用模型')
-          }
-        } else {
-          setModelSetup((previous) => {
-            const planner = models.some((model) => model.id === previous.planner_model_identifier)
-              ? previous.planner_model_identifier : ''
-            const replyer = models.some((model) => model.id === previous.replyer_model_identifier)
-              ? previous.replyer_model_identifier : ''
-            return {
-              ...previous,
-              planner_model_identifier: planner,
-              planner_model_name: planner,
-              replyer_model_identifier: replyer,
-              replyer_model_name: replyer,
-            }
-          })
-        }
         setModelFetchError('')
         setModelFetchStatus('success')
       } catch (error) {
         if (cancelled) return
-        setModelFetchError(error instanceof Error ? error.message : '获取模型列表失败')
+        setModelFetchError(error instanceof Error ? error.message : t('setupPage.errors.fetchModels'))
         setModelFetchStatus('error')
-        // 失败后等待 1 秒再重试，避免请求重叠；重试期间保留错误状态以允许手动填写。
-        timer = window.setTimeout(fetchModels, 1000)
+        // 失败后按 1s、2s 退避重试，最多请求 MODEL_FETCH_MAX_ATTEMPTS 次；
+        // Key 或地址错误时不再持续请求服务商，修改输入后会重新开始。
+        if (attempt < MODEL_FETCH_MAX_ATTEMPTS) {
+          timer = window.setTimeout(fetchModels, 1000 * 2 ** (attempt - 1))
+        }
       }
     }
     // 等待用户停止输入；切换地址或 Key 后忽略旧请求，避免串用提供商的列表。
@@ -239,7 +266,69 @@ function SetupPageContent() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [currentStepId, apiProviderSetup.base_url, apiProviderSetup.api_key])
+  }, [configuringModels, apiProviderSetup.base_url, apiProviderSetup.api_key, t])
+
+  // 分别保留两种角色的测试结果，输入改动后不显示旧结果。
+  const [connectionTests, setConnectionTests] = useState<Partial<Record<SetupModelRole, {
+    key: string
+    provider: ApiProviderSetupConfig
+    state: ConnectionTestState
+  }>>>({})
+  const testingConnection = Object.values(connectionTests).some((entry) => entry.state.status === 'testing')
+  const connectionTestKey = (role: SetupModelRole) => JSON.stringify([
+    modelSetup[`${role}_model_identifier`],
+    modelSetup[`${role}_visual`],
+    modelSetup[`${role}_thinking`],
+    modelSetup[`${role}_reasoning_effort`],
+  ])
+  const connectionTestState = (role: SetupModelRole): ConnectionTestState => {
+    const entry = connectionTests[role]
+    return entry?.provider === apiProviderSetup && entry.key === connectionTestKey(role)
+      ? entry.state
+      : { status: 'idle' }
+  }
+
+  const handleTestConnection = async (role: SetupModelRole) => {
+    const error = validateApiProviderSetup(apiProviderSetup) ?? validateRoleModel(role)
+    if (error) {
+      toast({ title: t('setupPage.toast.validationFailedTitle'), description: error, variant: 'destructive' })
+      return
+    }
+    const key = connectionTestKey(role)
+    const updateTest = (state: ConnectionTestState) => {
+      setConnectionTests((tests) => ({ ...tests, [role]: { key, provider: apiProviderSetup, state } }))
+    }
+    updateTest({ status: 'testing' })
+    let name: string
+    try {
+      await saveApiProviderSetupConfig(apiProviderSetup)
+      const names = await saveModelSetupConfig(modelSetup, apiProviderSetup.provider_name, role)
+      name = names[role]
+    } catch (saveError) {
+      updateTest({
+        status: 'error',
+        error: saveError instanceof Error ? saveError.message : t('setupPage.toast.unknownError'),
+      })
+      return
+    }
+    try {
+      const result = await testSetupModel(name)
+      updateTest({
+        status: 'done',
+        results: [{ role, success: result.success, latencyMs: result.latency_ms, error: result.error }],
+      })
+    } catch (testError) {
+      updateTest({
+        status: 'done',
+        results: [{
+          role,
+          success: false,
+          latencyMs: null,
+          error: testError instanceof Error ? testError.message : t('setupPage.toast.unknownError'),
+        }],
+      })
+    }
+  }
 
   // 加载现有配置
   useEffect(() => {
@@ -248,12 +337,13 @@ function SetupPageContent() {
         setIsLoading(true)
 
         // 并行加载所有配置
-        const [setupStatus, bot, personality, apiProvider, model] = await Promise.all([
+        const [setupStatus, bot, personality, apiProvider, model, basic] = await Promise.all([
           loadSetupStatus(),
           loadBotBasicConfig(),
           loadPersonalityConfig(),
           loadApiProviderSetupConfig(),
           loadModelSetupConfig(),
+          loadBasicSetupConfig(),
         ])
 
         setRequiresCustomToken(setupStatus.requires_custom_token)
@@ -261,6 +351,8 @@ function SetupPageContent() {
         setPersonality(personality)
         setApiProviderSetup(apiProvider)
         setModelSetup(model)
+        setDefinedModel(model.replyer_model_identifier || model.planner_model_identifier)
+        setBasicSettings(basic)
       } catch (error) {
         toast({
           title: t('setupPage.toast.loadFailedTitle'),
@@ -281,13 +373,33 @@ function SetupPageContent() {
     setIsSaving(true)
     try {
       switch (currentStepId) {
-        case 'bot-profile': // Bot基础与人格
+        case 'nickname':
           await saveBotBasicConfig(botBasic)
-          await savePersonalityConfig(personality)
           break
-        case 'model-setup': // API 提供商与基础模型
+        case 'personality':
+          if (!personalityDraft) return false
+          await savePersonalityConfig(personalityDraft)
+          break
+        case 'define-model':
+        case 'replyer':
+          return true
+        case 'planner':
           await saveApiProviderSetupConfig(apiProviderSetup)
           await saveModelSetupConfig(modelSetup, apiProviderSetup.provider_name)
+          break
+        case 'group-replies':
+        case 'private-replies': {
+          if (!basicSettings) throw new Error(t('setupPage.errors.loadBot'))
+          const key = currentStepId === 'group-replies' ? 'inevitable_at_reply' : 'private_reply_paused'
+          await saveBasicSetupConfig({ [key]: basicSettings[key] })
+          break
+        }
+        case 'desktop-and-appearance':
+          if (!basicSettings) throw new Error(t('setupPage.errors.loadBot'))
+          if (desktopPetDraft !== null && desktopPetDraft !== basicSettings.desktop_pet_enabled) {
+            await saveDesktopPetEnabled(desktopPetDraft)
+            setBasicSettings({ ...basicSettings, desktop_pet_enabled: desktopPetDraft })
+          }
           break
       }
 
@@ -312,6 +424,14 @@ function SetupPageContent() {
   }
 
   const saveCustomToken = async () => {
+    if (!customTokenConfirmation || customTokenConfirmation !== customToken) {
+      toast({
+        title: t('setupPage.toast.validationFailedTitle'),
+        description: t('setupPage.forms.customToken.mismatch'),
+        variant: 'destructive',
+      })
+      return false
+    }
     const trimmedToken = customToken.trim()
     const tokenValidation = validateToken(trimmedToken)
     if (!tokenValidation.isValid) {
@@ -344,9 +464,8 @@ function SetupPageContent() {
         description: t('setupPage.toast.customTokenSuccessDescription'),
       })
       setCustomToken('')
-      setTimeout(() => {
-        navigate({ to: '/auth' })
-      }, 1200)
+      setCustomTokenConfirmation('')
+      setRequiresCustomToken(false)
       return true
     } catch (error) {
       toast({
@@ -369,17 +488,17 @@ function SetupPageContent() {
   function validateApiProviderSetup(config: ApiProviderSetupConfig): string | null {
     if (!config.provider_name.trim()) return t('setupPage.validation.enterProviderName')
     if (!config.base_url.trim()) return t('setupPage.validation.enterBaseUrl')
-    if (!config.api_key.trim()) return t('setupPage.validation.enterApiKey')
     return null
   }
 
+  function validateRoleModel(role: SetupModelRole): string | null {
+    if (modelSetup[`${role}_model_identifier`].trim()) return null
+    return t(role === 'planner'
+      ? 'setupPage.validation.enterPlannerModelIdentifier'
+      : 'setupPage.validation.enterReplyerModelIdentifier')
+  }
+
   function validateModelSetup(config: ModelSetupConfig): string | null {
-    if (modelFetchStatus === 'loading') return '正在获取模型列表，请稍候'
-    if (modelFetchStatus === 'idle') return '请先填写 API Key 获取模型列表'
-    if (modelFetchStatus === 'success' && (
-      !availableModels.some((model) => model.id === config.planner_model_identifier) ||
-      !availableModels.some((model) => model.id === config.replyer_model_identifier)
-    )) return '请选择用于规划和回复的模型'
     if (!config.planner_model_identifier.trim()) {
       return t('setupPage.validation.enterPlannerModelIdentifier')
     }
@@ -396,28 +515,23 @@ function SetupPageContent() {
       return
     }
 
-    // Step 1 验证
-    if (currentStepId === 'bot-profile') {
-      const error = validateBotBasic(botBasic)
-      if (error) {
-        toast({
-          title: t('setupPage.toast.validationFailedTitle'),
-          description: error,
-          variant: 'destructive',
-        })
-        return
-      }
+    let error: string | null = null
+    if (currentStepId === 'nickname') error = validateBotBasic(botBasic)
+    if (currentStepId === 'define-model') {
+      error = validateApiProviderSetup(apiProviderSetup)
+        ?? (definedModel.trim() ? null : t('setupPage.steps.defineModel.required'))
     }
-    if (currentStepId === 'model-setup') {
-      const error = validateApiProviderSetup(apiProviderSetup) ?? validateModelSetup(modelSetup)
-      if (error) {
-        toast({
-          title: t('setupPage.toast.validationFailedTitle'),
-          description: error,
-          variant: 'destructive',
-        })
-        return
-      }
+    if (currentStepId === 'replyer' && !modelSetup.replyer_model_identifier.trim()) {
+      error = t('setupPage.validation.enterReplyerModelIdentifier')
+    }
+    if (currentStepId === 'planner') error = validateModelSetup(modelSetup)
+    if (error) {
+      toast({
+        title: t('setupPage.toast.validationFailedTitle'),
+        description: error,
+        variant: 'destructive',
+      })
+      return
     }
 
     // 保存当前步骤
@@ -431,6 +545,10 @@ function SetupPageContent() {
   }
 
   const handlePrevious = () => {
+    if (currentStepId === 'personality' && personalityMode) {
+      setPersonalityMode(null)
+      return
+    }
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1)
     }
@@ -440,26 +558,17 @@ function SetupPageContent() {
     setIsCompleting(true)
 
     try {
-      const error = validateApiProviderSetup(apiProviderSetup) ?? validateModelSetup(modelSetup)
-      if (error) {
-        toast({
-          title: t('setupPage.toast.validationFailedTitle'),
-          description: error,
-          variant: 'destructive',
-        })
-        setIsCompleting(false)
-        return
-      }
-
-      // 1. 保存最后一步的基础模型配置
+      // 保存桌宠设置，完成引导后应用界面风格并进入试聊。
       const saved = await saveCurrentStep()
       if (!saved) {
-        setIsCompleting(false)
         return
       }
 
-      // 2. 标记设置完成
       await completeSetup()
+
+      if (dashboardStyleDraft !== null && dashboardStyleDraft !== themeConfig.dashboardStyle) {
+        updateThemeConfig({ dashboardStyle: dashboardStyleDraft })
+      }
 
       toast({
         title: t('setupPage.toast.completeSuccessTitle'),
@@ -468,7 +577,7 @@ function SetupPageContent() {
         }),
       })
 
-      // 3. 配置文件会被 MaiBot 热加载；完成后进入聊聊，先体验本地对话。
+      // MaiBot 会热加载配置文件，完成后进入聊聊体验本地对话。
       navigate({ to: '/chat', search: { setupTrial: true } })
     } catch (error) {
       toast({
@@ -498,19 +607,46 @@ function SetupPageContent() {
   const renderStepForm = () => {
     switch (currentStepId) {
       case 'custom-token':
-        return <CustomTokenForm token={customToken} onChange={setCustomToken} />
-      case 'bot-profile':
         return (
-          <div className="space-y-8">
-            <BotBasicForm config={botBasic} onChange={setBotBasic} />
-            <PersonalityForm config={personality} onChange={setPersonality} />
+          <CustomTokenForm
+            token={customToken}
+            onChange={setCustomToken}
+            confirmation={customTokenConfirmation}
+            onConfirmationChange={setCustomTokenConfirmation}
+          />
+        )
+      case 'nickname':
+        return <BotBasicForm config={botBasic} onChange={setBotBasic} />
+      case 'personality':
+        if (personalityMode && personalityDraft) {
+          return (
+            <PersonalityForm
+              config={personalityDraft}
+              onChange={(config) => setPersonalityDrafts((drafts) => ({ ...drafts, [personalityMode]: config }))}
+            />
+          )
+        }
+        return (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PERSONALITY_MODES.map((mode) => (
+              <Button
+                key={mode}
+                type="button"
+                variant="outline"
+                className="h-auto min-h-16 justify-start whitespace-normal px-4 py-3 text-left"
+                onClick={() => choosePersonalityMode(mode)}
+              >
+                {t(`setupPage.steps.personality.${mode}`)}
+              </Button>
+            ))}
           </div>
         )
-      case 'model-setup':
+      case 'define-model':
         return (
           <div className="space-y-5">
             <ApiProviderSetupForm config={apiProviderSetup} onChange={(next) => {
               if (next.base_url !== apiProviderSetup.base_url) {
+                setDefinedModel('')
                 setModelSetup((previous) => ({
                   ...previous,
                   planner_model_identifier: '',
@@ -521,31 +657,94 @@ function SetupPageContent() {
               }
               setApiProviderSetup(next)
             }} />
-            <AnimatePresence initial={false}>
-              {apiProviderSetup.api_key.trim() && (
-                <motion.div
-                  key="model-setup-fields"
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="border-border border-t-2 pt-4">
-                    <ModelSetupForm
-                      config={modelSetup}
-                      onChange={setModelSetup}
-                      models={availableModels}
-                      fetchStatus={modelFetchStatus}
-                      fetchError={modelFetchError}
-                      providerBaseUrl={apiProviderSetup.base_url}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {apiProviderSetup.base_url.trim() && (
+              <ModelSetupForm
+                config={modelSetup}
+                onChange={setModelSetup}
+                models={availableModels}
+                fetchStatus={modelFetchStatus}
+                fetchError={modelFetchError}
+                definition={{ value: definedModel, onChange: (value) => {
+                  setDefinedModel(value)
+                  setModelSetup((previous) => ({
+                    ...previous,
+                    planner_model_identifier: value,
+                    planner_model_name: value,
+                    replyer_model_identifier: value,
+                    replyer_model_name: value,
+                  }))
+                } }}
+              />
+            )}
           </div>
         )
+      case 'replyer':
+      case 'planner':
+        return (
+          <div className="space-y-5">
+            <ModelSetupForm
+              role={currentStepId}
+              config={modelSetup}
+              onChange={setModelSetup}
+              models={availableModels}
+              fetchStatus={modelFetchStatus}
+              fetchError={modelFetchError}
+              providerBaseUrl={apiProviderSetup.base_url}
+            />
+            <ConnectionTestPanel
+              state={connectionTestState(currentStepId)}
+              onTest={() => void handleTestConnection(currentStepId)}
+              disabled={isSaving || isCompleting || testingConnection}
+            />
+          </div>
+        )
+      case 'group-replies':
+      case 'private-replies': {
+        const group = currentStepId === 'group-replies'
+        const key = group ? 'inevitable_at_reply' : 'private_reply_paused'
+        if (!basicSettings) return <p role="alert">{t('setupPage.errors.loadBot')}</p>
+        return (
+          <div className="border-border flex items-center justify-between gap-4 border p-4">
+            <Label htmlFor={key}>{t(`setupPage.steps.${group ? 'groupReplies' : 'privateReplies'}.label`)}</Label>
+            <Switch id={key} checked={group ? basicSettings[key] : !basicSettings[key]}
+              onCheckedChange={(checked) => setBasicSettings({ ...basicSettings, [key]: group ? checked : !checked })}
+              disabled={isSaving || isCompleting}
+            />
+          </div>
+        )
+      }
+      case 'desktop-and-appearance': {
+        if (!basicSettings) return <p role="alert">{t('setupPage.errors.loadBot')}</p>
+        const disabled = isSaving || isCompleting
+        return (
+          <div className="space-y-5">
+            <div className="border-border flex items-center justify-between gap-4 border p-4">
+              <div className="space-y-1">
+                <Label htmlFor="setup-desktop-pet">{t('setupPage.steps.desktopAndAppearance.desktopPet')}</Label>
+                <p id="setup-desktop-pet-hint" className="text-muted-foreground text-sm">
+                  {t('setupPage.steps.desktopAndAppearance.desktopPetHint')}
+                </p>
+              </div>
+              <Switch
+                id="setup-desktop-pet"
+                aria-describedby="setup-desktop-pet-hint"
+                checked={desktopPetDraft ?? basicSettings.desktop_pet_enabled}
+                onCheckedChange={setDesktopPetDraft}
+                disabled={disabled}
+              />
+            </div>
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">{t('settings.appearance.dashboardStyle')}</legend>
+              <DashboardStylePicker
+                value={dashboardStyleDraft ?? themeConfig.dashboardStyle}
+                onChange={setDashboardStyleDraft}
+                disabled={disabled}
+                className="grid gap-3 sm:grid-cols-3"
+              />
+            </fieldset>
+          </div>
+        )
+      }
       default:
         return null
     }
@@ -596,8 +795,15 @@ function SetupPageContent() {
         <SetupWizardLayout
           steps={steps}
           currentStep={currentStep}
-          headerActions={currentStepId === 'bot-profile' ? (
-            <PersonalityPresetSelect config={personality} onChange={setPersonality} />
+          headerActions={currentStepId === 'personality' && personalityMode === 'template' && personalityDraft ? (
+            <PersonalityPresetSelect
+              config={personalityDraft}
+              presetId={personalityPresetId}
+              onChange={(config, presetId) => {
+                setPersonalityPresetId(presetId)
+                setPersonalityDrafts((drafts) => ({ ...drafts, template: config }))
+              }}
+            />
           ) : undefined}
           actions={
             <>
@@ -606,7 +812,7 @@ function SetupPageContent() {
                   <Button
                     variant="ghost"
                     className="px-1"
-                    disabled={isSaving || isCompleting || currentStepId === 'custom-token'}
+                    disabled={isSaving || isCompleting || testingConnection || currentStepId === 'custom-token'}
                   >
                     {t('setupPage.actions.skip')}
                   </Button>
@@ -629,7 +835,7 @@ function SetupPageContent() {
 
               <div className="ml-auto flex items-center gap-3">
                 {currentStep > 0 && (
-                  <Button variant="outline" onClick={handlePrevious} disabled={isSaving}>
+                  <Button variant="outline" onClick={handlePrevious} disabled={isSaving || isCompleting || testingConnection}>
                     {t('setupPage.actions.previous')}
                   </Button>
                 )}
@@ -653,13 +859,13 @@ function SetupPageContent() {
                       </>
                     )}
                   </Button>
-                ) : (
+                ) : (currentStepId !== 'personality' || personalityMode) && (
                   <Button
                     onClick={handleNext}
                     variant={currentStepId === 'custom-token' && !validateToken(customToken).isValid ? 'outline' : 'default'}
                     size="lg"
                     disabled={
-                      isSaving ||
+                      isSaving || testingConnection ||
                       (currentStepId === 'custom-token' && !validateToken(customToken).isValid)
                     }
                     className="min-w-44"

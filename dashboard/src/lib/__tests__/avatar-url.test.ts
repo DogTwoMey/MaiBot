@@ -14,6 +14,7 @@ import {
 
 vi.mock('@/lib/api-base', () => ({
   getApiBaseUrl: vi.fn(),
+  getControlApiBaseUrl: () => '',
   resolveApiPath: vi.fn(),
 }))
 

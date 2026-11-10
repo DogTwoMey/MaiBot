@@ -16,7 +16,6 @@ import pytest
 from src.A_memorix import host_service as host_service_module
 from src.A_memorix.core.runtime import sdk_memory_kernel as kernel_module
 from src.A_memorix.core.utils import retrieval_tuning_manager as tuning_manager_module
-from src.webui.dependencies import require_auth
 from src.webui.routers import memory as memory_router_module
 
 
@@ -458,7 +457,6 @@ def integration_state(tmp_path_factory: pytest.TempPathFactory) -> Generator[Dic
     host_service_module.a_memorix_host_service._config_cache = None  # type: ignore[attr-defined]
 
     app = FastAPI()
-    app.dependency_overrides[require_auth] = lambda: "ok"
     app.include_router(memory_router_module.router, prefix="/api/webui")
     app.include_router(memory_router_module.compat_router)
 

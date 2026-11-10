@@ -13,6 +13,8 @@ from src.maisaka.runtime import MaisakaHeartFlowChatting
 
 def _build_runtime_stub() -> MaisakaHeartFlowChatting:
     runtime = object.__new__(MaisakaHeartFlowChatting)
+    runtime._running = True
+    runtime._ensure_background_tasks_running = lambda: None
     runtime.message_cache = []
     runtime._last_processed_index = 0
     runtime._agent_state = runtime._STATE_RUNNING

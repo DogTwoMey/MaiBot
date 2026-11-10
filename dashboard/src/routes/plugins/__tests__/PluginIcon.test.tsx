@@ -13,6 +13,7 @@ vi.mock('@/lib/plugin-api', () => ({
   getInstalledPlugins: vi.fn(),
   getMaimaiVersion: vi.fn(),
   installPlugin: vi.fn(),
+  isPluginCompatibilityMode: () => false,
   isPluginCompatible: vi.fn(),
   uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),

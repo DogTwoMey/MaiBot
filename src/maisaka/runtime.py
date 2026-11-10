@@ -27,7 +27,6 @@ from src.common.message_repository import find_messages
 from src.common.utils.utils_config import ExpressionConfigUtils, JargonConfigUtils
 from src.config.config import global_config, model_config
 from src.agent.provider import AgentToolProvider
-from src.computer.provider import ComputerToolProvider
 from src.files.provider import FileToolProvider
 from src.desktop_pet.chat_tools import ChatSessionToolProvider
 from src.desktop_pet.todo_tools import TodoToolProvider
@@ -560,7 +559,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         await self._tool_registry.close()
         remove_stage_status(self.session_id)
 
-        logger.info(f"{self.log_prefix} Maisaka 运行时已停止")
+        logger.debug(f"{self.log_prefix} Maisaka 运行时已停止")
 
     def adjust_talk_frequency(self, frequency: float) -> None:
         """调整当前会话的回复频率倍率。"""
@@ -703,7 +702,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
             ]
         )
         visible_text = "\n".join(detail_lines)
-        proactive_trigger_message = self._build_proactive_trigger_message(task_id, visible_text)
+        proactive_trigger_message = self._prepare_task_enqueue(task_id, visible_text)
         self._chat_history.append(
             InternalContextMessage(
                 raw_message=MessageSequence([TextComponent(visible_text)]),
@@ -726,8 +725,8 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         self, *, source_kind: str, text: str, reason: str, images: Sequence[ImageComponent] = (),
     ) -> Dict[str, Any]:
         """本体后台任务复用真实会话上下文和正常 Planner 调度。"""
-        if not self._running:
-            raise RuntimeError("不能向已停止的聊天运行实例投递任务")
+        task_id = f"{source_kind}:{uuid.uuid4().hex}"
+        proactive_trigger_message = self._prepare_task_enqueue(task_id)
         if source_kind == "desktop_pet_screen":
             # 持续阅读只保留最近两帧用于对照，避免截图二进制随运行时间无限堆积。
             previous_frames = [message for message in self._chat_history
@@ -736,7 +735,6 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
             expired = {id(message) for message in previous_frames[:-1]}
             if expired:
                 self._chat_history[:] = [message for message in self._chat_history if id(message) not in expired]
-        task_id = f"{source_kind}:{uuid.uuid4().hex}"
         if images:
             # 内部传话没有 IM 消息头，显式给出真实附件的引用，不能让模型用传话 ID 猜工具媒体索引。
             references = [{"msg_id": to_display_message_id(task_id), "index": index} for index in range(len(images))]
@@ -745,10 +743,19 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
             raw_message=MessageSequence([TextComponent(text), *images]), visible_text=text,
             timestamp=datetime.now(), message_id=task_id, source_kind=source_kind,
         ))
-        self._ensure_background_tasks_running()
         self._arm_forced_turn_state(message_id=task_id, reason=reason)
-        self._queue_proactive_turn(self._build_proactive_trigger_message(task_id))
+        self._queue_proactive_turn(proactive_trigger_message)
         return {"task_id": task_id, "queued": True}
+
+    def _prepare_task_enqueue(self, task_id: str, visible_text: str = "插件主动聊天任务") -> SessionMessage:
+        """在修改历史前检查运行状态、构建触发消息，并确保普通消费者存活。"""
+        if not self._running:
+            raise RuntimeError("不能向已停止的聊天运行实例投递任务")
+
+        trigger_message = self._build_proactive_trigger_message(task_id, visible_text)
+        # 与后续历史写入和入队同步完成，不给 stop 或 Focus 归属切换留下中途交接窗口。
+        self._ensure_background_tasks_running()
+        return trigger_message
 
     async def _stop_background_subagents(self) -> None:
         """运行时停止时终止全部后台子代理，并让观察页知道它们已被终止。"""
@@ -1338,7 +1345,6 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         self._tool_registry.register_provider(TodoToolProvider())
         self._tool_registry.register_provider(ExplorationToolProvider())
         self._tool_registry.register_provider(DesktopScreenToolProvider())
-        self._tool_registry.register_provider(ComputerToolProvider())
         self._tool_registry.register_provider(FileToolProvider())
         self._tool_registry.register_provider(MCPToolProvider(get_mcp_service()))
         self._chat_loop_service.set_tool_registry(self._tool_registry)
@@ -1688,7 +1694,7 @@ class MaisakaHeartFlowChatting(MaisakaRuntimeDisplayMixin):
         deadline = self._fixed_message_debouncer.deadline
         if deadline is not None:
             mode_label = {"fast": "快速", "natural": "自然", "steady": "沉稳"}[mode]
-            logger.info(
+            logger.debug(
                 f"{self.log_prefix} 消息防抖：档位={mode_label}，规则={reason}，"
                 f"剩余等待={max(0.0, deadline - time.monotonic()):.3f} 秒，"
                 f"待处理={self._get_pending_message_count() + 1} 条，消息编号={message.message_id}"

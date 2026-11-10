@@ -1,7 +1,7 @@
 /**
  * MaiSaka 聊天流实时监控组件测试
  *
- * 覆盖：空态与侧边栏折叠、会话列表排序/选择/状态圆点、阶段状态栏与统计浮层、
+ * 覆盖：空态与侧边栏折叠、会话列表排序/选择/状态圆点、阶段状态栏与统计侧栏、
  * 各类时间线事件卡片（消息/媒体/反应门/规划器/工具/回复器）、
  * no_action 循环过滤、可折叠文本、推理记录跳转与滚动行为。
  *
@@ -27,6 +27,7 @@ import type {
 } from '@/lib/maisaka-monitor-client'
 
 import { MaisakaMonitor } from './maisaka-monitor'
+import { setSubagentPanelState } from './subagent-panel-state'
 import type { SessionInfo, StageStatusInfo, TimelineEntry } from './use-maisaka-monitor'
 
 const SIDEBAR_COLLAPSED_KEY = 'maisaka-monitor-sidebar-collapsed'
@@ -364,6 +365,7 @@ function getSessionButton(name: string): HTMLElement {
 }
 
 beforeEach(() => {
+  setSubagentPanelState({ open: false })
   window.localStorage.clear()
   // 默认展开侧边栏，便于断言会话列表；折叠行为在专门用例内覆盖
   window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, 'false')
@@ -595,7 +597,7 @@ describe('阶段状态栏与工具条', () => {
     expect(screen.queryByText('wait')).not.toBeInTheDocument()
   })
 
-  it('统计浮层汇总消息、循环与工具调用数量', async () => {
+  it('统计侧栏汇总消息、循环与工具调用数量', async () => {
     const user = userEvent.setup()
     const timeline = [
       makeEntry('message.ingested', makeIngested()),
@@ -609,16 +611,15 @@ describe('阶段状态栏与工具条', () => {
     setupMonitorState({ timeline })
     render(<MaisakaMonitor />)
 
-    await user.hover(screen.getByText('统计'))
+    await user.click(screen.getByRole('button', { name: '统计' }))
 
     // 消息 2（接收+发送）、循环 1（finalized）、工具调用 3（finalized 2 个 + 执行事件 1 个）
-    const messageStat = await screen.findAllByText('消息：2')
-    expect(messageStat.length).toBeGreaterThan(0)
-    expect(screen.getAllByText('循环：1').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('工具调用：3').length).toBeGreaterThan(0)
+    expect((await screen.findByText('消息')).parentElement).toHaveTextContent('消息2')
+    expect(screen.getByText('循环').parentElement).toHaveTextContent('循环1')
+    expect(screen.getByText('工具调用').parentElement).toHaveTextContent('工具调用3')
   })
 
-  it('统计浮层展示上下文分段占比与平均缓存命中率', async () => {
+  it('统计侧栏展示上下文分段占比与平均缓存命中率', async () => {
     const user = userEvent.setup()
     const timeline = [
       makeEntry(
@@ -645,7 +646,7 @@ describe('阶段状态栏与工具条', () => {
     setupMonitorState({ timeline })
     render(<MaisakaMonitor />)
 
-    await user.hover(screen.getByText('统计'))
+    await user.click(screen.getByRole('button', { name: '统计' }))
 
     // 上下文总量取最近一轮真实 prompt token，分段按字符占比换算
     expect((await screen.findAllByText('上下文容量')).length).toBeGreaterThan(0)
@@ -659,16 +660,16 @@ describe('阶段状态栏与工具条', () => {
     expect(screen.getAllByText('80%').length).toBeGreaterThan(0)
   })
 
-  it('无 planner 请求时统计浮层提示暂无上下文数据', async () => {
+  it('无 planner 请求时统计侧栏提示暂无上下文数据', async () => {
     const user = userEvent.setup()
     setupMonitorState({ timeline: [makeEntry('message.ingested', makeIngested())] })
     render(<MaisakaMonitor />)
 
-    await user.hover(screen.getByText('统计'))
+    await user.click(screen.getByRole('button', { name: '统计' }))
 
     expect((await screen.findAllByText('暂无数据')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/尚无 planner 请求数据/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('消息：1').length).toBeGreaterThan(0)
+    expect(screen.getByText('消息').parentElement).toHaveTextContent('消息1')
   })
 
   it('回到底部按钮触发平滑滚动，清空按钮调用 clearTimeline', async () => {

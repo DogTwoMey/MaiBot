@@ -63,6 +63,7 @@ vi.mock('@/lib/plugin-api', () => ({
   getInstalledPlugins: vi.fn(),
   getMaimaiVersion: vi.fn(),
   installPlugin: vi.fn(),
+  isPluginCompatibilityMode: () => false,
   isPluginCompatible: vi.fn(),
   uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),
@@ -321,7 +322,7 @@ describe('PluginMarketplacePage 初始加载与数据合并', () => {
     expect(pluginApi.getMaimaiVersion).toHaveBeenCalled()
     expect(pluginApi.fetchPluginList).toHaveBeenCalled()
     expect(pluginApi.getInstalledPlugins).toHaveBeenCalledWith()
-    expect(pluginApi.fetchPluginList).toHaveBeenCalledWith({ compatibleOnly: true })
+    expect(pluginApi.fetchPluginList).toHaveBeenCalledWith()
 
     expect(screen.getByTestId('plugin-plugin-a')).toBeInTheDocument()
     expect(screen.getByTestId('plugin-plugin-b')).toBeInTheDocument()

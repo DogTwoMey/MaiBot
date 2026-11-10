@@ -39,13 +39,15 @@ afterEach(() => {
 })
 
 describe('CustomTokenForm', () => {
+  const confirmationProps = { confirmation: '', onConfirmationChange: vi.fn() }
+
   it('默认以密码形式隐藏 Token，点击按钮后切换为明文', () => {
-    render(<CustomTokenForm token="secret" onChange={vi.fn()} />)
+    render(<CustomTokenForm token="secret" onChange={vi.fn()} {...confirmationProps} />)
 
     const input = screen.getByLabelText('setupPage.forms.customToken.label')
     expect(input).toHaveAttribute('type', 'password')
 
-    fireEvent.click(screen.getByRole('button', { name: 'setupPage.forms.customToken.show' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'setupPage.forms.customToken.show' })[0])
 
     expect(input).toHaveAttribute('type', 'text')
     // 切换后按钮标签变为“隐藏”
@@ -56,7 +58,7 @@ describe('CustomTokenForm', () => {
 
   it('输入 Token 时把输入值原样回调', () => {
     const onChange = vi.fn()
-    render(<CustomTokenForm token="" onChange={onChange} />)
+    render(<CustomTokenForm token="" onChange={onChange} {...confirmationProps} />)
 
     fireEvent.change(screen.getByLabelText('setupPage.forms.customToken.label'), {
       target: { value: 'Abc!123456' },
@@ -66,7 +68,7 @@ describe('CustomTokenForm', () => {
   })
 
   it('空 Token 时四条规则均未通过', () => {
-    render(<CustomTokenForm token="" onChange={vi.fn()} />)
+    render(<CustomTokenForm token="" onChange={vi.fn()} {...confirmationProps} />)
 
     for (const label of ['setupPage.forms.customToken.rules.minLength', 'setupPage.forms.customToken.rules.hasUppercase', 'setupPage.forms.customToken.rules.hasLowercase', 'setupPage.forms.customToken.rules.hasSpecialChar']) {
       expect(screen.getByText(label).closest('li')).toHaveClass('text-muted-foreground')
@@ -75,7 +77,7 @@ describe('CustomTokenForm', () => {
 
   it('按真实校验规则区分通过与未通过的样式', () => {
     // "abc" 只满足小写字母规则
-    render(<CustomTokenForm token="abc" onChange={vi.fn()} />)
+    render(<CustomTokenForm token="abc" onChange={vi.fn()} {...confirmationProps} />)
 
     expect(screen.getByText('setupPage.forms.customToken.rules.hasLowercase').closest('li')).toHaveClass('text-foreground')
     expect(screen.getByText('setupPage.forms.customToken.rules.minLength').closest('li')).toHaveClass('text-muted-foreground')
@@ -84,7 +86,7 @@ describe('CustomTokenForm', () => {
   })
 
   it('Token 满足全部规则时四条规则均显示通过', () => {
-    render(<CustomTokenForm token="Abcdefghij!" onChange={vi.fn()} />)
+    render(<CustomTokenForm token="Abcdefghij!" onChange={vi.fn()} {...confirmationProps} />)
 
     for (const label of ['setupPage.forms.customToken.rules.minLength', 'setupPage.forms.customToken.rules.hasUppercase', 'setupPage.forms.customToken.rules.hasLowercase', 'setupPage.forms.customToken.rules.hasSpecialChar']) {
       expect(screen.getByText(label).closest('li')).toHaveClass('text-foreground')
@@ -185,7 +187,7 @@ describe('ApiProviderSetupForm', () => {
 
     expect(screen.getByLabelText('setupPage.forms.apiProvider.apiKey.label')).toHaveValue('')
 
-    fireEvent.click(screen.getByRole('button', { name: '自定义' }))
+    fireEvent.click(screen.getByRole('button', { name: 'setupPage.forms.apiProvider.useCustom' }))
     expect(onChange).toHaveBeenCalledWith({ provider_name: '', base_url: '', api_key: '' })
     expect(
       screen.getByPlaceholderText('setupPage.forms.apiProvider.providerName.placeholder')
@@ -210,7 +212,7 @@ describe('ApiProviderSetupForm', () => {
     const onChange = vi.fn()
     render(<ApiProviderSetupForm config={config} onChange={onChange} />)
 
-    const presetSelect = screen.getByLabelText('选择预置提供商')
+    const presetSelect = screen.getByLabelText('setupPage.forms.apiProvider.presetSelect')
     fireEvent.keyDown(presetSelect, { key: 'ArrowDown' })
     await userEvent.click(await screen.findByRole('option', { name: '智谱 AI (ZhipuAI / GLM)' }))
     expect(onChange).toHaveBeenCalledWith({
@@ -223,7 +225,7 @@ describe('ApiProviderSetupForm', () => {
     fireEvent.change(presetSelect, { target: { value: 'not-exist' } })
     expect(onChange).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: '自定义' }))
+    fireEvent.click(screen.getByRole('button', { name: 'setupPage.forms.apiProvider.useCustom' }))
     fireEvent.change(
       screen.getByPlaceholderText('setupPage.forms.apiProvider.providerName.placeholder'),
       { target: { value: 'Mine' } }
@@ -236,7 +238,7 @@ describe('ApiProviderSetupForm', () => {
     })
     expect(onChange).toHaveBeenLastCalledWith({ ...config, api_key: 'sk-new' })
 
-    fireEvent.click(screen.getByRole('button', { name: '预置' }))
+    fireEvent.click(screen.getByRole('button', { name: 'setupPage.forms.apiProvider.usePreset' }))
     expect(onChange).toHaveBeenLastCalledWith({
       ...config,
       provider_name: 'ZhipuAI',
@@ -322,7 +324,7 @@ describe('ModelSetupForm', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...config, planner_visual: true })
 
     // “启用思考”开关有两个：前者属于 planner（true -> false），后者属于 replyer（false -> true）
-    const thinkingSwitches = screen.getAllByRole('switch', { name: '启用思考' })
+    const thinkingSwitches = screen.getAllByRole('switch', { name: 'setupPage.forms.modelSetup.enableThinking' })
     expect(thinkingSwitches).toHaveLength(2)
 
     fireEvent.click(thinkingSwitches[0])
@@ -369,7 +371,7 @@ describe('ModelSetupForm', () => {
     const onChange = vi.fn()
     render(<ModelSetupForm config={config} onChange={onChange} fetchStatus="error" providerBaseUrl="https://api.deepseek.com" />)
 
-    const thinkingSwitches = screen.getAllByRole('switch', { name: '启用思考' })
+    const thinkingSwitches = screen.getAllByRole('switch', { name: 'setupPage.forms.modelSetup.enableThinking' })
     expect(thinkingSwitches).toHaveLength(2)
 
     fireEvent.click(thinkingSwitches[0])

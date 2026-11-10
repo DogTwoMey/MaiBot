@@ -33,6 +33,7 @@ vi.mock('@/hooks/use-auth', () => ({
 // 懒加载页面模块全部打桩，preload 只覆盖 router 里的 import() 工厂，不加载真页面
 vi.mock('@/routes/auth', () => ({ AuthPage: StubPage }))
 vi.mock('@/routes/setup/index.tsx', () => ({ SetupPage: StubPage }))
+vi.mock('@/routes/bots', () => ({ HostEntryPage: StubPage }))
 vi.mock('@/routes/index', () => ({ IndexPage: StubPage }))
 vi.mock('@/routes/plugin-webui', () => ({
   PluginWebUIPage: StubPage,
@@ -85,6 +86,7 @@ const expectedPaths = [
   '/statistics',
   '/config/bot',
   '/config/model',
+  '/bots',
   '/config/prompts',
   '/resource/emoji',
   '/resource/learning',
@@ -105,13 +107,13 @@ const expectedPaths = [
   '/files',
   '/logs',
   '/reasoning-process',
-  '/planner-monitor',
   '/agent',
-  '/computer',
   '/chat-management',
   '/chat',
   '/manage',
   '/settings',
+  '/settings/components',
+  '/help-history',
   '/config/pack-market',
   '/config/pack-market/$packId',
   '/survey/webui-feedback',
@@ -199,6 +201,8 @@ describe('router 路由表', () => {
           '/files',
           '/mcp-settings',
           '/settings',
+  '/settings/components',
+  '/help-history',
           '/extensions',
           '/resource/emoji',
           '/resource/expression',
@@ -388,6 +392,8 @@ describe('router 路由表', () => {
           '/files',
           '/mcp-settings',
           '/settings',
+  '/settings/components',
+  '/help-history',
           '/extensions',
           '/resource/emoji',
           '/resource/expression',

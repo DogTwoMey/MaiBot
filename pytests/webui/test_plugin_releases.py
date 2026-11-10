@@ -125,7 +125,6 @@ def local_install(tmp_path, monkeypatch):
     monkeypatch.setattr(release_install, "get_git_mirror_service", Mirror)
     monkeypatch.setattr(release_install, "_stop_runtime", no_stop)
     monkeypatch.setattr(release_install, "update_progress", progress)
-    monkeypatch.setattr(management, "require_plugin_token", lambda _: None)
     app = FastAPI()
     app.include_router(management.router, prefix="/plugins")
     return TestClient(app), plugins, repository, chosen, catalog_entry
@@ -142,7 +141,7 @@ def test_install_verifies_commit_and_records_source(local_install):
     client, plugins, _, chosen, _ = local_install
     response = install(client)
     assert response.status_code == 200, response.text
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     receipt = release_install.read_release_receipt(target)
     assert receipt["commit"] == chosen.commit
     assert receipt["repository_url"] == "https://github.com/example/demo"
@@ -158,7 +157,7 @@ def test_install_activates_runtime_before_reporting_success(local_install, monke
     async def activate(plugin_id):
         assert plugin_id == "example.demo"
         assert manager._plugin_file_update_lock.locked()
-        target = support.resolve_installed_plugin_path(plugin_id)
+        target = support.resolve_mutable_plugin_path(plugin_id)
         assert (target / "plugin.py").is_file()
         assert release_install.read_release_receipt(target)["version"] == "1.0.0"
         events.append("activate")
@@ -184,9 +183,9 @@ def test_install_activates_runtime_before_reporting_success(local_install, monke
 
 
 @pytest.mark.parametrize("status", ["success", "inactive", "failed"])
-@pytest.mark.parametrize("environment_changed, blocked_changed", [(False, False), (True, False), (False, True)])
+@pytest.mark.parametrize("blocked_changed", [False, True])
 def test_new_plugin_syncs_dependencies_and_config_subscription(
-    tmp_path, monkeypatch, status, environment_changed, blocked_changed
+    tmp_path, monkeypatch, status, blocked_changed
 ):
     manager = integration.PluginRuntimeManager()
     manager._started = True
@@ -200,7 +199,6 @@ def test_new_plugin_syncs_dependencies_and_config_subscription(
         events.append("dependencies")
         return integration.DependencySyncState(
             blocked_changed_plugin_ids={"example.demo"} if blocked_changed else set(),
-            environment_changed=environment_changed,
         )
 
     async def load(plugin_id, reason):
@@ -225,7 +223,7 @@ def test_new_plugin_syncs_dependencies_and_config_subscription(
             asyncio.run(manager.activate_installed_plugin("example.demo"))
     else:
         asyncio.run(manager.activate_installed_plugin("example.demo"))
-    assert events == ["dependencies", "restart" if environment_changed or blocked_changed else "load"]
+    assert events == ["dependencies", "restart" if blocked_changed else "load"]
     assert manager._plugin_config_watcher_subscriptions["example.demo"][0] == plugin_path / "config.toml"
 
 
@@ -235,7 +233,7 @@ def test_new_plugin_restart_failure_still_registers_config_subscription(tmp_path
     manager._plugin_file_watcher = FileWatcher(paths=[tmp_path])
 
     async def sync(plugin_dirs):
-        return integration.DependencySyncState(blocked_changed_plugin_ids=set(), environment_changed=True)
+        return integration.DependencySyncState(blocked_changed_plugin_ids={"example.demo"})
 
     async def restart(reason):
         return False
@@ -253,7 +251,7 @@ def test_moved_tag_or_manifest_tampering_does_not_install(local_install):
     chosen.commit = "b" * 40
     response = install(client)
     assert response.status_code == 409
-    assert support.resolve_installed_plugin_path("example.demo") is None
+    assert support.resolve_mutable_plugin_path("example.demo") is None
 
 
 def test_manifest_mismatch_does_not_install(local_install):
@@ -261,7 +259,7 @@ def test_manifest_mismatch_does_not_install(local_install):
     chosen.manifest["description"] = "篡改索引"
     response = install(client)
     assert response.status_code == 409
-    assert support.resolve_installed_plugin_path("example.demo") is None
+    assert support.resolve_mutable_plugin_path("example.demo") is None
 
 
 def test_branch_updates_cannot_override_release(local_install):
@@ -275,7 +273,7 @@ def test_branch_updates_cannot_override_release(local_install):
 def test_explicit_version_switch_preserves_data_and_backup(local_install):
     client, _, _, _, _ = local_install
     assert install(client).status_code == 200
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     (target / "config.toml").write_text("[plugin]\nenabled = false\n", encoding="utf-8")
     (target / "history.db").write_bytes(b"user data")
     response = client.post("/plugins/update", json={
@@ -313,14 +311,14 @@ def test_reverse_dependency_only_warns_without_blocking_update(local_install, ve
         assert "example.dependent" in warnings[0]
         assert "依赖方插件" in warnings[0]
         assert version_spec in warnings[0]
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     assert release_install.read_release_receipt(target)["version"] == "1.0.0"
 
 
 def test_local_code_changes_block_switch_without_losing_edits(local_install):
     client, _, _, _, _ = local_install
     assert install(client).status_code == 200
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     (target / "plugin.py").write_text("# 用户修改\n", encoding="utf-8")
     response = client.post("/plugins/update", json={
         "plugin_id": "example.demo", "repository_url": "https://github.com/example/demo", "version": "1.0.0",
@@ -341,7 +339,7 @@ def test_automatic_update_never_downgrades(local_install):
 def test_failed_directory_swap_restores_previous_install(local_install, monkeypatch):
     client, _, _, _, _ = local_install
     assert install(client).status_code == 200
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     (target / "history.db").write_bytes(b"keep me")
     manager = integration.get_plugin_runtime_manager()
     events = []
@@ -375,7 +373,7 @@ def test_failed_directory_swap_restores_previous_install(local_install, monkeypa
 def test_update_resumes_runtime_before_releasing_transaction(local_install, monkeypatch):
     client, _, _, _, _ = local_install
     assert install(client).status_code == 200
-    target = support.resolve_installed_plugin_path("example.demo")
+    target = support.resolve_mutable_plugin_path("example.demo")
     manager = integration.get_plugin_runtime_manager()
     events = []
 
@@ -435,7 +433,7 @@ def test_install_warns_about_reverse_dependency_versions(local_install):
     assert response.status_code == 200, response.text
     assert "example.dependent" in response.json()["warnings"][0]
     assert ">=2.0.0" in response.json()["warnings"][0]
-    assert support.resolve_installed_plugin_path("example.demo") is not None
+    assert support.resolve_mutable_plugin_path("example.demo") is not None
 
 
 def test_missing_plugin_dependency_blocks_install(local_install):
@@ -447,4 +445,4 @@ def test_missing_plugin_dependency_blocks_install(local_install):
     chosen.commit = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
     response = install(client)
     assert response.status_code == 400 and "插件依赖不满足" in response.text
-    assert support.resolve_installed_plugin_path("example.demo") is None
+    assert support.resolve_mutable_plugin_path("example.demo") is None

@@ -79,7 +79,7 @@ function NewsRow({
       title={openLabel}
       className="hover:bg-accent/40 block w-full cursor-pointer rounded-md border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
       onClick={onOpen}
-      onKeyDown={(event) => {
+      onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onOpen()
@@ -106,11 +106,11 @@ function NewsRow({
             title={pluginLabel}
             aria-label={pluginLabel}
             className="text-muted-foreground hover:text-foreground shrink-0"
-            onClick={(event) => {
+            onClick={(event: React.MouseEvent<HTMLElement>) => {
               event.stopPropagation()
               onRead()
             }}
-            onKeyDown={(event) => event.stopPropagation()}
+            onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => event.stopPropagation()}
           >
             <Package className="h-3.5 w-3.5" />
           </Link>
@@ -122,11 +122,11 @@ function NewsRow({
             title={openLabel}
             aria-label={openLabel}
             className="text-muted-foreground hover:text-foreground shrink-0"
-            onClick={(event) => {
+            onClick={(event: React.MouseEvent<HTMLElement>) => {
               event.stopPropagation()
               onRead()
             }}
-            onKeyDown={(event) => event.stopPropagation()}
+            onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => event.stopPropagation()}
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </a>

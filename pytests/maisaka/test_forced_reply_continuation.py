@@ -71,7 +71,6 @@ def test_scheduler_queues_forced_reply_at_zero_frequency(monkeypatch: pytest.Mon
     monkeypatch.setattr("src.maisaka.turn_trigger.scheduler.logger", log)
     GroupTurnScheduler(runtime).schedule_message_turn()
     assert runtime._internal_turn_queue.get_nowait() == "message"
-    assert "强制触发" in log.info.call_args.args[0]
 
 
 @pytest.mark.asyncio

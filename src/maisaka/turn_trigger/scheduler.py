@@ -43,12 +43,11 @@ class MessageTurnScheduler(ABC):
             runtime._mark_message_turn_unscheduled()
 
         result = self._evaluate(pending_count)
+        logger.debug(f"{runtime.log_prefix} 回复调度 待处理={pending_count} {result.detail}")
         if result.decision == "delay":
-            logger.debug(f"{runtime.log_prefix} 回复调度 待处理={pending_count} {result.detail}")
             runtime._defer_message_turn_check(result.delay_seconds)
             return
 
-        logger.info(f"{runtime.log_prefix} 回复调度 待处理={pending_count} {result.detail}")
         if result.should_trigger:
             if runtime._agent_state == runtime._STATE_WAIT:
                 runtime._cancel_wait_timeout_task()
@@ -73,6 +72,8 @@ class MessageTurnScheduler(ABC):
             if runtime._is_reply_frequency_silent():
                 runtime._enter_stop_state()
             elif not self._resume_wait_on_message():
+                # 本批已参与唤醒判断。保留消息缓存，后续新消息重新开防抖窗口。
+                runtime._fixed_message_debouncer.consume()
                 return TurnGateResult(decision="wait", detail="新消息未唤醒等待")
             else:
                 self.accepted_wait_started_at = runtime._pending_wait_started_at

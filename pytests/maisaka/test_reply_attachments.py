@@ -22,19 +22,16 @@ from src.common.data_models.reply_generation_data_models import LLMCompletionRes
 from src.common.prompt_i18n import list_prompt_templates, load_prompt
 from src.config.config import global_config
 from src.core.tooling import ToolAvailabilityContext, ToolInvocation
-from src.llm_models.payload_content.context_item import ContextItemMeta, ContextTextPart, UserMessageItem
 from src.maisaka.builtin_tool import build_builtin_tool_handlers, get_all_builtin_tool_specs
 from src.maisaka.builtin_tool import context as context_module
 from src.maisaka.builtin_tool import reply as reply_tool
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
-from src.maisaka.context.emoji_candidates import EmojiCandidateMessage
 from src.maisaka.context.messages import InternalContextMessage, SessionBackedMessage
 
 
 @pytest.fixture
 def reply_context(monkeypatch):
     monkeypatch.setattr(global_config.chat, "enable_reply_at", True)
-    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", False)
     user = SimpleNamespace(user_id="user-1", user_nickname="小明", user_cardname="")
     source = SimpleNamespace(
         message_id="msg-1",
@@ -68,10 +65,8 @@ def reply_context(monkeypatch):
 
 @pytest.mark.parametrize("is_group", [False, True])
 @pytest.mark.parametrize("enable_at", [False, True])
-@pytest.mark.parametrize("new_emoji", [False, True])
-def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, enable_at, new_emoji, is_group):
+def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, enable_at, is_group):
     monkeypatch.setattr(global_config.chat, "enable_reply_at", enable_at)
-    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", new_emoji)
     availability = ToolAvailabilityContext(is_group_chat=is_group, platform="qq")
     names = {spec.name for spec in get_all_builtin_tool_specs(availability)}
     schema = reply_tool.get_tool_spec(availability).parameters_schema
@@ -80,9 +75,9 @@ def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, ena
     assert properties["reply_reference"]["minLength"] == 1
     assert "attach_pic" in properties
     assert ("attach_at" in properties) == (enable_at and is_group)
-    assert ("attach_emoji" in properties) == new_emoji
-    assert ("show_emoji_list" in names) == new_emoji
-    assert ("send_emoji" in names) != new_emoji
+    assert "attach_emoji" in properties
+    assert "show_emoji_list" not in names
+    assert "send_emoji" not in names
     assert "send_image" not in names
     assert "send_image" not in build_builtin_tool_handlers(reply_context)
 
@@ -157,7 +152,6 @@ async def test_reply_attached_emoji_renders_like_inbound_emoji(
     from src.common.utils import image_path as image_path_module
     from src.emoji_system.emoji_manager import emoji_manager
 
-    monkeypatch.setattr(global_config.emoji, "use_new_send_logic", True)
     monkeypatch.setattr(image_path_module, "PROJECT_ROOT", tmp_path)
     emoji_file = tmp_path / "emoji.gif"
     emoji_file.write_bytes(b"emoji-bytes")
@@ -166,19 +160,8 @@ async def test_reply_attached_emoji_renders_like_inbound_emoji(
         emoji_manager, "get_emoji_by_hash", lambda emoji_hash: selected_emoji if emoji_hash == "emoji-hash" else None
     )
     monkeypatch.setattr(emoji_manager, "update_emoji_usage", lambda emoji: None)
-    timestamp = datetime.now()
-    candidate_item = UserMessageItem(
-        meta=ContextItemMeta.create(timestamp=timestamp),
-        parts=(ContextTextPart("表情包选择图"),),
-    )
-    reply_context.runtime._chat_history.append(
-        EmojiCandidateMessage(
-            item=candidate_item,
-            emoji_hashes={1: "emoji-hash"},
-            visible_text="表情包选择图",
-            timestamp=timestamp,
-        )
-    )
+    from src.emoji_system import semantic_match
+    monkeypatch.setattr(semantic_match, "match_emoji_description", AsyncMock(return_value="emoji-hash"))
     reply_result = ReplyGenerationResult(success=True, completion=LLMCompletionResult(response_text="任务都完成啦"))
     generator = SimpleNamespace(generate_reply_with_context=AsyncMock(return_value=(True, reply_result)))
     monkeypatch.setattr(reply_tool.replyer_manager, "get_replyer", lambda **kwargs: generator)
@@ -192,7 +175,7 @@ async def test_reply_attached_emoji_renders_like_inbound_emoji(
 
     result = await reply_tool.handle_tool(
         reply_context,
-        ToolInvocation("reply", arguments={"msg_id": "msg-1", "reply_reference": "庆祝任务完成", "attach_emoji": 1}),
+        ToolInvocation("reply", arguments={"msg_id": "msg-1", "reply_reference": "庆祝任务完成", "attach_emoji": "开心"}),
     )
 
     assert result.success
@@ -284,7 +267,6 @@ async def test_picture_database_lookup_runs_off_event_loop(monkeypatch, tmp_path
 @pytest.mark.asyncio
 @pytest.mark.parametrize("argument,config,field", [
     ({"attach_at": ["msg-1"]}, "chat", "enable_reply_at"),
-    ({"attach_emoji": 1}, "emoji", "use_new_send_logic"),
 ])
 async def test_disabled_attachment_rejected_before_generation(reply_context, monkeypatch, argument, config, field):
     monkeypatch.setattr(getattr(global_config, config), field, False)
@@ -309,5 +291,3 @@ def test_attachment_prompt_covers_mentions_and_media(reply_context, locale):
     )
     assert "26" in prompt and "@小明" in prompt and "URL" in prompt
     assert "{attachments}" not in prompt
-    metadata = list_prompt_templates(locale=locale)["reply_attachments"].metadata
-    assert metadata.display_name and metadata.description

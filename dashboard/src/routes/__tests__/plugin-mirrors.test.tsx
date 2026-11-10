@@ -21,7 +21,7 @@ function renderSettings() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const onClose = vi.fn()
   const onSaved = vi.fn()
-  render(<QueryClientProvider client={client}><PluginSettingsDialog onClose={onClose} onSaved={onSaved} /></QueryClientProvider>)
+  render(<QueryClientProvider client={client}><PluginSettingsDialog onDependenciesChanged={vi.fn()} onClose={onClose} onSaved={onSaved} /></QueryClientProvider>)
   return { client, onClose, onSaved }
 }
 

@@ -14,7 +14,6 @@ import tomlkit
 
 from src.common.runtime_loop import run_on_main_loop
 from src.common.logger import get_logger
-from src.webui.core import auth_cookie
 from src.plugin_market import service as market_service
 from src.plugin_market.errors import MarketError
 from src.plugin_market.releases import PluginRelease, PluginReleaseEntry
@@ -25,12 +24,12 @@ from .release_install import install_release, read_release_receipt
 from .schemas import InstallPluginRequest, UninstallPluginRequest, UpdatePluginRequest
 from .support import (
     get_plugin_candidate_paths,
+    get_plugin_config_path,
     is_plugin_install_residue,
     load_manifest_json,
     parse_repository_url,
     remove_tree,
-    require_plugin_token,
-    resolve_installed_plugin_path,
+    resolve_mutable_plugin_path,
     resolve_plugin_file_path,
     validate_plugin_id,
 )
@@ -57,7 +56,7 @@ def _get_plugin_operation_resources(plugin_id: str) -> Tuple[List[Path], Set[str
     keys = {f"id:{plugin_id.casefold()}"}
     target_path, old_format_path = get_plugin_candidate_paths(plugin_id)
     paths = [target_path, old_format_path]
-    installed_path = resolve_installed_plugin_path(plugin_id)
+    installed_path = resolve_mutable_plugin_path(plugin_id)
     if installed_path is not None:
         paths.append(installed_path)
     paths = list(dict.fromkeys(paths))
@@ -132,9 +131,9 @@ def _exclusive_plugin_operation(
 
             plugin_id = validate_plugin_id(request.plugin_id)
             if isinstance(request, (InstallPluginRequest, UpdatePluginRequest)) and request.version is not None:
+                # 版本请求先验证本地目标，再用市场登记的规范 ID 预留操作目录。
+                await asyncio.to_thread(resolve_mutable_plugin_path, plugin_id)
                 # 登记 ID 和 manifest ID 必须共用同一把锁，防止别名请求并发替换同一目录。
-                token = kwargs.get("maibot_session") if "maibot_session" in kwargs else args[1] if len(args) > 1 else None
-                require_plugin_token(token)
                 entry, _ = await resolve_release(plugin_id, request.version)
                 plugin_id = validate_plugin_id(entry.manifest_id or entry.id)
             with _reserve_plugin_operation(plugin_id, operation) as paths:
@@ -308,7 +307,8 @@ async def _update_non_git_plugin(
 
 
 def _write_plugin_disabled_for_uninstall(plugin_path: Path) -> None:
-    config_path = resolve_plugin_file_path(plugin_path, "config.toml")
+    config_path = get_plugin_config_path("", plugin_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as file_obj:
             config_doc = tomlkit.load(file_obj)
@@ -340,8 +340,7 @@ async def _release_plugin_runtime_before_delete(plugin_id: str, plugin_path: Pat
 
 @router.post("/install")
 @_exclusive_plugin_operation("install")
-async def install_plugin(request: InstallPluginRequest, maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+async def install_plugin(request: InstallPluginRequest) -> Dict[str, Any]:
     logger.info(f"收到安装插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -488,9 +487,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
 @router.post("/uninstall")
 @_exclusive_plugin_operation("uninstall")
 async def uninstall_plugin(
-    request: UninstallPluginRequest, maibot_session: Optional[str] = auth_cookie()
-) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+    request: UninstallPluginRequest) -> Dict[str, Any]:
     logger.info(f"收到卸载插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -503,7 +500,7 @@ async def uninstall_plugin(
             operation="uninstall",
             plugin_id=plugin_id,
         )
-        plugin_path = resolve_installed_plugin_path(plugin_id)
+        plugin_path = resolve_mutable_plugin_path(plugin_id)
         if plugin_path is None:
             await update_progress(
                 stage="error",
@@ -574,12 +571,10 @@ async def uninstall_plugin(
 @router.post("/update")
 async def update_plugin(
     request: UpdatePluginRequest,
-    maibot_session: Optional[str] = auth_cookie(),
     http_request: Request = None,
 ) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
     if http_request is None:
-        return await _perform_update_plugin(request, maibot_session)
+        return await _perform_update_plugin(request)
 
     async def watch_disconnect() -> None:
         # 请求体已由 FastAPI 解析完毕，此处直接等待 ASGI 断开事件。
@@ -588,7 +583,7 @@ async def update_plugin(
             if message["type"] == "http.disconnect":
                 return
 
-    update_task = asyncio.create_task(_perform_update_plugin(request, maibot_session))
+    update_task = asyncio.create_task(_perform_update_plugin(request))
     disconnect_task = asyncio.create_task(watch_disconnect())
     try:
         done, _ = await asyncio.wait({update_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED)
@@ -613,8 +608,7 @@ async def update_plugin(
 
 
 @_exclusive_plugin_operation("update")
-async def _perform_update_plugin(request: UpdatePluginRequest, maibot_session: Optional[str]) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+async def _perform_update_plugin(request: UpdatePluginRequest) -> Dict[str, Any]:
     logger.info(f"收到更新插件请求: {request.plugin_id}")
     plugin_id = request.plugin_id
 
@@ -631,7 +625,7 @@ async def _perform_update_plugin(request: UpdatePluginRequest, maibot_session: O
         await update_progress(
             stage="loading", progress=5, message=f"开始更新插件: {plugin_id}", operation="update", plugin_id=plugin_id
         )
-        plugin_path = resolve_installed_plugin_path(plugin_id)
+        plugin_path = resolve_mutable_plugin_path(plugin_id)
         if plugin_path is None:
             await update_progress(
                 stage="error",
@@ -762,8 +756,7 @@ async def _perform_update_plugin(request: UpdatePluginRequest, maibot_session: O
 
 
 @router.get("/installed")
-async def get_installed_plugins(maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Any]:
-    require_plugin_token(maibot_session)
+async def get_installed_plugins() -> Dict[str, Any]:
     from src.plugin_runtime.integration import get_plugin_runtime_manager
 
     snapshot = await run_on_main_loop(get_plugin_runtime_manager().get_plugin_state_snapshot())
@@ -771,9 +764,8 @@ async def get_installed_plugins(maibot_session: Optional[str] = auth_cookie()) -
 
 
 @router.get("/usage")
-async def get_plugin_usage(maibot_session: Optional[str] = auth_cookie()) -> Dict[str, Dict[str, float]]:
+async def get_plugin_usage() -> Dict[str, Dict[str, float]]:
     """只读取主循环内的累计时长，供列表刷新提醒；不扫描插件目录。"""
-    require_plugin_token(maibot_session)
     from src.plugin_runtime.integration import get_plugin_runtime_manager
 
     async def read_usage() -> Dict[str, float]:
@@ -786,6 +778,7 @@ def _collect_installed_plugins(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     """将静态索引与运行状态快照合并；不读取文件或重新校验插件。"""
     plugins: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()
+    usage_seconds = snapshot["usage_seconds"]
     for entry in snapshot["plugins"]:
         plugin_id = entry.plugin_id
         if plugin_id in seen_ids:
@@ -803,18 +796,21 @@ def _collect_installed_plugins(snapshot: Dict[str, Any]) -> Dict[str, Any]:
             and load_status not in {"success", "loading", "timed_out", "stopping"}
         ):
             load_status = "disabled"
-        plugins.append({
+        plugin = {
             "id": plugin_id,
             "manifest": entry.manifest,
+            "builtin": entry.builtin,
             "path": str(entry.path),
             "enabled": entry.enabled,
             "disabled": entry.enabled is False,
             "loaded": load_status == "success",
             "load_status": load_status,
             "status_badges": snapshot.get("status_badges", {}).get(plugin_id, []) if load_status == "success" else [],
-            "usage_seconds": snapshot["usage_seconds"].get(plugin_id, 0.0),
             "load_error": load_error if load_status in {"failed", "timed_out"} else "",
             "circuit_status": snapshot["circuit_statuses"].get(plugin_id),
             "release": entry.release,
-        })
+        }
+        if usage_seconds is not None:
+            plugin["usage_seconds"] = usage_seconds.get(plugin_id, 0.0)
+        plugins.append(plugin)
     return {"success": True, "plugins": plugins, "total": len(plugins)}

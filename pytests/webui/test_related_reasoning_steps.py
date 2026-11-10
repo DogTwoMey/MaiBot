@@ -64,6 +64,7 @@ def test_related_steps_keep_legacy_passive_source(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_trace_propagates_to_threads_and_preview_write_tasks(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.maisaka.display.prompt_cli_renderer._build_webui_local_base_url", lambda: "http://127.0.0.1:18001")
     monkeypatch.setattr(PromptPreviewLogger, "_BASE_DIR", tmp_path)
     tasks = []
     monkeypatch.setattr(PromptPreviewLogger, "_submit", tasks.append)

@@ -1,7 +1,7 @@
 """统一工具抽象。
 
 该模块定义主程序内部统一使用的工具声明、调用与执行结果模型，
-用于收敛插件 Tool、兼容旧 Action、MaiSaka 内置 Tool 与 MCP Tool。
+用于收敛插件 Tool、MaiSaka 内置 Tool 与 MCP Tool。
 """
 
 from __future__ import annotations
@@ -17,6 +17,18 @@ from src.common.logger import get_logger
 from src.llm_models.payload_content.tool_option import ToolDefinitionInput
 
 logger = get_logger("core.tooling")
+
+
+def normalize_tool_description(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """在工具输入边界统一描述字段，后续链路只使用 description。"""
+    normalized = dict(metadata)
+    descriptions = [
+        normalized.get("description"),
+        normalized.pop("brief_description", None),
+        normalized.pop("detailed_description", None),
+    ]
+    normalized["description"] = next((value.strip() for value in descriptions if value and value.strip()), "")
+    return normalized
 
 
 @dataclass(slots=True)
@@ -115,15 +127,14 @@ class ToolSpec:
         brief_description: str = "",
         detailed_description: str = "",
     ) -> None:
-        """初始化工具声明。
-
-        brief_description/detailed_description 为旧字段兼容入口：
-        - description 为空时使用 brief_description。
-        - detailed_description 被弃用，不参与描述构建。
-        """
+        """初始化工具声明，并在输入边界统一描述字段。"""
 
         self.name = name
-        self.description = str(description or brief_description or "").strip()
+        self.description = normalize_tool_description({
+            "description": description,
+            "brief_description": brief_description,
+            "detailed_description": detailed_description,
+        })["description"]
         self.title = title
         self.parameters_schema = parameters_schema
         self.output_schema = output_schema

@@ -58,7 +58,7 @@ describe('useMenuSections', () => {
     })
 
     await waitFor(() => {
-      expect(flattenPaths(result.current)).toContain('/computer')
+      expect(flattenPaths(result.current)).not.toContain('/computer')
     })
     expect(mockGetBotConfigCached).toHaveBeenCalledTimes(2)
   })

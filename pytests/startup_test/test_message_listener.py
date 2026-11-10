@@ -9,14 +9,13 @@ from src.main import MainSystem, global_config
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("enabled", [True, False])
-async def test_standalone_message_service_owns_single_listener(monkeypatch, enabled):
+async def test_worker_periodic_tasks_do_not_open_tcp_listeners(monkeypatch, enabled):
     from src.chat.image_system import image_cache_cleanup
     from src.files import service as file_service
     from src.emoji_system import emoji_cache_cleanup
     from src.emoji_system.emoji_manager import emoji_manager
     from src.maisaka.display.prompt_preview_logger import PromptPreviewLogger
     from src.services import image_path_maintenance_service
-    from src.webui.routers import data_transfer
 
     monkeypatch.setattr(global_config.maim_message, "enabled", enabled)
     monkeypatch.setattr(global_config.debug, "enable_console_input", False)
@@ -24,7 +23,6 @@ async def test_standalone_message_service_owns_single_listener(monkeypatch, enab
     monkeypatch.setattr(emoji_manager, "periodic_emoji_maintenance", AsyncMock())
     monkeypatch.setattr(emoji_cache_cleanup, "periodic_emoji_cache_cleanup", AsyncMock())
     monkeypatch.setattr(image_cache_cleanup, "periodic_image_cache_cleanup", AsyncMock())
-    monkeypatch.setattr(data_transfer, "periodic_transfer_temp_cleanup", AsyncMock())
     file_cleanup = AsyncMock()
     monkeypatch.setattr(file_service, "periodic_file_cleanup", file_cleanup)
     monkeypatch.setattr(image_path_maintenance_service, "should_schedule_image_path_maintenance_background", lambda: False)
@@ -47,10 +45,10 @@ async def test_standalone_message_service_owns_single_listener(monkeypatch, enab
     try:
         await system.schedule_tasks()
         file_cleanup.assert_awaited_once()
-        assert len(listeners) == int(enabled)
-        assert system.app.run.await_count == int(enabled)
+        assert len(listeners) == 0
+        system.app.run.assert_not_called()
         system.server.run.assert_not_called()
-        assert system._register_message_handlers.call_count == int(enabled)
+        system._register_message_handlers.assert_not_called()
     finally:
         for listener in listeners:
             listener.close()

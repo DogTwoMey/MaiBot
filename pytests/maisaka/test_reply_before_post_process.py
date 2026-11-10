@@ -29,10 +29,10 @@ def test_skip_post_process_returns_original_reply(monkeypatch) -> None:
 
 
 def test_post_process_options_are_independent(monkeypatch) -> None:
-    calls: list[tuple[str, bool, bool]] = []
+    calls: list[tuple[str, bool]] = []
 
-    def fake_process(text: str, enable_splitter: bool, enable_chinese_typo: bool) -> list[str]:
-        calls.append((text, enable_splitter, enable_chinese_typo))
+    def fake_process(text: str, enable_splitter: bool) -> list[str]:
+        calls.append((text, enable_splitter))
         return [text]
 
     monkeypatch.setattr(context_module, "process_llm_response", fake_process)
@@ -40,11 +40,10 @@ def test_post_process_options_are_independent(monkeypatch) -> None:
     segments = BuiltinToolRuntimeContext.post_process_reply_text(
         "保留完整回复",
         enable_splitter=False,
-        enable_chinese_typo=True,
     )
 
     assert segments == ["保留完整回复"]
-    assert calls == [("保留完整回复", False, True)]
+    assert calls == [("保留完整回复", False)]
 
 
 def test_before_post_process_hook_exposes_per_reply_options() -> None:

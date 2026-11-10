@@ -7,7 +7,7 @@ import {
   Home,
   MessageCircle,
   MessageSquare,
-  Monitor,
+  Network,
   Puzzle,
   Settings,
   Store,
@@ -40,8 +40,12 @@ export const menuSections: MenuSection[] = [
         path: '/',
         searchDescription: 'search.items.homeDesc',
       },
-      { icon: LocalChatIcon, label: 'workspace.chat', path: '/chat' },
-      { icon: Monitor, label: 'chat.computerDesktop', path: '/computer', featureFlag: 'computer' },
+      {
+        icon: LocalChatIcon,
+        label: 'workspace.chat',
+        path: '/chat',
+        searchDescription: 'search.items.chatDesc',
+      },
     ],
   },
   {
@@ -75,6 +79,11 @@ export const menuSections: MenuSection[] = [
         label: 'sidebar.menu.learning',
         path: '/resource/learning',
         searchDescription: 'search.items.learningDesc',
+      },
+      {
+        icon: (props) => createElement(Network, props),
+        label: 'sidebar.menu.mutualGroups',
+        path: '/chat-management',
       },
       {
         icon: KnowledgeIcon,

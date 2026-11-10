@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GeneralTab } from '../GeneralTab'
 
+vi.mock('@/host/HostUpdateSection', () => ({ HostUpdateSection: () => null }))
+vi.mock('../component-library', () => ({ ComponentLibrary: () => null }))
+
 const i18n = vi.hoisted(() => ({ language: 'zh-CN', resolvedLanguage: undefined as string | undefined, changeLanguage: vi.fn() }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n }) }))
 

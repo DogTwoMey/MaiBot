@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { parse as parseToml } from 'smol-toml'
 
+import { DesktopPetCurrentTaskField } from '@/components/DesktopPetCurrentTaskField'
 import { DesktopPetSkinField } from '@/components/DesktopPetSkinField'
 import { AgentACPField, AgentConnectionSettings, AgentCustomArgs, AgentDesktopField } from '@/components/agent/AgentConnectionSettings'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -73,34 +74,34 @@ import {
   AMemorixSharedMemoryGroupsHook,
   AMemorixRetrievalChatsHook,
   AMemorixRetrievalFilterGroupHook,
-  ChatTalkValueRulesVisualHook,
   FocusGroupsHook,
   ChatPromptsHook,
+  ChatTalkRuleGroupsHook,
   ExpressionGroupsHook,
   ExpressionLearningListHook,
   LearningBlacklistHook,
   FocusWhitelistHook,
   JargonGroupsHook,
   JargonLearningListHook,
-  KeywordRulesHook,
   HiddenFieldHook,
   MCPRootItemsHook,
   MCPServersHook,
   MultipleReplyStyleHook,
   PrivateReplyPauseRulesHook,
-  RegexRulesHook,
   useAutoSave,
 } from './bot/hooks'
 import { collectChatSettings } from '@/lib/chat-settings-schema'
 import { ChatSettings } from './bot/ChatSettings'
-import { VisualSettings } from './bot/VisualSettings'
+import { CapabilitySettings } from './bot/CapabilitySettings'
 import { CommandPermissions } from './bot/CommandPermissions'
+import { PluginUsagePermissions } from './bot/PluginUsagePermissions'
 import { GlobalLearningSettings } from './bot/GlobalLearningSettings'
 import { PersonalityProfiles } from './bot/PersonalityProfiles'
 import { MemorySwitchGuard, MemorySwitchProvider } from './bot/MemorySwitchGuard'
+import { CommonSettings } from './bot/CommonSettings'
 
 type ConfigSectionData = Record<string, unknown>
-type BotSettingsMode = 'groups' | 'detail' | 'commands' | 'source'
+type BotSettingsMode = 'groups' | 'detail' | 'commands' | 'source' | 'common'
 // ==================== 常量定义 ====================
 /** Toast 显示前的延迟时间 (毫秒) */
 const TOAST_DISPLAY_DELAY = 500
@@ -121,6 +122,8 @@ interface SubtabPane {
 
 // 主导出组件：包装 RestartProvider
 export function BotConfigPage() {
+  const search = useRouterState({ select: state => state.location.searchStr })
+  if (new URLSearchParams(search).get('mode') === 'common') return <CommonSettings />
   return (
     <RestartProvider>
       <BotConfigPageContent />
@@ -353,6 +356,7 @@ function BotConfigPageContent() {
   useEffect(() => {
     const hookEntries = [
       ['desktop_pet.skin_id', DesktopPetSkinField],
+      ['desktop_pet.show_current_task', DesktopPetCurrentTaskField],
       ['agent.connection', AgentConnectionSettings, 'wrapper'],
       ['agent.desktop_manifest', AgentDesktopField, 'wrapper'],
       ['agent.acp_args', AgentCustomArgs, 'wrapper'],
@@ -368,7 +372,7 @@ function BotConfigPageContent() {
       ['bot.platforms', HiddenFieldHook, 'hidden'],
       ['personality.multiple_reply_style', MultipleReplyStyleHook],
       ['chat.reply_style.chat_prompts', ChatPromptsHook],
-      ['chat.reply_timing.talk_value_rules', ChatTalkValueRulesVisualHook],
+      ['chat.reply_timing.talk_rule_groups', ChatTalkRuleGroupsHook],
       ['chat.reply_timing.private_reply_pause_rules', PrivateReplyPauseRulesHook],
       ['experimental.focus_chat_whitelist', FocusWhitelistHook],
       ['experimental.focus_groups', FocusGroupsHook],
@@ -389,8 +393,6 @@ function BotConfigPageContent() {
       ['a_memorix.filter.retrieval.chat_stream.chats', AMemorixRetrievalChatsHook],
       ['a_memorix.filter.retrieval.chat_summary.chats', AMemorixRetrievalChatsHook],
       ['a_memorix.filter.retrieval.episode.chats', AMemorixRetrievalChatsHook],
-      ['keyword_reaction.keyword_rules', KeywordRulesHook],
-      ['keyword_reaction.regex_rules', RegexRulesHook],
       ['mcp.client.roots.items', MCPRootItemsHook],
       ['mcp.servers', MCPServersHook],
     ] as const
@@ -495,6 +497,7 @@ function BotConfigPageContent() {
     const nextSearch = params.size ? `?${params.toString()}` : ''
     lastRouteSearchRef.current = nextSearch
     await navigate({ href: `/config/bot${nextSearch}`, replace: true })
+    if (mode === 'common') return
     if (mode === 'source') {
       await loadSourceCode()
     } else {
@@ -653,8 +656,8 @@ function BotConfigPageContent() {
       scrollbars="vertical"
     >
       <div className={cn('max-w-full p-4 sm:p-6', editMode === 'detail' ? 'space-y-2' : 'space-y-4 sm:space-y-6')}>
-        {/* 顶部操作栏整体吸顶：手机端分两行，PC 端导航与操作按钮同一行。 */}
-        <div data-config-section-navigation="true" className="bg-background sticky top-0 z-20 flex min-w-0 flex-col gap-3 py-2 lg:flex-row lg:items-center">
+        {/* 透明吸顶容器只承载独立控件，避免滚动时把整条页面纹理带到内容上方。 */}
+        <div data-config-section-navigation="true" className="sticky top-0 z-20 flex min-w-0 flex-col gap-3 py-2 lg:flex-row lg:items-center">
           <div className="flex w-full min-w-0 items-center gap-3 max-lg:hidden lg:flex-1">
             {editMode === 'detail' && tabGroups.length > 0 && (
               <DropdownMenu>
@@ -709,6 +712,16 @@ function BotConfigPageContent() {
                       </div>
                     )
                   })}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => void handleModeChange('common')}
+                    className={cn(
+                      buttonVariants({ variant: 'outline' }),
+                      'w-full shrink-0 cursor-pointer justify-start text-base font-semibold ![background-image:none]'
+                    )}
+                  >
+                    公共设置
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -746,7 +759,7 @@ function BotConfigPageContent() {
             <Tabs
               value={editMode}
               onValueChange={(v) => handleModeChange(v as BotSettingsMode)}
-              className="min-w-0 flex-1 sm:w-64 sm:flex-none"
+              className="min-w-0 flex-1 sm:w-60 sm:flex-none"
             >
               <TabsList data-config-bot-mode-tabs="true" className="grid h-9 w-full grid-cols-2">
                 <TabsTrigger value="detail" className="min-w-0 gap-1 !px-1 text-sm sm:!px-2">
@@ -839,6 +852,14 @@ function BotConfigPageContent() {
                   {tab.label}
                 </button>
               ))}
+              <div role="separator" aria-orientation="vertical" className="mx-1 shrink-0 self-stretch border-l" />
+              <button
+                type="button"
+                onClick={() => void handleModeChange('common')}
+                className="bg-card text-foreground h-9 shrink-0 rounded-full px-4 text-[15px]"
+              >
+                公共设置
+              </button>
             </nav>
           )}
         </div>
@@ -927,13 +948,22 @@ function BotConfigPageContent() {
         )}
 
         {editMode === 'commands' && (
-          <CommandPermissions
-            pluginSection={sectionValues.plugin ?? null}
-            onChange={(value) => {
-              setSectionValue('plugin', value)
-              setHasUnsavedChanges(true)
-            }}
-          />
+          <>
+            <PluginUsagePermissions
+              pluginSection={sectionValues.plugin ?? null}
+              onChange={(value) => {
+                setSectionValue('plugin', value)
+                setHasUnsavedChanges(true)
+              }}
+            />
+            <CommandPermissions
+              pluginSection={sectionValues.plugin ?? null}
+              onChange={(value) => {
+                setSectionValue('plugin', value)
+                setHasUnsavedChanges(true)
+              }}
+            />
+          </>
         )}
 
         {/* 重启遮罩层 */}
@@ -1344,6 +1374,29 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
     }
 
     const renderSectionGroupContent = (sectionEntries: Array<readonly [string, ConfigSchema]>) => {
+      const [firstEntry] = sectionEntries
+      if (sectionEntries.length === 1 && firstEntry && ['jargon', 'emoji'].includes(firstEntry[0])) {
+        const [sectionName, schema] = firstEntry
+        return (
+          <div className="space-y-3">
+            <DynamicConfigForm
+              schema={schema}
+              values={sectionValues[sectionName] ?? {}}
+              onChange={(fieldPath, value) =>
+                updateSectionValueByPath(sectionName, fieldPath.split('.'), value)
+              }
+              basePath={sectionName}
+              hooks={fieldHooks}
+              advancedVisible={advancedVisible}
+              sectionColumns={1}
+              sectionLeadingContent={sectionLeadingContent}
+              sectionTrailingContent={sectionTrailingContent}
+              fieldTrailingContent={fieldTrailingContent}
+            />
+          </div>
+        )
+      }
+
       const values = Object.fromEntries(
         sectionEntries.map(([sectionName]) => [sectionName, sectionValues[sectionName] ?? {}])
       )
@@ -1572,12 +1625,17 @@ function DynamicConfigTabs(props: DynamicConfigTabsProps) {
       return null
     }
 
-    if (tabNestedEntries.length === 1 && tabNestedEntries[0][0] === 'visual') {
+    // 能力页把能力开关、语音和视觉排在同一块面板里；含其他小节时仍走通用表单。
+    const capabilitySections = new Set(['capabilities', 'voice', 'visual'])
+    if (
+      tabNestedEntries.some(([sectionName]) => sectionName === 'visual') &&
+      tabNestedEntries.every(([sectionName]) => capabilitySections.has(sectionName))
+    ) {
       return (
-        <VisualSettings
-          schema={tabNestedEntries[0][1]}
-          values={sectionValues.visual ?? {}}
-          onChange={(path, value) => updateSectionValueByPath('visual', path, value)}
+        <CapabilitySettings
+          schemas={Object.fromEntries(tabNestedEntries)}
+          values={sectionValues}
+          onChange={(sectionName, path, value) => updateSectionValueByPath(sectionName, path, value)}
           advancedVisible={advancedVisible}
         />
       )

@@ -1,4 +1,4 @@
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import re
 
@@ -335,6 +335,7 @@ class ImageCacheCleanupConfig(ConfigBase):
 class VisualConfig(ConfigBase):
     """视觉配置类"""
 
+    __ui_parent__ = "capabilities"
     __ui_label__ = "视觉"
     __ui_order__ = 60
 
@@ -440,7 +441,25 @@ class VisualConfig(ConfigBase):
     """定期清理旧图片缓存，减少磁盘占用。"""
 
 
+def is_global_talk_rule_target(platform: str, item_id: str) -> bool:
+    return platform.strip() in {"", "*"} and item_id.strip() in {"", "*"}
+
+
 class TalkRulesItem(ConfigBase):
+    def model_post_init(self, context: Any) -> None:
+        super().model_post_init(context)
+        if self.rule_type == "group" and is_global_talk_rule_target(self.platform, self.item_id):
+            raise ValueError("动态发言频率规则必须指定平台或群聊 ID；所有群的默认频率请使用总体发言频率")
+
+    enabled: bool = Field(
+        default=True,
+        json_schema_extra={
+            "label": {"zh_CN": "启用规则", "en_US": "Enable rule", "ja_JP": "ルールを有効にする"},
+            "x-widget": "switch",
+        },
+    )
+    """关闭时保留该规则，但不参与发言频率匹配。"""
+
     platform: str = Field(
         default="",
         json_schema_extra={
@@ -528,6 +547,37 @@ class PrivateReplyPauseRule(ConfigBase):
         },
     )
     """开启后暂停这个私聊的回复；关闭则允许回复，覆盖全局私聊暂停设置。"""
+
+
+DEFAULT_TALK_RULE_GROUP_NAME = "默认"
+
+
+class TalkRuleGroup(ConfigBase):
+    name: str = Field(default=DEFAULT_TALK_RULE_GROUP_NAME)
+    """发言频率规则组名称。"""
+
+    rules: List[TalkRulesItem] = Field(default_factory=list)
+    """组内的发言频率规则，顺序用于相同优先级下的匹配。"""
+
+
+class TalkRuleGroups(ConfigBase):
+    def model_post_init(self, context: Any) -> None:
+        super().model_post_init(context)
+        names = [group.name for group in self.groups]
+        if any(not name.strip() or name != name.strip() for name in names) or len(names) != len(set(names)):
+            raise ValueError("动态发言规则组名称须非空、无首尾空白且唯一")
+        if self.active_group not in names:
+            raise ValueError(f"找不到启用的动态发言规则组：{self.active_group}")
+
+    active_group: str = Field(default=DEFAULT_TALK_RULE_GROUP_NAME)
+    """当前生效的规则组名称。"""
+
+    groups: List[TalkRuleGroup] = Field(default_factory=lambda: [TalkRuleGroup()])
+    """已保存的规则组。"""
+
+
+def get_active_talk_rule_group(config: TalkRuleGroups) -> TalkRuleGroup:
+    return next(group for group in config.groups if group.name == config.active_group)
 
 
 class ChatReplyTimingConfig(ConfigBase):
@@ -744,37 +794,20 @@ class ChatReplyTimingConfig(ConfigBase):
     )
     """等待期间新消息达到多少条就立刻重新处理；0 表示不按条数打断等待。"""
 
-    enable_talk_value_rules: bool = Field(
-        default=False,
-        json_schema_extra={
-            "x-chat-settings": {"scope": "group", "row": 70},
-            "label": {
-                "zh_CN": "启用动态发言频率规则",
-                "en_US": "Enable dynamic talk frequency rules",
-                "ja_JP": "動的な発言頻度ルールを有効化",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """开启后，可以按群聊或时间段单独调整发言频率；私聊不使用频率规则。"""
-
-    talk_value_rules: list[TalkRulesItem] = Field(
-        default_factory=lambda: [
-            TalkRulesItem(platform="", item_id="", rule_type="group", time="00:00-08:59", value=0.8),
-            TalkRulesItem(platform="", item_id="", rule_type="group", time="09:00-18:59", value=1.0),
-        ],
+    talk_rule_groups: TalkRuleGroups = Field(
+        default_factory=TalkRuleGroups,
         json_schema_extra={
             "x-chat-settings": {"scope": "group", "row": 80, "dialog": "动态发言规则"},
             "label": {
-                "zh_CN": "动态发言频率规则",
-                "en_US": "Dynamic talk frequency rules",
-                "ja_JP": "動的な発言頻度ルール",
+                "zh_CN": "动态发言规则组",
+                "en_US": "Dynamic talk frequency rule groups",
+                "ja_JP": "動的な発言頻度ルールグループ",
             },
             "x-widget": "custom",
         },
     )
     """
-    _wrap_动态发言频率规则；可让麦麦在某些群或时段更活跃或更安静。旧的私聊频率规则不再生效。
+    _wrap_为不同场景保存发言频率规则，仅当前规则组内已启用的群聊规则参与匹配。
     """
 
 
@@ -818,7 +851,7 @@ class ChatReplyStyleConfig(ConfigBase):
         default=(
             "下面是聊天中的的内容，聊天中包含文字，图片和表情包等消息。\n"
             "回复尽量简短一些。最好一次对一个话题进行回复，但必须考虑不同群友发言之间的交互，免得啰嗦或者回复内容太乱。\n"
-            "根据聊天内容自由发挥，但是要日常不浮夸，不要刻意找话题。\n"
+            "根据聊天内容自由发挥，但是要日常不浮夸，不要刻意找话题。请不要输出违法违规内容，不要输出色情，暴力，政治相关内容，如有敏感内容，请规避。\n"
             "不用刻意回复其他人发送的表情包。你可以适当发送表情包表达情绪。如果有人不喜欢你或者不理你，就不要强行回复，回复前读空气。不要每个人的消息都回复，适当回复其他话题。可以适当回过头回复之前用户的消息。\n"
         ),
         json_schema_extra={
@@ -1031,7 +1064,7 @@ class CapabilitiesConfig(ConfigBase):
             "x-widget": "switch",
         },
     )
-    """启用聊天附件登记、文件工具、插件 SDK 和 WebUI 文件入口；默认关闭，不依赖 WebUI 或沙盒开关。关闭后拒绝新的文件操作，不删除已有原件。"""
+    """启用聊天附件登记、文件工具、插件 SDK 和 WebUI 文件入口；默认关闭，不依赖 WebUI 开关。关闭后拒绝新的文件操作，不删除已有原件。"""
 
     tool_result_condense: bool = Field(
         default=False,
@@ -1081,6 +1114,34 @@ class ExperimentalConfig(ConfigBase):
     __ui_label__ = "实验性功能"
     __ui_advanced__ = True
     __ui_order__ = 140
+
+    desktop_pet_exploration_enabled: bool = Field(
+        default=False,
+        json_schema_extra={"label": {"zh_CN": "桌宠自由探索"}, "x-widget": "switch"},
+    )
+    """实验性功能：允许桌宠发起探索任务，并在主人聊天中检索、记录和复用探索经验。默认关闭，开启后会调用模型和工具。"""
+
+    super_creative_mode: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "超级创意模式",
+                "en_US": "Super creative mode",
+                "ja_JP": "スーパークリエイティブモード",
+            },
+            "x-widget": "switch",
+        },
+    )
+    """实验性功能：Replyer 使用所选语言 Prompt 生成回复，再由同一实际 Replyer 模型翻译为中文。优先于回复缓存模式，翻译会增加耗时和费用。"""
+
+    super_creative_language: Literal["ja-JP", "ru-RU", "fr-FR", "zh-classical"] = Field(
+        default="ja-JP",
+        json_schema_extra={
+            "label": {"zh_CN": "超级创意生成语言"},
+            "x-option-labels": {"ja-JP": "日语", "ru-RU": "俄语", "fr-FR": "法语", "zh-classical": "中文文言文"},
+        },
+    )
+    """超级创意模式使用的 Prompt 和生成语言，中文材料原样保留。"""
 
     passive_replyer: bool = Field(
         default=False,
@@ -3967,7 +4028,7 @@ class AMemorixConfig(ConfigBase):
             "x-widget": "switch",
         },
     )
-    """是否让普通记忆查询在所有聊天流范围内检索"""
+    """旧全局共享开关，仅用于首次导入独立相通组；之后在相通页面管理。"""
 
     shared_memory_groups: list[ChatStreamGroup] = Field(
         default_factory=list,
@@ -3981,7 +4042,7 @@ class AMemorixConfig(ConfigBase):
             "x-display-as-section": True,
         },
     )
-    """把需要互相参考长期记忆的群聊或私聊放到同一组"""
+    """旧记忆组，仅用于首次导入独立相通组；之后在相通页面管理。"""
 
     episode: AMemorixEpisodeConfig = Field(
         default_factory=AMemorixEpisodeConfig,
@@ -4254,7 +4315,7 @@ class ExpressionConfig(ConfigBase):
             "x-widget": "custom",
         },
     )
-    """_wrap_让多个群聊或私聊共享学到的表达方式。"""
+    """旧表达组，仅用于首次导入独立相通组；之后在相通页面管理。"""
 
     learning_blacklist: List[LearningBlacklistUser] = Field(
         default_factory=list,
@@ -4302,7 +4363,7 @@ class JargonConfig(ConfigBase):
             "x-widget": "custom",
         },
     )
-    """_wrap_让多个群聊或私聊共享学到的黑话。"""
+    """旧黑话组，仅用于首次导入独立相通组；之后在相通页面管理。"""
 
     learning_blacklist: List[LearningBlacklistUser] = Field(
         default_factory=list,
@@ -4398,35 +4459,6 @@ class EmojiConfig(ConfigBase):
     __ui_label__ = "表情包"
     __ui_sub_label__ = "表情包"
 
-    use_new_send_logic: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "采用新表情包发送逻辑",
-                "en_US": "Use new emoji sending logic",
-                "ja_JP": "新しい絵文字送信方式を使用",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """开启后由思考模型直接查看并挑选表情包，在文字回复后发送，需要思考模型支持视觉；关闭时沿用独立选择并发送表情包的旧方式。"""
-
-    emoji_send_num: int = Field(
-        default=25,
-        ge=1,
-        le=64,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "单次发送候选数",
-                "en_US": "Emoji send candidate count",
-                "ja_JP": "送信候補の絵文字数",
-            },
-            "x-widget": "input",
-            "advanced": True,
-        },
-    )
-    """每次从多少个候选表情里挑一个发送；不是一次发送这么多。"""
-
     max_reg_num: int = Field(
         default=64,
         json_schema_extra={
@@ -4471,14 +4503,14 @@ class EmojiConfig(ConfigBase):
         default=True,
         json_schema_extra={
             "label": {
-                "zh_CN": "收集聊天表情",
-                "en_US": "Collect chat emojis",
-                "ja_JP": "チャット絵文字を収集",
+                "zh_CN": "自动注册表情包",
+                "en_US": "Automatically register emojis",
+                "ja_JP": "絵文字を自動登録",
             },
             "x-widget": "switch",
         },
     )
-    """是否从聊天中自动收集别人发的表情。"""
+    """定期扫描表情包目录并尝试将候选表情注册为可发送的表情。关闭后，聊天表情仍会为识别而缓存。"""
 
     max_emoji_size_mb: float = Field(
         default=5.0,
@@ -4511,103 +4543,6 @@ class EmojiConfig(ConfigBase):
 
     cache_cleanup: EmojiCacheCleanupConfig = Field(default_factory=EmojiCacheCleanupConfig)
     """定期清理未注册表情包缓存，减少磁盘占用；已注册表情包不会被清理。"""
-
-
-class KeywordRuleConfig(ConfigBase):
-    """关键词规则配置类"""
-
-    keywords: list[str] = Field(
-        default_factory=lambda: [],
-        json_schema_extra={
-            "label": {
-                "zh_CN": "关键词",
-                "en_US": "Keywords",
-                "ja_JP": "キーワード",
-            },
-            "x-widget": "custom",
-        },
-    )
-    """要匹配的关键词；命中任意一个即可触发。"""
-
-    regex: list[str] = Field(
-        default_factory=lambda: [],
-        json_schema_extra={
-            "label": {
-                "zh_CN": "正则表达式",
-                "en_US": "Regular expressions",
-                "ja_JP": "正規表現",
-            },
-            "x-widget": "custom",
-        },
-    )
-    """要匹配的正则表达式；适合复杂文本规则。"""
-
-    reaction: str = Field(
-        default="",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "反应提示",
-                "en_US": "Reaction prompt",
-                "ja_JP": "リアクションプロンプト",
-            },
-            "x-widget": "textarea",
-        },
-    )
-    """命中后给麦麦看的提示内容，不会直接当作消息发送。"""
-
-    def model_post_init(self, context: Optional[dict] = None) -> None:
-        """验证配置"""
-        if not self.keywords and not self.regex:
-            raise ValueError("关键词规则必须至少包含keywords或regex中的一个")
-
-        if not self.reaction:
-            raise ValueError("关键词规则必须包含reaction")
-
-        for pattern in self.regex:
-            try:
-                re.compile(pattern)
-            except re.error as e:
-                raise ValueError(f"无效的正则表达式 '{pattern}': {str(e)}") from e
-        return super().model_post_init(context)
-
-
-class KeywordReactionConfig(ConfigBase):
-    """关键词配置类"""
-
-    __ui_parent__ = "message_receive"
-
-    keyword_rules: list[KeywordRuleConfig] = Field(
-        default_factory=lambda: [],
-        json_schema_extra={
-            "label": {
-                "zh_CN": "关键词规则",
-                "en_US": "Keyword rules",
-                "ja_JP": "キーワードルール",
-            },
-            "x-widget": "custom",
-        },
-    )
-    """命中关键词后，给麦麦追加一段固定反应提示。"""
-
-    regex_rules: list[KeywordRuleConfig] = Field(
-        default_factory=lambda: [],
-        json_schema_extra={
-            "label": {
-                "zh_CN": "正则规则",
-                "en_US": "Regex rules",
-                "ja_JP": "正規表現ルール",
-            },
-            "x-widget": "custom",
-        },
-    )
-    """命中正则规则后，给麦麦追加一段固定反应提示。"""
-
-    def model_post_init(self, context: Optional[dict] = None) -> None:
-        """验证配置"""
-        for rule in self.keyword_rules + self.regex_rules:
-            if not isinstance(rule, KeywordRuleConfig):
-                raise ValueError(f"规则必须是KeywordRuleConfig类型，而不是{type(rule).__name__}")
-        return super().model_post_init(context)
 
 
 class ResponsePostProcessConfig(ConfigBase):
@@ -4648,122 +4583,6 @@ class ResponsePostProcessConfig(ConfigBase):
         },
     )
     """模拟打字等待时间；0 最快，1 默认，2 更慢。"""
-
-
-class ChineseTypoConfig(ConfigBase):
-    """中文错别字配置类"""
-
-    __ui_parent__ = "response_post_process"
-
-    enable: bool = Field(
-        default=True,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "启用错别字",
-                "en_US": "Enable typos",
-                "ja_JP": "誤字生成を有効化",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """让麦麦偶尔打错字，更像真人聊天。"""
-
-    enable_correction_quote: bool = Field(
-        default=True,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "错别字纠正时引用原消息",
-                "en_US": "Quote typo message when correcting",
-                "ja_JP": "誤字訂正時に元メッセージを引用",
-            },
-            "x-widget": "switch",
-            "x-row": "typo-correction-quote",
-        },
-    )
-    """纠正错别字时，是否引用上一条包含错别字的消息。"""
-
-    correction_quote_probability: float = Field(
-        default=1.0,
-        ge=0,
-        le=1,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "错别字纠正引用概率",
-                "en_US": "Typo correction quote chance",
-                "ja_JP": "誤字訂正の引用確率",
-            },
-            "x-widget": "slider",
-            "x-row": "typo-correction-quote",
-            "step": 0.01,
-            "advanced": True,
-        },
-    )
-    """生成纠正消息时，引用上一条错别字消息的概率。"""
-
-    error_rate: float = Field(
-        default=0.01,
-        ge=0,
-        le=1,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "单字错字概率",
-                "en_US": "Single-character typo chance",
-                "ja_JP": "単字誤字確率",
-            },
-            "x-widget": "slider",
-            "step": 0.01,
-            "advanced": True,
-        },
-    )
-    """单个字被替换成错字的概率。"""
-
-    min_freq: int = Field(
-        default=9,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "最小字频",
-                "en_US": "Minimum character frequency",
-                "ja_JP": "最小文字頻度",
-            },
-            "x-widget": "input",
-            "advanced": True,
-        },
-    )
-    """只对常见程度达到该值的字尝试制造错字。"""
-
-    tone_error_rate: float = Field(
-        default=0.1,
-        ge=0,
-        le=1,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "声调错字概率",
-                "en_US": "Tone typo chance",
-                "ja_JP": "声調誤字確率",
-            },
-            "x-widget": "slider",
-            "step": 0.1,
-            "advanced": True,
-        },
-    )
-    """按相近声调制造错字的概率。"""
-
-    word_replace_rate: float = Field(
-        default=0.006,
-        ge=0,
-        le=1,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "整词替换概率",
-                "en_US": "Word replacement chance",
-                "ja_JP": "単語置換確率",
-            },
-            "x-widget": "slider",
-            "step": 0.001,
-            "advanced": True,
-        },
-    )
-    """整词被替换成错词的概率。"""
 
 
 class ResponseSplitterConfig(ConfigBase):
@@ -5288,32 +5107,6 @@ class MaimMessageConfig(ConfigBase):
     )
     """消息服务总开关；关闭后不启动旧版 WS 和新版 API 服务，重启生效，不影响插件式适配器。"""
 
-    ws_server_host: str = Field(
-        default="127.0.0.1",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "旧版 WS 主机",
-                "en_US": "Legacy WS host",
-                "ja_JP": "旧 WS ホスト",
-            },
-            "x-widget": "input",
-        },
-    )
-    """旧版 WebSocket 服务监听地址；不清楚就保持默认。"""
-
-    ws_server_port: int = Field(
-        default=8000,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "旧版 WS 端口",
-                "en_US": "Legacy WS port",
-                "ja_JP": "旧 WS ポート",
-            },
-            "x-widget": "input",
-        },
-    )
-    """旧版 WebSocket 服务端口。"""
-
     auth_token: list[str] = Field(
         default_factory=lambda: [],
         json_schema_extra={
@@ -5325,7 +5118,7 @@ class MaimMessageConfig(ConfigBase):
             "x-widget": "custom",
         },
     )
-    """旧版 API 的认证令牌；为空表示不验证。"""
+    """消息协议的认证令牌；经宿主统一入口访问，为空时拒绝连接。"""
 
     enable_api_server: bool = Field(
         default=False,
@@ -5340,71 +5133,6 @@ class MaimMessageConfig(ConfigBase):
     )
     """是否开启新版 API Server，供外部程序调用麦麦。"""
 
-    api_server_host: str = Field(
-        default="0.0.0.0",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "新版 API 主机",
-                "en_US": "New API host",
-                "ja_JP": "新 API ホスト",
-            },
-            "x-widget": "input",
-        },
-    )
-    """新版 API Server 监听地址；0.0.0.0 表示允许外部访问。"""
-
-    api_server_port: int = Field(
-        default=8090,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "新版 API 端口",
-                "en_US": "New API port",
-                "ja_JP": "新 API ポート",
-            },
-            "x-widget": "input",
-        },
-    )
-    """新版 API Server 监听端口。"""
-
-    api_server_use_wss: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "新版 API 使用 WSS",
-                "en_US": "Use WSS for new API",
-                "ja_JP": "新 API で WSS を使用",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """新版 API Server 是否使用加密 WebSocket。"""
-
-    api_server_cert_file: str = Field(
-        default="",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "WSS 证书文件",
-                "en_US": "WSS certificate file",
-                "ja_JP": "WSS 証明書ファイル",
-            },
-            "x-widget": "input",
-        },
-    )
-    """WSS 使用的证书文件路径。"""
-
-    api_server_key_file: str = Field(
-        default="",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "WSS 私钥文件",
-                "en_US": "WSS key file",
-                "ja_JP": "WSS 秘密鍵ファイル",
-            },
-            "x-widget": "input",
-        },
-    )
-    """WSS 使用的私钥文件路径。"""
-
     api_server_allowed_api_keys: list[str] = Field(
         default_factory=lambda: [],
         json_schema_extra={
@@ -5416,7 +5144,7 @@ class MaimMessageConfig(ConfigBase):
             "x-widget": "custom",
         },
     )
-    """允许访问新版 API 的 Key 列表；为空表示不限制。"""
+    """允许访问新版 API 的 Key 列表；为空时拒绝连接。"""
 
 
 class WebUIConfig(ConfigBase):
@@ -5426,32 +5154,6 @@ class WebUIConfig(ConfigBase):
     __ui_section_label__ = "WebUI"
     __ui_advanced__ = True
     __ui_order__ = 110
-
-    enabled: bool = Field(
-        default=True,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "启用 WebUI",
-                "en_US": "Enable WebUI",
-                "ja_JP": "WebUI を有効化",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """是否加载 WebUI 管理界面和管理接口；关闭后公共 HTTP 文件传输仍然可用。"""
-
-    mode: Literal["development", "production"] = Field(
-        default="production",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "运行模式",
-                "en_US": "Run mode",
-                "ja_JP": "実行モード",
-            },
-            "x-widget": "select",
-        },
-    )
-    """WebUI 运行模式；普通使用保持 production。"""
 
     webui_style: int = Field(
         default=2,
@@ -5469,73 +5171,6 @@ class WebUIConfig(ConfigBase):
         },
     )
     """界面风格编号；0 为旧风格，1 为未来复古风格，2 为千禧风格。"""
-
-    anti_crawler_mode: Literal["false", "strict", "loose", "basic"] = Field(
-        default="basic",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "防爬虫模式",
-                "en_US": "Anti-crawler mode",
-                "ja_JP": "クローラー対策モード",
-            },
-            "x-widget": "select",
-        },
-    )
-    """防爬虫策略；basic 只记录，strict/loose 会拦截更多请求。"""
-
-    allowed_ips: str = Field(
-        default="127.0.0.1",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "允许访问 IP",
-                "en_US": "Allowed IPs",
-                "ja_JP": "許可 IP",
-            },
-            "x-widget": "comma-list",
-            "x-placeholder": "127.0.0.1",
-        },
-    )
-    """允许访问 WebUI 的 IP，多个用逗号分隔。"""
-
-    trusted_proxies: str = Field(
-        default="",
-        json_schema_extra={
-            "label": {
-                "zh_CN": "可信代理 IP",
-                "en_US": "Trusted proxy IPs",
-                "ja_JP": "信頼プロキシ IP",
-            },
-            "x-widget": "comma-list",
-            "x-placeholder": "127.0.0.1",
-        },
-    )
-    """可信反向代理 IP；只有这些代理传来的真实 IP 会被信任。"""
-
-    trust_xff: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "信任 XFF",
-                "en_US": "Trust XFF",
-                "ja_JP": "XFF を信頼",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """是否信任 X-Forwarded-For 里的真实访客 IP。"""
-
-    secure_cookie: bool = Field(
-        default=False,
-        json_schema_extra={
-            "label": {
-                "zh_CN": "安全 Cookie",
-                "en_US": "Secure cookie",
-                "ja_JP": "セキュア Cookie",
-            },
-            "x-widget": "switch",
-        },
-    )
-    """只在 HTTPS 下发送登录 Cookie；没有 HTTPS 时不要开启。"""
 
     enforce_public_outbound_url: bool = Field(
         default=True,
@@ -5956,6 +5591,19 @@ class CommandPermissionConfig(ConfigBase):
     """允许执行命令的真实聊天流 ID。"""
 
 
+class PluginUsagePermissionConfig(ConfigBase):
+    """核心侧插件使用范围，与插件声明的命令权限同时生效。"""
+
+    enabled: bool = False
+    """是否限制此插件的命令和工具；关闭时保留现有行为。"""
+
+    allow_users: List[str] = Field(default_factory=list)
+    """放行用户（平台:用户 ID）；适用于命令及私聊工具。"""
+
+    allow_chats: List[str] = Field(default_factory=list)
+    """放行真实聊天流 ID；群聊工具按会话鉴权。"""
+
+
 class PluginConfig(ConfigBase):
     """插件管理配置类"""
 
@@ -5977,6 +5625,19 @@ class PluginConfig(ConfigBase):
     )
     """允许用聊天命令管理插件的用户，格式如 qq:123456789。"""
 
+    command_require_self_mention: bool = Field(
+        default=False,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "命令含 @ 时须提及自己",
+                "en_US": "Commands with mentions must mention this bot",
+                "ja_JP": "メンション付きコマンドは自分へのメンションが必要",
+            },
+            "x-widget": "switch",
+        },
+    )
+    """开启后，命令消息包含结构化 @ 时，必须提及当前接收账号；不含 @ 的命令不受影响。"""
+
     silent_permission_denied: bool = Field(
         default=False,
         json_schema_extra={
@@ -5995,6 +5656,12 @@ class PluginConfig(ConfigBase):
         json_schema_extra={"hidden": True},
     )
     """受保护命令按用户和真实聊天流配置的额外放行规则。"""
+
+    usage_permissions: Dict[str, PluginUsagePermissionConfig] = Field(
+        default_factory=dict,
+        json_schema_extra={"hidden": True},
+    )
+    """按插件 ID 设置的使用范围，限制命令与工具，不改变插件生命周期管理权限。"""
 
     disabled_commands: List[str] = Field(
         default_factory=list,

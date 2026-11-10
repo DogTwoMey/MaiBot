@@ -1,3 +1,4 @@
+from src.llm_models.payload_content.context_item import ProviderScope, ProviderReplayFragment
 from dataclasses import replace
 from io import BytesIO
 from types import SimpleNamespace
@@ -295,16 +296,18 @@ def test_chat_projection_folds_adjacent_model_output_across_provider_activity() 
 
 
 def test_deepseek_chat_projection_replays_reasoning_content() -> None:
+    scope = ProviderScope(1, "openai", "deepseek", "test-endpoint", "deepseek-chat")
     reasoning = ReasoningItem(
         meta=ContextItemMeta.create(logical_turn_id="turn_deepseek"),
         text_parts=("先检查工具参数",),
         representation=ReasoningRepresentation.RAW_TEXT,
+        replay=ProviderReplayFragment.from_payload(scope, {"reasoning_content": "先检查工具参数"}),
     )
-    answer = ContextItemBuilder().set_role(RoleType.Assistant).add_text_content("继续处理").build()
+    answer = ContextItemBuilder().set_meta(reasoning.meta).set_role(RoleType.Assistant).add_text_content("继续处理").build()
 
     assert _convert_messages(
         [reasoning, answer],
-        include_reasoning_content=True,
+        reasoning_scope=scope, include_reasoning_content=True,
     ) == [
         {
             "role": "assistant",

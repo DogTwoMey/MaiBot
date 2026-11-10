@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ModelTestResult } from '@/lib/config-api'
-import type { ModelInfo, TaskConfig } from '../../types'
+import type { ModelInfo } from '../../types'
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -10,7 +10,7 @@ import { DataPagination } from '@/components/ui/data-pagination'
 
 import { ModelCardList } from '../ModelCardList'
 import { ModelTable } from '../ModelTable'
-import { TaskConfigCard } from '../TaskConfigCard'
+import { TaskAssignmentBoard } from '../TaskAssignmentBoard'
 
 vi.mock('@/components/ui/checkbox', () => ({
   Checkbox: ({ checked, onCheckedChange }: { checked?: boolean; onCheckedChange?: () => void }) => (
@@ -268,90 +268,21 @@ describe('ModelCardList', () => {
   })
 })
 
-describe('TaskConfigCard', () => {
-  it('回复路由提示词支持编辑与清空，并且按任务隐藏', () => {
+describe('TaskAssignmentBoard', () => {
+  it('回复路由提示词支持编辑与清空', () => {
     const onChange = vi.fn()
-    const props = {
-      title: '回复模型', description: '用于回复', modelNames: ['alpha'], onChange,
-      taskConfig: { model_list: ['alpha'], routing_prompt: '日常交流使用 Aliyun。' },
-    }
-    const { rerender } = render(<TaskConfigCard {...props} showRoutingPrompt />)
-    const prompt = screen.getByLabelText('供应商路由提示词')
+    render(<TaskAssignmentBoard
+      fields={[{ name: 'replyer', type: 'object', label: '回复', description: '', required: false }]}
+      taskConfig={{ replyer: { model_list: [], routing_prompt: '日常交流使用 Aliyun。' } }}
+      models={[]} webServices={[]} openTask="replyer" onOpenTaskChange={vi.fn()}
+      onChange={onChange} onAddWebService={vi.fn()} hasProviders fallbackLabel={(field) => field.name}
+    />)
+    const prompt = screen.getByLabelText('模型路由提示词')
     expect(prompt).toHaveValue('日常交流使用 Aliyun。')
     fireEvent.change(prompt, { target: { value: '技术问题使用 DeepSeek。' } })
-    expect(onChange).toHaveBeenCalledWith('routing_prompt', '技术问题使用 DeepSeek。')
+    expect(onChange).toHaveBeenCalledWith('replyer', 'routing_prompt', '技术问题使用 DeepSeek。')
     fireEvent.change(prompt, { target: { value: '' } })
-    expect(onChange).toHaveBeenCalledWith('routing_prompt', '')
-    rerender(<TaskConfigCard {...props} />)
-    expect(screen.queryByLabelText('供应商路由提示词')).not.toBeInTheDocument()
-  })
-
-  const baseTask: TaskConfig = {
-    model_list: ['alpha'],
-    temperature: 0.7,
-    max_tokens: 4096,
-    selection_strategy: 'balance',
-  }
-
-  it('模型、温度、Token 和策略变更使用明确字段回调', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    render(
-      <TaskConfigCard
-        title="回复模型"
-        description="用于回复"
-        taskConfig={baseTask}
-        modelNames={['beta']}
-        onChange={onChange}
-      />
-    )
-
-    await user.click(screen.getByRole('button', { name: 'beta' }))
-    await user.click(screen.getByTestId('temperature-slider'))
-    fireEvent.change(screen.getByLabelText('温度'), { target: { value: '3.5' } })
-    fireEvent.change(screen.getByDisplayValue('4096'), { target: { value: '8192' } })
-    await user.click(screen.getByRole('button', { name: '切换选项' }))
-
-    expect(onChange).toHaveBeenCalledWith('model_list', ['alpha', 'beta'])
-    expect(onChange).toHaveBeenCalledWith('temperature', 1.25)
-    expect(onChange).toHaveBeenCalledWith('temperature', 2)
-    expect(onChange).toHaveBeenCalledWith('max_tokens', 8192)
-    expect(onChange).toHaveBeenCalledWith('selection_strategy', 'random')
-  })
-
-  it('任务硬超时拒绝无效值并接受大于等于一的整数', () => {
-    const onChange = vi.fn()
-    render(
-      <TaskConfigCard
-        title="高级任务"
-        description="高级参数"
-        taskConfig={{ ...baseTask, hard_timeout: 240 }}
-        modelNames={[]}
-        onChange={onChange}
-        showAdvancedSettings
-      />
-    )
-    const hardTimeout = screen.getByDisplayValue('240')
-    fireEvent.change(hardTimeout, { target: { value: '0' } })
-    expect(onChange).not.toHaveBeenCalledWith('hard_timeout', 0)
-    fireEvent.change(hardTimeout, { target: { value: '300' } })
-    expect(onChange).toHaveBeenCalledWith('hard_timeout', 300)
-  })
-
-  it('隐藏项不会渲染温度和最大 Token 输入', () => {
-    render(
-      <TaskConfigCard
-        title="嵌入任务"
-        description="仅模型"
-        taskConfig={baseTask}
-        modelNames={[]}
-        onChange={vi.fn()}
-        hideTemperature
-        hideMaxTokens
-      />
-    )
-    expect(screen.queryByText('温度')).not.toBeInTheDocument()
-    expect(screen.queryByText('最大 Token')).not.toBeInTheDocument()
+    expect(onChange).toHaveBeenCalledWith('replyer', 'routing_prompt', '')
   })
 })
 

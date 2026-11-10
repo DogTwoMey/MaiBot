@@ -24,7 +24,7 @@ async def handle_tool(
     invocation: ToolInvocation,
     context: Optional[ToolExecutionContext] = None,
 ) -> ToolExecutionResult:
-    """复用无工具输出的收尾逻辑，结束当前思考轮。"""
+    """结束当前思考轮，Focus 共享组由调度器根据暂停信号收尾。"""
 
     if context is None or not context.is_focus:
         tool_ctx.engine._end_planner_no_tool_cycle([], status_line="状态：已结束本轮思考")

@@ -24,6 +24,7 @@ export interface MaimaiVersion {
  * 已安装插件信息
  */
 export interface InstalledPlugin {
+  builtin?: boolean
   status_badges?: Array<{ id: string; label: string; expires_at?: number | null }>
   release?: { version: string; commit: string } | null
   id: string
@@ -240,7 +241,7 @@ export interface PluginConfigBundle {
   message?: string
 }
 
-export type PluginRuntimeComponentType = 'action' | 'command' | 'tool'
+export type PluginRuntimeComponentType = 'command' | 'tool'
 
 export interface PluginRuntimeComponent {
   name: string
@@ -248,12 +249,5 @@ export interface PluginRuntimeComponent {
   enabled: boolean
   plugin_name: string
   component_type: PluginRuntimeComponentType
-  action_parameters?: Record<string, string>
-  action_require?: string[]
-  associated_types?: string[]
-  activation_type?: string
-  random_activation_probability?: number
-  activation_keywords?: string[]
-  parallel_action?: boolean
   parameters_schema?: Record<string, unknown>
 }

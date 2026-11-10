@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { ConversationAvatar, MessageBubble, TraceRound, TraceStep } from '@/components/ui/conversation'
 import { DataPanel } from '@/components/ui/surface'
 import { StatusIndicator } from '@/components/ui/data-browser'
@@ -41,7 +42,6 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import type { ReactNode } from 'react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -53,9 +53,10 @@ import {
 } from '@/components/image-gallery'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { StatusLight } from '@/components/ui/status-light'
 import { Button } from '@/components/ui/button'
 import { CardTitle } from '@/components/ui/card'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { FoldSection } from '@/components/ui/form-section'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -87,7 +88,7 @@ import { StageStatusLabel } from './StageStatusLabel'
 import { TimelineScrollPosition } from './TimelineScrollPosition'
 import { getStageStatusLight } from './stage-status-light'
 import { ObservationHeader } from './ObservationHeader'
-import { SubagentPanel, SubagentToggleButton } from './subagent-panel'
+import { InspectorPanel, InspectorToggleButton, type MonitorStats } from './inspector-panel'
 import { openSubagentPanel } from './subagent-panel-state'
 import { useMaisakaMonitorOverview, useMaisakaMonitorSession } from './use-maisaka-monitor'
 
@@ -371,156 +372,6 @@ function MessageAvatar({
 
 // ─── 单条时间线事件渲染 ──────────────────────────────────────
 
-/** 上下文分段：token 由该轮真实 prompt token 按字符占比换算 */
-interface MonitorContextSection {
-  key: string
-  tokens: number
-  percent: number
-}
-
-interface MonitorStats {
-  messages: number
-  cycles: number
-  toolCalls: number
-  /** 最近一轮 planner 请求的输入 token，即当前上下文占用 */
-  contextTokens: number
-  /** 与最近一轮 planner 请求对应的上下文分段 */
-  contextSections: MonitorContextSection[]
-  /** 会话累计 token 用量 */
-  totalPromptTokens: number
-  totalCompletionTokens: number
-  /** 会话累计缓存命中率，无缓存数据时为 null */
-  cacheHitRate: number | null
-}
-
-/** 上下文分段的展示标签与配色，未知分段直接以 key 展示 */
-const CONTEXT_SECTION_META: Record<string, { label: string; color: string }> = {
-  messages: { label: '消息', color: 'hsl(var(--color-chart-1))' },
-  mcp_tools: { label: 'MCP 工具', color: 'hsl(var(--color-chart-4))' },
-  builtin_tools: { label: '系统工具', color: 'hsl(var(--color-chart-2))' },
-  plugin_tools: { label: '插件工具', color: 'hsl(var(--primary))' },
-  system_prompt: { label: '系统提示词', color: 'hsl(var(--color-chart-5))' },
-  instant_notice: { label: '即时提示', color: 'hsl(var(--color-chart-3))' },
-  other_tools: { label: '其他工具', color: 'hsl(var(--muted-foreground))' },
-}
-
-function resolveContextSectionMeta(key: string) {
-  return CONTEXT_SECTION_META[key] ?? { label: key, color: 'hsl(var(--muted-foreground))' }
-}
-
-const STATS_TOKEN_FORMATTER = new Intl.NumberFormat('zh-CN', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-})
-
-function formatTokenCount(value: number): string {
-  return STATS_TOKEN_FORMATTER.format(Math.max(Math.round(value), 0))
-}
-
-/** 统计浮层内的单行指标 */
-function StatsRow({
-  children,
-  value,
-  valueClassName,
-}: {
-  children: ReactNode
-  value: ReactNode
-  valueClassName?: string
-}) {
-  return (
-    <div className="flex items-center gap-2 text-[11px] leading-5">
-      {children}
-      <span className={cn('ml-auto font-mono tabular-nums', valueClassName)}>{value}</span>
-    </div>
-  )
-}
-
-/**
- * 统计浮层：展示最近一轮上下文构成、缓存命中率与会话累计计数。
- *
- * 上下文 token 总量取自模型返回的真实 prompt token，分段占比按后端统计的字符数换算。
- */
-function MonitorStatsPanel({ stats }: { stats: MonitorStats }) {
-  const hasContext = stats.contextTokens > 0 && stats.contextSections.length > 0
-
-  return (
-    <div className="w-72 space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs font-medium">上下文容量</span>
-        <span className="font-mono text-[11px] tabular-nums">
-          {stats.contextTokens > 0 ? `${formatTokenCount(stats.contextTokens)} tokens` : '暂无数据'}
-        </span>
-      </div>
-
-      {hasContext ? (
-        <>
-          <div className="bg-muted flex h-1.5 w-full overflow-hidden rounded-full">
-            {stats.contextSections.map((section) => (
-              <div
-                key={section.key}
-                className="h-full"
-                style={{
-                  width: `${section.percent}%`,
-                  backgroundColor: resolveContextSectionMeta(section.key).color,
-                }}
-              />
-            ))}
-          </div>
-          <div className="space-y-0.5">
-            {stats.contextSections.map((section) => {
-              const sectionMeta = resolveContextSectionMeta(section.key)
-              return (
-                <StatsRow
-                  key={section.key}
-                  value={formatTokenCount(section.tokens)}
-                  valueClassName="text-muted-foreground w-12 text-right"
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: sectionMeta.color }}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{sectionMeta.label}</span>
-                  <span className="text-muted-foreground w-11 text-right font-mono tabular-nums">
-                    {section.percent.toFixed(1)}%
-                  </span>
-                </StatsRow>
-              )
-            })}
-          </div>
-        </>
-      ) : (
-        <p className="text-muted-foreground text-[11px] leading-5">
-          尚无 planner 请求数据，产生一次推理后展示上下文构成。
-        </p>
-      )}
-
-      <Separator />
-
-      <div className="space-y-0.5">
-        <StatsRow
-          value={stats.cacheHitRate === null ? '—' : `${stats.cacheHitRate.toFixed(0)}%`}
-          valueClassName={stats.cacheHitRate === null ? 'text-muted-foreground' : ''}
-        >
-          <span className="text-muted-foreground">平均缓存命中率</span>
-        </StatsRow>
-        <StatsRow
-          value={`${formatTokenCount(stats.totalPromptTokens)} / ${formatTokenCount(stats.totalCompletionTokens)}`}
-        >
-          <span className="text-muted-foreground">累计输入 / 输出</span>
-        </StatsRow>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-0.5 text-[11px] leading-5">
-        <div>消息：{stats.messages}</div>
-        <div>循环：{stats.cycles}</div>
-        <div>工具调用：{stats.toolCalls}</div>
-      </div>
-    </div>
-  )
-}
-
 interface StageStatusPanelProps {
   sessionName?: string
   allExpanded?: boolean
@@ -536,102 +387,6 @@ interface StageStatusPanelProps {
   hideStatus?: boolean
 }
 
-interface ChatActiveContext {
-  memory: string[]
-  expressions: string[]
-  jargon: { name: string; meaning: string }[]
-  tools: string[]
-  runtime_active: boolean
-  replyer_timestamp: number | null
-}
-
-function ActiveContextPopover({ sessionId }: { sessionId: string | null }) {
-  const [open, setOpen] = useState(false)
-  const [context, setContext] = useState<ChatActiveContext | null>(null)
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    if (!open || !sessionId) return
-    const controller = new AbortController()
-    const load = () => {
-      backendApi
-        .get<ChatActiveContext>('/api/webui/reasoning-process/active-context', {
-          query: { session_id: sessionId },
-          signal: controller.signal,
-        })
-        .then((result) => {
-          if (!controller.signal.aborted) {
-            setContext(result)
-            setError(false)
-          }
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) setError(true)
-        })
-    }
-    setContext(null)
-    setError(false)
-    load()
-    const timer = window.setInterval(load, 10000)
-    return () => {
-      controller.abort()
-      window.clearInterval(timer)
-    }
-  }, [open, sessionId])
-
-  const sections = context
-    ? [
-        { title: '上下文状态摘要', items: context.memory, emptyText: '当前上下文尚未进行压缩' },
-        { title: '表达方式', items: context.expressions, emptyText: '最近一次 Replyer 请求中未使用' },
-        { title: '黑话', items: context.jargon.map((entry) => entry.name), emptyText: '当前上下文没有黑话参考' },
-        { title: '激活的工具', items: context.tools, emptyText: '当前尚未激活工具' },
-      ]
-    : []
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="shrink-0" disabled={!sessionId}>
-          <Brain className="mr-1 h-3 w-3" />
-          当前上下文
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" side="bottom" className="max-h-[min(70vh,640px)] w-[min(90vw,480px)] overflow-y-auto p-4">
-        <div className="mb-2 text-sm font-semibold">当前运行的聊天流</div>
-        {error ? <p className="text-muted-foreground text-xs">读取上下文失败</p> : !context ? <p className="text-muted-foreground text-xs">正在读取…</p> : (
-          <div className="space-y-3">
-            {!context.runtime_active && <p className="text-muted-foreground text-xs">当前聊天流未运行</p>}
-            {sections.map((section) => (
-              <section key={section.title}>
-                <h3 className="mb-1 text-xs font-semibold">{section.title} · {section.items.length}</h3>
-                {section.items.length ? section.title === '黑话' ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {section.items.map((item) => (
-                      <Tooltip key={item}>
-                        <TooltipTrigger asChild>
-                          <button type="button" className="bg-muted/50 cursor-help rounded px-2 py-1 text-xs">{item}</button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="z-[70] max-w-sm whitespace-pre-wrap break-words text-xs">
-                          {context.jargon.find((entry) => entry.name === item)?.meaning || '暂无释义'}
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
-                  </div>
-                ) : section.items.map((item, index) => (
-                  <pre key={`${section.title}-${index}`} className="bg-muted/50 mb-1 whitespace-pre-wrap break-words rounded p-2 font-sans text-xs">{item}</pre>
-                )) : <p className="text-muted-foreground text-xs">{section.emptyText}</p>}
-              </section>
-            ))}
-            <p className="text-muted-foreground text-[11px]">
-              表达方式来自最近一次 Replyer 请求：{context.replyer_timestamp ? new Date(context.replyer_timestamp).toLocaleString() : '无记录'}
-            </p>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
 function StageStatusPanel({
   sessionName, status, hideStatus = false, sessionId, stats, ...navigation
 }: StageStatusPanelProps) {
@@ -642,18 +397,9 @@ function StageStatusPanel({
       {...navigation}
       tools={
         <>
-          <TooltipProvider delayDuration={150}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm"><Activity />统计</Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="start" className="p-3">
-                <MonitorStatsPanel stats={stats} />
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <ActiveContextPopover sessionId={sessionId} />
-          <SubagentToggleButton />
+          <InspectorToggleButton view="stats" />
+          <InspectorToggleButton view="context" disabled={!sessionId} />
+          <InspectorToggleButton view="subagents" />
         </>
       }
     />
@@ -1327,12 +1073,29 @@ function ReplyFlowDetails({ tool, messages, onJumpToMessage }: ReplyToolMessageP
   )
 }
 
-/** reply 的 at 和附图参数引用的是消息编号，按真实消息解析发送者与媒体。 */
-function ReplyArgumentRow({ label, children }: { label: string; children: ReactNode }) {
+/** 已发送内容优先取结构化 reply_text，旧记录则从回执摘要里截出引号内正文。 */
+function extractSentReply(tool: DisplayTool): string {
+  if (tool.reply_text?.trim()) return tool.reply_text.trim()
+  const matched = /发送了回复"([\s\S]*)"\s*$/.exec(tool.summary ?? '')
+  return matched?.[1]?.trim() ?? ''
+}
+
+/** reply 结果：发出去的话放在最前，状态只用一盏灯表示，不再重复文字。 */
+function ReplySentLine({ tool }: { tool: DisplayTool }) {
+  const sent = extractSentReply(tool)
+  const failed = !tool.success
+  const reason = tool.error_message || tool.summary || '未返回失败原因'
   return (
-    <div className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md border px-2.5 py-1.5 text-xs leading-5">
-      <span className="text-muted-foreground shrink-0">{label}：</span>
-      <div className="min-w-0 break-words whitespace-pre-wrap">{children}</div>
+    <div className="space-y-1.5 py-1">
+      <div className="flex items-start gap-3">
+        <span className="mt-2 flex shrink-0">
+          <StatusLight status={failed ? 'error' : 'on'} label={failed ? '未送达' : '发送成功'} />
+        </span>
+        <p className={cn('min-w-0 text-[15px] leading-7 font-medium break-words whitespace-pre-wrap', failed && 'text-destructive')}>
+          {failed ? sent || '回复未发出' : sent || tool.summary || '未返回结果摘要。'}
+        </p>
+      </div>
+      {failed && <p className="text-destructive pl-5 text-xs break-words">未送达 · {reason}</p>}
     </div>
   )
 }
@@ -1357,6 +1120,7 @@ function ReplyToolArguments({
     prefer: '偏好',
     avoid: '避免',
   }
+  const referenceText = typeof args.reply_reference === 'string' ? args.reply_reference.trim() : ''
   const handledArguments = new Set([
     'msg_id',
     'attach_at',
@@ -1366,72 +1130,78 @@ function ReplyToolArguments({
     'reply_style',
     'set_quote',
   ])
+  const sentText = extractSentReply(tool)
+  // 被回复的原话和发出的话相同时只显示一次。
+  const quoteText = message?.content && message.content.trim() !== sentText ? message.content : ''
+  const extraArgs = Object.entries(args).filter(([name]) => !handledArguments.has(name))
+  const [basisOpen, setBasisOpen] = useState(false)
 
   return (
-    <div className="space-y-2 text-xs">
+    // 内边距交给 DataPanel 的主题默认值，避免内容贴到粗描边上。
+    <DataPanel className="space-y-5 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         {messageId && (
-          <ReplyArgumentRow label="回复对象">
-            <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="min-w-0 max-w-full flex-1 basis-60 justify-start gap-1.5 font-normal"
+            title={`跳转到消息 #${messageId}`}
+            onClick={() => onJumpToMessage?.(messageId)}
+          >
+            <span className="text-muted-foreground shrink-0">↳ 回复</span>
+            {message?.speaker_name && <span className="shrink-0 font-medium">{message.speaker_name}</span>}
+            <span className="text-muted-foreground shrink-0 font-mono text-[10px]">#{messageId}</span>
+            {quoteText && <span className="text-muted-foreground min-w-0 truncate">· {quoteText}</span>}
+          </Button>
+        )}
+        {atTargets.map((target, index) => {
+          const targetId = String(target)
+          return (
+            <Button
+              key={`${targetId}-${index}`}
               type="button"
-              className="text-left hover:underline"
-              title={`跳转到消息 #${messageId}`}
-              onClick={() => onJumpToMessage?.(messageId)}
+              variant="link"
+              size="xs"
+              title={`跳转到目标消息 #${targetId}`}
+              onClick={() => onJumpToMessage?.(targetId)}
             >
-              {message?.speaker_name && `${message.speaker_name} `}
-              <span className="text-muted-foreground">#{messageId}</span>
-              {message?.content && ` · ${message.content}`}
-            </button>
-          </ReplyArgumentRow>
-        )}
-        {atTargets.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-muted-foreground">at 对象：</span>
-            {atTargets.map((target, index) => {
-            const targetId = String(target)
-            return (
-              <button
-                key={`${targetId}-${index}`}
-                type="button"
-                className="text-primary bg-primary/10 hover:bg-primary/20 rounded-md px-2 py-0.5"
-                title={`跳转到目标消息 #${targetId}`}
-                onClick={() => onJumpToMessage?.(targetId)}
-              >
-                @{messages?.get(targetId)?.speaker_name || `消息 #${targetId} 的发送者`}
-              </button>
-            )
-            })}
-          </div>
-        )}
-        {args.set_quote === true && (
-          <span className="shrink-0 rounded-md bg-muted/70 px-2.5 py-1.5 text-xs text-muted-foreground">
-            引用
-          </span>
-        )}
+              @{messages?.get(targetId)?.speaker_name || `消息 #${targetId} 的发送者`}
+            </Button>
+          )
+        })}
+        {args.set_quote === true && <Badge variant="outline">引用</Badge>}
         {!tool.status && <ToolFullJsonBlock tool={tool} />}
       </div>
-      {args.expression_intent != null && (
-        <details className="group rounded-md border px-2.5 py-1.5">
-          <summary className="text-muted-foreground flex cursor-pointer list-none items-center gap-1">
-            <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
-            表达倾向
-          </summary>
-          <div className="mt-2 space-y-1 break-words whitespace-pre-wrap">
-            {typeof args.expression_intent === 'object' && !Array.isArray(args.expression_intent)
-              ? Object.entries(args.expression_intent).map(([name, value]) => (
-                  <div key={name}>
-                    <span className="text-muted-foreground">{intentLabels[name] ?? name}：</span>
-                    {Array.isArray(value)
-                      ? value.map(formatToolValue).join('、')
-                      : formatToolValue(value)}
-                  </div>
-                ))
-              : formatToolValue(args.expression_intent)}
+      {!tool.status && <ReplySentLine tool={tool} />}
+      {(args.expression_intent != null || referenceText) && (
+        <FoldSection title="回复依据" open={basisOpen} onOpenChange={setBasisOpen}>
+          <div className="space-y-4 pt-3 leading-6">
+            {referenceText && (
+              <div className="space-y-1">
+                <div className="text-muted-foreground">参考信息</div>
+                <p className="leading-6 break-words whitespace-pre-wrap">{referenceText}</p>
+              </div>
+            )}
+            {args.expression_intent != null && (
+              <div className="space-y-1">
+                <div className="text-muted-foreground">表达倾向</div>
+                <div className="space-y-0.5 leading-6 break-words whitespace-pre-wrap">
+                  {typeof args.expression_intent === 'object' && !Array.isArray(args.expression_intent)
+                    ? Object.entries(args.expression_intent).map(([name, value]) => (
+                        <div key={name}>
+                          <span className="text-muted-foreground">{intentLabels[name] ?? name}：</span>
+                          {Array.isArray(value)
+                            ? value.map(formatToolValue).join('、')
+                            : formatToolValue(value)}
+                        </div>
+                      ))
+                    : formatToolValue(args.expression_intent)}
+                </div>
+              </div>
+            )}
           </div>
-        </details>
-      )}
-      {typeof args.reply_reference === 'string' && args.reply_reference.trim() && (
-        <ReplyArgumentRow label="回复参考信息">{args.reply_reference}</ReplyArgumentRow>
+        </FoldSection>
       )}
       {pictures.length > 0 && (
         <div className="space-y-1.5">
@@ -1474,14 +1244,13 @@ function ReplyToolArguments({
           </div>
         </div>
       )}
-      {Object.entries(args)
-        .filter(([name]) => !handledArguments.has(name))
-        .map(([name, value]) => (
-          <ReplyArgumentRow key={name} label={name}>
-            {formatToolValue(value)}
-          </ReplyArgumentRow>
-        ))}
-    </div>
+      {extraArgs.map(([name, value]) => (
+        <div key={name} className="flex items-baseline gap-2 leading-5">
+          <span className="text-muted-foreground shrink-0">{name}：</span>
+          <span className="min-w-0 break-words whitespace-pre-wrap">{formatToolValue(value)}</span>
+        </div>
+      ))}
+    </DataPanel>
   )
 }
 
@@ -1795,7 +1564,7 @@ function PlannerToolResultCard({
           </div>
         )}
 
-        {!tool.status && !isReplyFlow(tool) && (!isToolSearch || !tool.success) && (
+        {!tool.status && !isReplyFlow(tool) && tool.tool_name !== 'reply' && (!isToolSearch || !tool.success) && (
             <div className="flex flex-wrap items-baseline gap-x-1.5 font-normal opacity-65">
               <span className="text-muted-foreground shrink-0 text-[10px] leading-4">
                 执行结果
@@ -3198,6 +2967,8 @@ const MonitorTimeline = memo(function MonitorTimeline({
           )}
         </AnimatePresence>
       </DataPanel>
+      {/* 统计、当前上下文与子代理共用的检查器右侧栏 */}
+      <InspectorPanel stats={stats} sessionId={selectedSession} />
     </div>
     </ImageGalleryProvider>
   )
@@ -3288,7 +3059,6 @@ export const MaisakaMonitor = memo(function MaisakaMonitor({
         reasoningReturnTo={reasoningReturnTo}
         floatingToolbarContainer={floatingToolbarContainer}
       />
-      <SubagentPanel />
     </div>
   )
 })

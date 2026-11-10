@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { DraftNumberInput } from '@/components/ui/draft-number-input'
 import { Input } from '@/components/ui/input'
+import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -269,7 +270,11 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
         </div>
       )
 
-    case 'select':
+    case 'select': {
+      const choiceLabel = (choice: unknown) => {
+        const optionValue = String(choice)
+        return resolveLocalizedText(undefined, language, optionValue, field.i18n, `choice:${optionValue}`)
+      }
       if (field.multiple) {
         const selectedValues = Array.isArray(value)
           ? value.map(v => String(v))
@@ -282,7 +287,7 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
             <Label>{label}</Label>
             <MultiSelect
               options={(field.choices ?? []).map((choice) => ({
-                label: String(choice),
+                label: choiceLabel(choice),
                 value: String(choice),
               }))}
               selected={selectedValues}
@@ -311,7 +316,7 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
             <SelectContent>
               {field.choices?.map((choice) => (
                 <SelectItem key={String(choice)} value={String(choice)}>
-                  {String(choice)}
+                  {choiceLabel(choice)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -319,6 +324,7 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
           {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
         </div>
       )
+    }
 
     case 'textarea':
       return (
@@ -380,6 +386,19 @@ function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
         </div>
       )
 
+    case 'json':
+      return (
+        <fieldset disabled={field.disabled} className="min-w-0 space-y-2">
+          <Label>{label}</Label>
+          <KeyValueEditor
+            value={(value ?? field.default ?? {}) as Record<string, unknown>}
+            onChange={onChange}
+            placeholder={placeholder || undefined}
+          />
+          {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
+        </fieldset>
+      )
+
     case 'text':
     default:
       return (
@@ -409,11 +428,18 @@ interface SectionRendererProps {
 }
 
 function getFieldGridClassName(field: ConfigFieldSchema): string {
-  if (field.ui_type === 'textarea' || field.ui_type === 'list' || field.ui_type === 'slider' || field.ui_type === 'chat-stream') {
+  if (field.ui_type === 'textarea' || field.ui_type === 'list' || field.ui_type === 'slider' || field.ui_type === 'chat-stream' || field.ui_type === 'json') {
     return 'lg:col-span-2'
   }
 
   return 'min-w-0'
+}
+
+function getVisibleSectionFields(sectionName: string, section: ConfigSectionSchema) {
+  const isPluginSection = (section.name || sectionName) === 'plugin'
+  return Object.entries(section.fields).filter(([name, field]) => (
+    !field.hidden && !(isPluginSection && (name === 'enabled' || name === 'config_version'))
+  ))
 }
 
 function SectionRenderer({ sectionName, section, config, onChange, initiallyExpanded = false }: SectionRendererProps) {
@@ -421,7 +447,7 @@ function SectionRenderer({ sectionName, section, config, onChange, initiallyExpa
   // SDK 把顶层标量配置归入 general 展示，实际值仍保存在配置根部。
   const configPath = resolvedSectionName === 'general' && !getNestedRecord(config, 'general') ? '' : resolvedSectionName
   const [isOpen, setIsOpen] = useState(
-    resolvedSectionName !== 'plugin' && (initiallyExpanded || !section.collapsed)
+    resolvedSectionName === 'plugin' || initiallyExpanded || !section.collapsed
   )
   const { i18n } = useTranslation()
   const language = i18n.resolvedLanguage || i18n.language || 'zh'
@@ -436,8 +462,7 @@ function SectionRenderer({ sectionName, section, config, onChange, initiallyExpa
   )
 
   // 按 order 排序字段
-  const sortedFields = Object.entries(section.fields)
-    .filter(([, field]) => !field.hidden)
+  const sortedFields = getVisibleSectionFields(sectionName, section)
     .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
   const fieldGroups = new Map<string, typeof sortedFields>()
   for (const entry of sortedFields) {
@@ -514,12 +539,11 @@ const COMPONENT_GROUP_LABELS: Record<ComponentDisplayGroup, string> = {
 }
 
 const COMPONENT_GROUP_DESCRIPTIONS: Record<ComponentDisplayGroup, string> = {
-  tool: '包含 Tool 与旧版本兼容的 Action',
+  tool: '可供主程序调用的插件工具',
   command: '通过命令文本触发的组件',
 }
 
 const COMPONENT_TYPE_LABELS: Record<PluginRuntimeComponentType, string> = {
-  action: '旧版动作',
   command: '命令',
   tool: '工具',
 }
@@ -590,7 +614,7 @@ function PluginRuntimeComponentsPanel({ pluginId }: { pluginId: string }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>注册组件</CardTitle>
-            <CardDescription>当前插件运行时已注册的 Tool、旧版 Action 和 Command。</CardDescription>
+            <CardDescription>当前插件运行时已注册的 Tool 和 Command。</CardDescription>
           </div>
           <Badge variant="secondary">{componentCount} 个组件</Badge>
         </div>
@@ -655,21 +679,6 @@ function PluginRuntimeComponentsPanel({ pluginId }: { pluginId: string }) {
                             <Badge variant="outline" className="mb-2 text-[0.68rem]">
                               {COMPONENT_TYPE_LABELS[component.component_type]}
                             </Badge>
-
-                            {component.component_type === 'action' && (
-                              <div className="text-muted-foreground space-y-1 text-xs">
-                                {component.activation_type && <div>触发方式：{component.activation_type}</div>}
-                                {component.activation_keywords && component.activation_keywords.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {component.activation_keywords.map((keyword) => (
-                                      <Badge key={keyword} variant="outline" className="text-[0.68rem]">
-                                        {keyword}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
 
                             {component.component_type === 'tool' && schemaProperties.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1">
@@ -1276,10 +1285,18 @@ function PluginConfigEditor({ plugin, onBack, initialTab }: PluginConfigEditorPr
   }
 
   // 按 order 排序 sections
-  const sortedSections = Object.entries(schema?.sections ?? {}).sort(
-    ([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0)
-  )
-  const schemaTabs = schema?.layout.type === 'tabs' ? schema.layout.tabs : []
+  const sortedSections = Object.entries(schema?.sections ?? {})
+    .filter(([name, section]) => (
+      (section.name || name) !== 'plugin' || getVisibleSectionFields(name, section).length > 0
+    ))
+    .sort(([, a], [, b]) => (a.order ?? 0) - (b.order ?? 0))
+  const visibleSectionNames = new Set(sortedSections.map(([name]) => name))
+  // 同时移除已隐藏的节及空标签页，避免手机端或自定义布局留下空白入口。
+  const schemaTabs = schema?.layout.type === 'tabs'
+    ? schema.layout.tabs
+        .map((tab) => ({ ...tab, sections: tab.sections.filter((name) => visibleSectionNames.has(name)) }))
+        .filter((tab) => tab.sections.length > 0)
+    : []
   // 保留插件声明的布局；仅移动端为未分组的多节配置生成横向切换标签。
   const configTabs: ConfigTabSchema[] = schemaTabs.length > 0
     ? schemaTabs
@@ -2079,7 +2096,7 @@ function PluginConfigPageContent() {
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
-                            {pluginNeedsUpdate && (
+                            {!plugin.builtin && pluginNeedsUpdate && (
                               <Button
                                 type="button"
                                 size="sm"
@@ -2158,44 +2175,48 @@ function PluginConfigPageContent() {
                         onCheckedChange={() => void performTogglePlugin(plugin)}
                       />
                     </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      data-plugin-update-button="true"
-                      className={`relative ${checkingUpdates ? 'text-primary disabled:opacity-100' : ''}`}
-                      disabled={pluginActing || !updateState.canUpdate}
-                      aria-busy={checkingUpdates || pluginActing}
-                      title={updateState.title}
-                      aria-label={updateState.title || '更新/升级'}
-                      onClick={(event) => openUpdatePluginDialog(plugin, event)}
-                    >
-                      {updateState.hasUpdate && (
-                        <span
-                          className="ring-background absolute -top-1 -right-1 h-3 w-3 rounded-sm bg-yellow-400 ring-2"
-                          aria-hidden="true"
-                        />
-                      )}
-                      {pluginActing || checkingUpdates ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <ArrowUp className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      disabled={pluginActing}
-                      aria-busy={pluginActing}
-                      title="删除"
-                      aria-label="删除"
-                      onClick={(event) => openDeletePluginDialog(plugin, event)}
-                    >
-                      {pluginActing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
+                    {!plugin.builtin && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          data-plugin-update-button="true"
+                          className={`relative ${checkingUpdates ? 'text-primary disabled:opacity-100' : ''}`}
+                          disabled={pluginActing || !updateState.canUpdate}
+                          aria-busy={checkingUpdates || pluginActing}
+                          title={updateState.title}
+                          aria-label={updateState.title || '更新/升级'}
+                          onClick={(event) => openUpdatePluginDialog(plugin, event)}
+                        >
+                          {updateState.hasUpdate && (
+                            <span
+                              className="ring-background absolute -top-1 -right-1 h-3 w-3 rounded-sm bg-yellow-400 ring-2"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {pluginActing || checkingUpdates ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <ArrowUp className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          disabled={pluginActing}
+                          aria-busy={pluginActing}
+                          title="删除"
+                          aria-label="删除"
+                          onClick={(event) => openDeletePluginDialog(plugin, event)}
+                        >
+                          {pluginActing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               )

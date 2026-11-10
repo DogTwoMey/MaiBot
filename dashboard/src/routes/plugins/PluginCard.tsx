@@ -308,7 +308,7 @@ export const PluginCard = memo(function PluginCard({
                   {likeCount === undefined ? '—' : likeCount >= 1_000 ? `${(likeCount / 1_000).toFixed(1)}k` : likeCount.toString()}
                 </span>
               </Button>
-              {plugin.installed ? (
+              {plugin.builtin ? null : plugin.installed ? (
                 needsUpdate(plugin) ? (
                   <Button
                     size="icon-sm"

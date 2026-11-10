@@ -1,3 +1,4 @@
+from src.llm_models.payload_content.context_item import ProviderScope, ProviderReplayFragment
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -104,15 +105,17 @@ def test_qwen_vl_image_options_only_apply_to_dashscope_qwen_vl() -> None:
 
 
 def test_reasoning_content_is_only_added_when_requested_for_deepseek() -> None:
+    scope = ProviderScope(1, "openai", "deepseek", "test-endpoint", "deepseek-chat")
     reasoning = ReasoningItem(
         meta=ContextItemMeta.create(logical_turn_id="turn_multimodal"),
         text_parts=("推理过程",),
         representation=ReasoningRepresentation.RAW_TEXT,
+        replay=ProviderReplayFragment.from_payload(scope, {"reasoning_content": "推理过程"}),
     )
     message = ContextItemBuilder().set_role(RoleType.Assistant).add_text_content("最终回答").build()
 
     standard_payload = _convert_messages([reasoning, message])
-    deepseek_payload = _convert_messages([reasoning, message], include_reasoning_content=True)
+    deepseek_payload = _convert_messages([reasoning, message], reasoning_scope=scope, include_reasoning_content=True)
 
     assert "reasoning_content" not in standard_payload[0]
     assert deepseek_payload[0]["reasoning_content"] == "推理过程"

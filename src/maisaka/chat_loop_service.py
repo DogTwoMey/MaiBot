@@ -75,13 +75,11 @@ from src.maisaka.context.post_processor import MIN_RETAINED_CHAT_MESSAGES
 from src.maisaka.focus import focus_mode_manager
 from src.maisaka.visual.message_limiter import limit_latest_images_in_messages
 from src.maisaka.visual.deferred_images import defer_context_image_encoding
-from src.maisaka.context.emoji_candidates import EmojiCandidateMessage
 from src.maisaka.visual.mode_utils import resolve_enable_visual_planner
 
 from src.maisaka.scenes.factory import get_prompt_profile
 
 REQUEST_TYPE_BY_REQUEST_KIND = {
-    "emotion": "emoji.selector",
     "expression_selector": "expression.selector",
     "planner": "maisaka.planner",
     "sub_agent": "maisaka.sub_agent",
@@ -92,14 +90,13 @@ MODEL_TASK_NAME_BY_REQUEST_KIND: dict[str, str] = {
 PROMPT_PREVIEW_CATEGORY_BY_REQUEST_KIND = {
     "planner": "planner",
     "expression_selector": "expression_selector",
-    "emotion": "emotion",
     "sub_agent": "sub_agent",
 }
 CONTEXT_SELECTION_CACHE_STABILITY_RATIO = 2.0
 FOCUS_PLANNER_FINAL_USER_REMINDER_TEMPLATE = (
     "你需要输出对{bot_name}发言的分析，视情况输出文本内容的分析，思考是否进行工具调用"
 )
-PLANNER_FINAL_USER_REMINDER = "请你进行分析，是不调用工具，进行思考和等待\n还是使用工具搜集处理信息或使用reply回复"
+PLANNER_FINAL_USER_REMINDER = "请分析后决定下一步：用工具收集或处理信息，用 reply 回复，用 wait 稍后再判断，或用 stop 静默结束本轮。"
 PASSIVE_PLANNER_FINAL_USER_REMINDERS = {
     "zh-CN": "需要信息或操作时调用工具；决定发言时直接输出指导正文，不附带工具调用；不发言用 stop，需要稍后判断用 wait。",
     "en-US": "Use tools for information or actions. To speak, output guidance without tool calls. Use stop to stay silent, or wait to reconsider later.",
@@ -324,6 +321,10 @@ def register_maisaka_hook_specs(registry: HookSpecRegistry) -> List[HookSpec]:
                             "type": "string",
                             "description": "Hook 可追加到本次 replyer 提示词中的额外回复要求。",
                         },
+                        "match_text": {
+                            "type": "string",
+                            "description": "本次回复所针对的最新用户消息文本，供插件做关键词等匹配；无可用文本时为空字符串。",
+                        },
                         "attempt": {
                             "type": "integer",
                             "description": "当前生成尝试序号，从 1 开始。",
@@ -359,6 +360,7 @@ def register_maisaka_hook_specs(registry: HookSpecRegistry) -> List[HookSpec]:
                         "task_name",
                         "model_name",
                         "extra_prompt",
+                        "match_text",
                         "attempt",
                         "retry_count",
                         "max_retries",
@@ -604,7 +606,7 @@ def register_maisaka_hook_specs(registry: HookSpecRegistry) -> List[HookSpec]:
                         },
                         "enable_chinese_typo": {
                             "type": "boolean",
-                            "description": "本次回复是否允许按全局配置注入中文错别字。",
+                            "description": "本次回复是否允许内置错别字插件注入错字。",
                         },
                     },
                     required=[
@@ -619,6 +621,33 @@ def register_maisaka_hook_specs(registry: HookSpecRegistry) -> List[HookSpec]:
                 ),
                 default_timeout_ms=6000,
                 allow_abort=True,
+                allow_kwargs_mutation=True,
+            ),
+            HookSpec(
+                name="maisaka.reply.after_split",
+                description="最终回复完成断句后、限制段数与合并前触发，可修改有序文本分段。",
+                parameters_schema=build_object_schema(
+                    {
+                        "segments": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": build_object_schema(
+                                {
+                                    "text": {"type": "string", "minLength": 1},
+                                    "separator": {"type": "string"},
+                                    "quote_previous": {"type": "boolean"},
+                                    "is_correction": {"type": "boolean"},
+                                },
+                                required=["text", "separator", "quote_previous", "is_correction"],
+                            ),
+                        },
+                        "session_id": {"type": "string"},
+                        "enable_chinese_typo": {"type": "boolean"},
+                    },
+                    required=["segments", "session_id", "enable_chinese_typo"],
+                ),
+                default_timeout_ms=3000,
+                allow_abort=False,
                 allow_kwargs_mutation=True,
             ),
         ]
@@ -905,9 +934,9 @@ class MaisakaChatLoopService:
 
         return self._localized_text(
             {
-                "en-US": "Consider all chats in the shared context. Every tool requires its target session_id. reply.after_reply controls the entire group: stop by default, continue for further actions, or wait with wait_seconds. Finish without tools when no action is needed.",
-                "ja-JP": "共有コンテキスト内の全チャットを判断し、各ツールに対象の session_id を指定してください。reply.after_reply はグループ全体に適用され、既定は stop、行動を続けるなら continue、待機するなら wait と wait_seconds を使います。行動が不要ならツールを呼ばず終了してください。",
-                "zh-CN": "结合共享上下文中的所有聊天判断，每个工具填写目标 session_id；reply.after_reply 作用于整个组，默认 stop，需继续操作选 continue，需等待选 wait 并填写 wait_seconds。没有需要执行的动作时不调用工具，静默结束本轮思考。",
+                "en-US": "Consider all chats in the shared context. Every tool requires its target session_id. reply.after_reply controls the entire group: stop by default, continue for further actions, or wait with wait_seconds. To end the group turn silently, call stop on its own with a session_id from the group.",
+                "ja-JP": "共有コンテキスト内の全チャットを判断し、各ツールに対象の session_id を指定してください。reply.after_reply はグループ全体に適用され、既定は stop、行動を続けるなら continue、待機するなら wait と wait_seconds を使います。発言せずにグループのターンを終えるには、グループ内の session_id を指定して stop を単独で呼び出してください。",
+                "zh-CN": "结合共享上下文中的所有聊天判断，每个工具填写目标 session_id；reply.after_reply 作用于整个组，默认 stop，需继续操作选 continue，需等待选 wait 并填写 wait_seconds。需要静默结束整个组的本轮思考时，填写组内的 session_id 并单独调用 stop。",
             }
         )
 
@@ -1071,10 +1100,14 @@ class MaisakaChatLoopService:
                         "planner_reply_capabilities", capabilities=capabilities,
                     )
         from src.desktop_pet.todo_context import build_todo_context
+        from src.desktop_pet.exploration_search import build_exploration_reuse_context
 
         todo_context = build_todo_context(self._session_id)
         if todo_context:
             resolved_system_prompt += "\n\n" + todo_context
+        exploration_context = build_exploration_reuse_context(self._session_id)
+        if exploration_context:
+            resolved_system_prompt += "\n\n" + exploration_context
         system_item.add_text_content(resolved_system_prompt)
         items.append(system_item.build())
 
@@ -1155,9 +1188,6 @@ class MaisakaChatLoopService:
             items = limit_latest_images_in_messages(
                 items,
                 max_image_num=global_config.visual.max_image_num,
-                preserved_item_ids={
-                    msg.item.meta.item_id for msg in selected_history if isinstance(msg, EmojiCandidateMessage)
-                },
             )
         return items, history_item_count
 
@@ -1198,10 +1228,6 @@ class MaisakaChatLoopService:
         """
 
         enable_visual_message = self._resolve_enable_visual_message(request_kind)
-        # 拼图仅在调用工具时追加；不因后续图片增加而替换历史图片、破坏 KV 缓存前缀。
-        preserved_image_item_ids = {
-            message.item.meta.item_id for message in chat_history if isinstance(message, EmojiCandidateMessage)
-        }
         selected_history, selection_reason = self.select_llm_context_messages(
             chat_history,
             request_kind=request_kind,
@@ -1226,7 +1252,6 @@ class MaisakaChatLoopService:
             built_messages = limit_latest_images_in_messages(
                 built_messages,
                 max_image_num=global_config.visual.max_image_num,
-                preserved_item_ids=preserved_image_item_ids,
             )
 
         def context_factory(_client: BaseClient) -> List[ContextItem]:
@@ -1308,7 +1333,6 @@ class MaisakaChatLoopService:
             built_messages = limit_latest_images_in_messages(
                 built_messages,
                 max_image_num=global_config.visual.max_image_num,
-                preserved_item_ids=preserved_image_item_ids,
             )
         raw_tool_definitions = before_request_kwargs.get("tool_definitions")
         if isinstance(raw_tool_definitions, list):

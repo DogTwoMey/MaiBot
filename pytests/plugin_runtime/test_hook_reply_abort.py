@@ -11,7 +11,7 @@ from src.common.data_models.llm_service_data_models import LLMResponseResult
 from src.common.data_models.message_component_data_model import MessageSequence, TextComponent
 from src.common.data_models.reply_generation_data_models import LLMCompletionResult, ReplyGenerationResult
 from src.common.prompt_i18n import load_prompt
-from src.maisaka.builtin_tool import reply, send_emoji
+from src.maisaka.builtin_tool import reply
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext, PostProcessedReplyMessage
 from src.maisaka.chat_loop_service import register_maisaka_hook_specs
 from src.llm_models.payload_content.context_item import ContextItemBuilder, RoleType
@@ -64,7 +64,7 @@ def reply_context(monkeypatch):
     monkeypatch.setattr(generator, "_persist_reply_preview", Mock())
     monkeypatch.setattr(generator, "_resolve_session_id", lambda stream_id: "test-session")
     monkeypatch.setattr(desktop_pet_service, "notify_thinking", AsyncMock())
-    target = SimpleNamespace(message_id="m1")
+    target = SimpleNamespace(message_id="m1", raw_message=MessageSequence([TextComponent("用户消息")]))
     runtime = SimpleNamespace(
         session_id="test-session", log_prefix="[test]", _chat_history=[],
         chat_stream=SimpleNamespace(platform="qq", is_group_session=True, group_id="group-1", user_id="", account_id="bot"),
@@ -170,45 +170,6 @@ async def test_post_process_abort_precedes_options_and_sending(reply_context, mo
     result = await reply.execute_reply(context, {"msg_id": "m1", "reply_reference": "接话"}, call_id="call1")
     assert result.structured_content["error_code"] == "plugin_aborted"
     context.post_process_reply_message_items_async.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("hook_name", [
-    "emoji.maisaka.before_select", "emoji.maisaka.after_select", "send_service.before_send",
-])
-async def test_emoji_abort_uses_same_planner_result(reply_context, monkeypatch, hook_name):
-    from src.emoji_system import maisaka_tool
-
-    _, context = reply_context
-    emoji = SimpleNamespace(description="开心", file_hash="hash", full_path="unused")
-    selector = AsyncMock(return_value=(emoji, "开心"))
-    monkeypatch.setattr(send_emoji, "_select_emoji_with_sub_agent", selector)
-    monkeypatch.setattr(maisaka_tool, "_serialize_emoji_for_hook", lambda value: {})
-    monkeypatch.setattr(maisaka_tool, "resolve_stored_image_path", lambda value: value)
-    monkeypatch.setattr(maisaka_tool.ImageUtils, "image_path_to_base64", lambda value: "image-base64")
-    monkeypatch.setattr(maisaka_tool.chat_manager, "get_session_by_session_id", lambda value: None)
-
-    async def hook(name, **kwargs):
-        return dispatch_abort(name) if name == hook_name else HookDispatchResult(hook_name=name, kwargs=kwargs)
-
-    monkeypatch.setattr(maisaka_tool, "_get_runtime_manager", lambda: SimpleNamespace(invoke_hook=hook))
-    sender = AsyncMock(side_effect=HookAbortedError(dispatch_abort("send_service.before_send")))
-    monkeypatch.setattr(send_service, "_send_to_target_with_message", sender)
-    monkeypatch.setattr(send_service, "_build_message_sequence_from_custom_message", lambda *args: MessageSequence([]))
-    result = await send_emoji.handle_tool(
-        context, SimpleNamespace(arguments={"msg_id": "m1"}, tool_name="send_emoji", reasoning="参与聊天"),
-    )
-    history = json.loads(result.get_history_content())
-    assert history["error_code"] == "plugin_aborted"
-    assert history["hook_abort"]["hook_name"] == hook_name
-    assert history["reason"] == "消息已过时，请选择最新消息"
-    assert history["message"] == result.error_message
-    if hook_name == "emoji.maisaka.before_select":
-        selector.assert_not_awaited()
-    if hook_name.startswith("emoji."):
-        sender.assert_not_awaited()
-    else:
-        assert sender.await_args.kwargs["raise_on_hook_abort"]
 
 
 def test_legacy_emoji_reason_is_normalized_once():

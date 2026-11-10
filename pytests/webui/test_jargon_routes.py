@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from src.common.database.database_model import ChatSession, Jargon, JargonCreatedBy
-from src.webui.dependencies import require_auth
 from src.webui.routers.jargon import router as jargon_router
 
 
@@ -20,7 +19,6 @@ from src.webui.routers.jargon import router as jargon_router
 def app_fixture():
     app = FastAPI()
     app.include_router(jargon_router, prefix="/api/webui")
-    app.dependency_overrides[require_auth] = lambda: "test-token"
     return app
 
 

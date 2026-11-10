@@ -273,7 +273,7 @@ function TabBarDock({ onSearch }: Pick<MobileTabBarProps, 'onSearch'>) {
                           data-active={active ? 'true' : 'false'}
                           aria-current={active ? 'page' : undefined}
                           aria-label={collapsed ? t(labelKey) : undefined}
-                          onClick={collapsed ? (event) => event.preventDefault() : undefined}
+                          onClick={collapsed ? (event: React.MouseEvent<HTMLAnchorElement>) => event.preventDefault() : undefined}
                           className={cn(
                             'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[10px] font-semibold transition-colors duration-300',
                             active ? 'text-primary' : 'text-foreground'

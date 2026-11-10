@@ -119,16 +119,9 @@ describe('menuSections 菜单结构', () => {
     )
   })
 
-  it('电脑入口受特性开关控制', () => {
-    const flaggedItems = allItems.filter((item) => item.featureFlag !== undefined)
-
+  it('菜单只保留当前注册的工作区入口', () => {
+    expect(allItems.map((item) => item.path)).not.toContain('/computer')
     expect(allItems.map((item) => item.path)).not.toContain('/agent')
-    expect(flaggedItems).toHaveLength(1)
-    expect(flaggedItems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: '/computer', featureFlag: 'computer' }),
-      ])
-    )
   })
 
   it('searchDescription 均为 search.items 命名空间的 i18n key', () => {

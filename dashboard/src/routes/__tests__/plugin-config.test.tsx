@@ -1695,15 +1695,6 @@ describe('PluginConfigPage 详情与文档', () => {
         parameters_schema: { properties: null as unknown as Record<string, unknown> },
       },
       {
-        name: 'old_action',
-        description: '旧动作',
-        enabled: false,
-        plugin_name: 'test.emoji',
-        component_type: 'action',
-        activation_type: 'keyword',
-        activation_keywords: ['hi', 'hello'],
-      },
-      {
         name: 'cmd',
         description: '命令组件',
         enabled: true,
@@ -1738,12 +1729,8 @@ describe('PluginConfigPage 详情与文档', () => {
     expect(await screen.findByText('search_tool')).toBeInTheDocument()
     expect(screen.getByText('q')).toBeInTheDocument()
     expect(screen.getByText('limit')).toBeInTheDocument()
-    expect(screen.getByText('旧版动作')).toBeInTheDocument()
-    expect(screen.getByText('触发方式：keyword')).toBeInTheDocument()
-    expect(screen.getByText('hi')).toBeInTheDocument()
     expect(screen.getByText('命令组件')).toBeInTheDocument()
-    expect(screen.getByText('禁用')).toBeInTheDocument()
-    expect(screen.getByText('4 个组件')).toBeInTheDocument()
+    expect(screen.getByText('3 个组件')).toBeInTheDocument()
   })
 
   it('详情页在组件/README 失败与空内容时展示对应空态', async () => {
@@ -2345,7 +2332,7 @@ describe('PluginConfigPage 覆盖补全', () => {
     await waitFor(() => expect(pluginApi.getPluginConfigBundle).toHaveBeenCalledWith('test.emoji.v2'))
   })
 
-  it('详情页回退 urls 链接，并渲染无关键词的旧版动作', async () => {
+  it('详情页回退 urls 链接，并渲染无参数工具', async () => {
     const plugin = makePlugin('test.emoji', 'Emoji Plugin')
     plugin.manifest.homepage_url = undefined
     plugin.manifest.repository_url = undefined
@@ -2358,11 +2345,11 @@ describe('PluginConfigPage 覆盖补全', () => {
     vi.mocked(pluginApi.getInstalledPlugins).mockResolvedValue([plugin] as never)
     vi.mocked(pluginApi.getPluginRuntimeComponents).mockResolvedValue([
       {
-        name: 'silent_action',
+        name: 'silent_tool',
         description: '',
         enabled: true,
         plugin_name: 'test.emoji',
-        component_type: 'action',
+        component_type: 'tool',
         parameters_schema: { properties: ['not-an-object'] },
       },
     ] as never)
@@ -2381,8 +2368,7 @@ describe('PluginConfigPage 覆盖补全', () => {
       'https://repo-fallback.example'
     )
     await user.click(screen.getByRole('button', { name: '查看设置' }))
-    expect(screen.getByText('silent_action')).toBeInTheDocument()
-    expect(screen.getByText('旧版动作')).toBeInTheDocument()
+    expect(screen.getByText('silent_tool')).toBeInTheDocument()
     expect(screen.queryByText('触发方式：')).not.toBeInTheDocument()
   })
 
