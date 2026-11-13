@@ -1,10 +1,15 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { backendApi } from '@/lib/http'
 
 import { CommandPermissions } from './CommandPermissions'
 
 import { getChatStreams, type ChatStream } from '@/lib/chat-management-api'
 import { getRuntimeCommands, type RuntimeCommand } from '@/lib/plugin-api'
+
+vi.mock('@/lib/http', () => ({ backendApi: { get: vi.fn() }, requireSuccess: (value: unknown) => value }))
 
 vi.mock('@/lib/plugin-api', () => ({
   getRuntimeCommands: vi.fn(),
@@ -76,6 +81,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  vi.mocked(backendApi.get).mockResolvedValue({ success: true, platforms: [], persons: [] })
   getRuntimeCommandsMock.mockResolvedValue([operatorCommand, publicCommand])
   getChatStreamsMock.mockResolvedValue(chatStreams)
 })
@@ -84,8 +90,24 @@ function renderPermissions(
   pluginSection: Record<string, unknown> | null = {},
   onChange = vi.fn()
 ) {
-  const view = render(<CommandPermissions pluginSection={pluginSection} onChange={onChange} />)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const view = render(<QueryClientProvider client={client}><CommandPermissions pluginSection={pluginSection} onChange={onChange} /></QueryClientProvider>)
   return { ...view, onChange }
+}
+
+function userSection(label: string) {
+  const section = screen.getByText(label).parentElement?.parentElement
+  if (!section) throw new Error('Missing scoped user section')
+  return section
+}
+
+function addUser(label: string, user: string) {
+  const section = within(userSection(label))
+  fireEvent.click(section.getByRole('button', { name: '新增' }))
+  const [platform, userId] = user.split(':')
+  fireEvent.change(section.getByLabelText('平台'), { target: { value: platform } })
+  fireEvent.change(section.getByLabelText('用户'), { target: { value: userId } })
+  fireEvent.click(section.getByRole('button', { name: '添加用户' }))
 }
 
 describe('CommandPermissions', () => {
@@ -182,12 +204,15 @@ describe('CommandPermissions', () => {
     const { onChange } = renderPermissions(null)
     await screen.findByRole('heading', { name: '/kick' })
 
-    expect(screen.getByLabelText('全局管理员')).toHaveValue('')
-    expect(screen.getByLabelText('仅为此命令放行用户')).toHaveValue('')
-
-    fireEvent.change(screen.getByLabelText('仅为此命令放行用户'), {
-      target: { value: ' qq:234567890，qq:111, qq:234567890 ' },
+    expect(within(userSection('全局管理员')).queryAllByRole('button', { name: /移除/ })).toHaveLength(0)
+    addUser('仅为此命令放行用户', 'qq:234567890')
+    expect(onChange).toHaveBeenLastCalledWith({
+      command_permissions: { 'cmd-kick': { allow_chats: [], allow_users: ['qq:234567890'] } },
     })
+    cleanup()
+    renderPermissions({ command_permissions: { 'cmd-kick': { allow_chats: [], allow_users: ['qq:234567890'] } } }, onChange)
+    await screen.findByRole('heading', { name: '/kick' })
+    addUser('仅为此命令放行用户', 'qq:111')
 
     expect(onChange).toHaveBeenCalledWith({
       command_permissions: {
@@ -212,18 +237,16 @@ describe('CommandPermissions', () => {
     const { onChange } = renderPermissions(pluginSection)
     await screen.findByRole('heading', { name: '/kick' })
 
-    expect(screen.getByLabelText('仅为此命令放行用户')).toHaveValue('qq:111')
+    expect(within(userSection('仅为此命令放行用户')).getByText('qq:111')).toBeInTheDocument()
     expect(screen.getByTestId('command-chats')).toHaveTextContent('session-group')
 
-    fireEvent.change(screen.getByLabelText('仅为此命令放行用户'), {
-      target: { value: 'qq:999' },
-    })
+    addUser('仅为此命令放行用户', 'qq:999')
     expect(onChange).toHaveBeenCalledWith({
       enabled: true,
       command_permissions: {
         'cmd-kick': {
           allow_chats: ['session-group'],
-          allow_users: ['qq:999'],
+          allow_users: ['qq:111', 'qq:999'],
         },
       },
     })
@@ -248,10 +271,14 @@ describe('CommandPermissions', () => {
     const { onChange } = renderPermissions(pluginSection)
     await screen.findByRole('heading', { name: '/kick' })
 
-    const operators = screen.getByLabelText('全局管理员')
-    expect(operators).toHaveValue('qq:admin1, qq:admin2')
+    const operators = within(userSection('全局管理员'))
+    expect(operators.getByText('qq:admin1')).toBeInTheDocument()
+    expect(operators.getByText('qq:admin2')).toBeInTheDocument()
+    cleanup()
+    renderPermissions({ command_permissions: {}, permission: ['qq:9'] }, onChange)
+    await screen.findByRole('heading', { name: '/kick' })
+    addUser('全局管理员', 'qq:8')
 
-    fireEvent.change(operators, { target: { value: 'qq:9 qq:8' } })
     expect(onChange).toHaveBeenCalledWith({
       command_permissions: {},
       permission: ['qq:9', 'qq:8'],
@@ -262,6 +289,6 @@ describe('CommandPermissions', () => {
     renderPermissions({ permission: 'qq:admin' })
     await screen.findByRole('heading', { name: '/kick' })
 
-    expect(screen.getByLabelText('全局管理员')).toHaveValue('')
+    expect(within(userSection('全局管理员')).queryByText('qq:admin')).not.toBeInTheDocument()
   })
 })

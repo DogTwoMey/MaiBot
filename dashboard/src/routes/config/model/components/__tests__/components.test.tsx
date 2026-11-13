@@ -275,7 +275,7 @@ describe('TaskAssignmentBoard', () => {
       fields={[{ name: 'replyer', type: 'object', label: '回复', description: '', required: false }]}
       taskConfig={{ replyer: { model_list: [], routing_prompt: '日常交流使用 Aliyun。' } }}
       models={[]} webServices={[]} openTask="replyer" onOpenTaskChange={vi.fn()}
-      onChange={onChange} onAddWebService={vi.fn()} hasProviders fallbackLabel={(field) => field.name}
+      onChange={onChange} onAddWebService={vi.fn()} onConfigureMaiReplier={vi.fn()} hasProviders fallbackLabel={(field) => field.name}
     />)
     const prompt = screen.getByLabelText('模型路由提示词')
     expect(prompt).toHaveValue('日常交流使用 Aliyun。')

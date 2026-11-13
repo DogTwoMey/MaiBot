@@ -22,7 +22,7 @@ from src.core.tooling import ToolAvailabilityContext, ToolExecutionContext, Tool
 from src.maisaka.quote import decide_quote
 from src.maisaka.context.message_adapter import build_visible_text_from_sequence, parse_speaker_content
 from src.maisaka.context.message_id_alias import to_display_message_id
-from src.maisaka.context.messages import LLMContextMessage, SessionBackedMessage
+from src.maisaka.context.messages import InternalContextMessage, LLMContextMessage, SessionBackedMessage
 from src.maisaka.context.planner_messages import extract_quote_ids_from_message_sequence
 from src.plugin_runtime.host.hook_dispatcher import HookAbortedError, build_hook_abort_tool_result
 from src.plugin_runtime.host.message_utils import PluginMessageUtils
@@ -144,8 +144,8 @@ def get_tool_spec(context: Optional[ToolAvailabilityContext] = None) -> ToolSpec
         "msg_id": {
             "type": "string",
             "description": (
-                "要回复的消息 msg_id。插件主动聊天任务应填写当前 <plugin_proactive_task> 的 id；"
-                "也可以省略或留空，由系统使用当前主动任务。主动任务中禁止借用历史消息作为目标。"
+                "普通回合可填写真实聊天消息 msg_id；省略或留空表示向当前会话发言，内部任务编号也不作为引用。"
+                "插件主动聊天任务或当前系统上下文只能使用本轮触发 ID，或留空由系统填充；禁止借用历史消息。"
             ),
         },
         "reply_reference": {
@@ -356,10 +356,12 @@ def _resolve_segment_reply_context(
 async def _resolve_reply_quote(
     tool_ctx: BuiltinToolRuntimeContext,
     text: str,
-    target_message: SessionMessage,
+    target_message: Optional[SessionMessage],
     bot_user_id: str,
 ) -> Tuple[bool, Optional[float]]:
     """群聊和私聊分别按固定公式及频率决定引用。"""
+    if target_message is None:
+        return False, 0.0
     stream = tool_ctx.runtime.chat_stream
     frequency = get_scene(stream.is_group_session).quote_frequency
     if frequency == "never" or stream.platform == CLI_PLATFORM_NAME:
@@ -461,7 +463,9 @@ def _resolve_reply_target_message(
         target_message_id = active_trigger_id
 
     if not target_message_id:
-        raise ValueError("reply 工具需要提供有效的 `msg_id` 参数。")
+        if target_message is not None:
+            raise ValueError("回复快照的消息 ID 与回复参数不一致")
+        return "", None, False
 
     if (is_proactive_task or is_active_synthetic_context) and target_message_id == active_trigger_id:
         target_message = active_trigger_message
@@ -470,6 +474,11 @@ def _resolve_reply_target_message(
     elif target_message.message_id != target_message_id:
         raise ValueError("回复快照的消息 ID 与回复参数不一致")
     if target_message is None:
+        if any(
+            isinstance(message, InternalContextMessage) and message.message_id == target_message_id
+            for message in tool_ctx.runtime._chat_history
+        ):
+            return "", None, False
         raise ValueError(f"未找到要回复的目标消息，msg_id={to_display_message_id(target_message_id)}")
 
     is_synthetic_context = _is_synthetic_context_message(target_message)
@@ -608,6 +617,7 @@ async def _execute_reply(
         )
     except ValueError as exc:
         return tool_ctx.build_failure_result("reply", str(exc))
+    invocation_arguments["msg_id"] = target_message_id
 
     context = ToolAvailabilityContext(
         session_id=tool_ctx.runtime.session_id, stream_id=tool_ctx.runtime.session_id,
@@ -967,13 +977,15 @@ async def _execute_reply(
             metadata=reply_metadata,
         )
 
-    target_user_info = target_message.message_info.user_info
     bot_name = config_module.global_config.bot.nickname.strip() or "MaiSaka"
-    if is_bot_self(tool_ctx.runtime.chat_stream.platform, target_user_info.user_id):
-        # 自身消息只是回复的引用锚点，不能把其作者当作实际收件人。
+    if target_message is None or is_bot_self(
+        tool_ctx.runtime.chat_stream.platform, target_message.message_info.user_info.user_id,
+    ):
+        # 无目标发言直接发送到会话；自身消息也只是引用锚点，不能把其作者当作实际收件人。
         target_user_name = ""
         reply_receipt = f'"{bot_name}"已生成并向当前会话发送了回复"{combined_reply_text}"'
     else:
+        target_user_info = target_message.message_info.user_info
         target_user_name = target_user_info.user_cardname or target_user_info.user_nickname or target_user_info.user_id
         reply_receipt = f'"{bot_name}"已生成并向"{target_user_name}"发送了回复"{combined_reply_text}"'
 

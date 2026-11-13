@@ -70,6 +70,7 @@ import {
   getStoredUserAvatarVersion,
   getStoredUserName,
   getSavedVirtualTabs,
+  isChatRuntimeEventCurrent,
   saveUserAvatarVersion,
   saveUserName,
   saveVirtualTabs,
@@ -431,7 +432,8 @@ export function ChatPage() {
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
 
   // 通用状态
-  const [inputValue, setInputValue] = useState('')
+  // 草稿由输入区渲染，这里仅保留发送和切换视图时需要的最新内容。
+  const inputValue = useRef('')
   const [selectedImages, setSelectedImages] = useState<ChatImageAttachment[]>([])
   const { flags: featureFlags } = useFeatureFlags()
   const agentEnabled = featureFlags?.agent === true
@@ -720,7 +722,14 @@ export function ChatPage() {
             processedSet.delete(firstKey)
           }
           processedMessagesMapRef.current.set(tabId, processedSet)
-          updateTab(tabId, { messages: formattedMessages })
+          setTabs((prev) => prev.map((tab) => {
+            if (tab.id !== tabId) return tab
+            const status = tab.runtimeStatus
+            if (status && !isChatRuntimeEventCurrent(formattedMessages, status.updatedAt)) {
+              return { ...tab, messages: formattedMessages, isTyping: false, runtimeStatus: null }
+            }
+            return { ...tab, messages: formattedMessages }
+          }))
           setIsLoadingHistory(false)
           break
         }
@@ -892,7 +901,8 @@ export function ChatPage() {
         if (event.type === 'llm.retry') {
           setTabs((prev) =>
             prev.map((tab) => {
-              if (!matchesMonitorTarget(tab, event.data)) {
+              if (!matchesMonitorTarget(tab, event.data) ||
+                !isChatRuntimeEventCurrent(tab.messages, event.data.timestamp, event.data.replayed)) {
                 return tab
               }
               const currentStatus = tab.runtimeStatus
@@ -919,7 +929,8 @@ export function ChatPage() {
         if (event.type === 'llm.error') {
           setTabs((prev) =>
             prev.map((tab) => {
-              if (!matchesMonitorTarget(tab, event.data)) {
+              if (!matchesMonitorTarget(tab, event.data) ||
+                !isChatRuntimeEventCurrent(tab.messages, event.data.timestamp, event.data.replayed)) {
                 return tab
               }
               const currentStatus = tab.runtimeStatus
@@ -960,14 +971,14 @@ export function ChatPage() {
   // 发送消息到当前活动标签页
   const sendMessage = useCallback(async () => {
     const filesToSend = filesEnabled ? filesByTab[activeTabId] || [] : []
-    if (uploadingFiles || (!inputValue.trim() && selectedImages.length === 0 && filesToSend.length === 0) || !activeTab?.isConnected) {
+    if (uploadingFiles || (!inputValue.current.trim() && selectedImages.length === 0 && filesToSend.length === 0) || !activeTab?.isConnected) {
       return
     }
 
     const displayName =
       activeTab?.type === 'virtual' ? activeTab.virtualConfig?.userName || userName : userName
 
-    const messageContent = inputValue.trim()
+    const messageContent = inputValue.current.trim()
     const imagesToSend = selectedImages
     const currentTimestamp = Date.now() / 1000
 
@@ -998,7 +1009,7 @@ export function ChatPage() {
     }
     addMessageToTab(activeTabId, userMessage)
 
-    setInputValue('')
+    inputValue.current = ''
     setSelectedImages([])
     setFilesByTab(previous => ({ ...previous, [activeTabId]: [] }))
 
@@ -1039,22 +1050,22 @@ export function ChatPage() {
         variant: 'destructive',
       })
     }
-  }, [activeTab, activeTabId, addMessageToTab, inputValue, selectedImages, filesByTab, filesEnabled, uploadingFiles, setupTrial, startTrialTimeout, clearTrialTimeout, t, toast, userName])
+  }, [activeTab, activeTabId, addMessageToTab, selectedImages, filesByTab, filesEnabled, uploadingFiles, setupTrial, startTrialTimeout, clearTrialTimeout, t, toast, userName])
 
   // 首页快速聊天：带着首页写下的消息进来，连上本地聊天室后自动发出
   const [quickChatPending, setQuickChatPending] = useState(false)
   useEffect(() => {
     const message = takeQuickChatMessage()
     if (!message) return
-    setInputValue(message)
+    inputValue.current = message
     setQuickChatPending(true)
   }, [])
   useEffect(() => {
     if (!quickChatPending || activeObservedSessionId || agentActive) return
-    if (activeTabId !== 'webui-default' || !activeTab?.isConnected || !inputValue.trim()) return
+    if (activeTabId !== 'webui-default' || !activeTab?.isConnected || !inputValue.current.trim()) return
     setQuickChatPending(false)
     void sendMessage()
-  }, [activeObservedSessionId, activeTab?.isConnected, activeTabId, agentActive, inputValue, quickChatPending, sendMessage])
+  }, [activeObservedSessionId, activeTab?.isConnected, activeTabId, agentActive, quickChatPending, sendMessage])
 
   const handleAddFiles = async (files: FileList) => {
     if (!filesEnabled) return
@@ -1262,8 +1273,15 @@ export function ChatPage() {
     setActiveObservedSessionId(sessionId)
   }, [setSelectedObservedSession])
 
+  // sessionInfo.session_id 是网页连接 ID；观察页使用数据库中真实聊天流的 ID。
   const internalSessionId = activeTab?.type === 'webui' || activeTab?.sessionInfo.platform === 'internal'
-    ? activeTab?.sessionInfo.session_id
+    ? knownChatStreams.find((chat) => {
+        const { platform, group_id: groupId, user_id: userId } = activeTab.sessionInfo
+        if (chat.platform !== platform) return false
+        return groupId
+          ? chat.chat_type === 'group' && chat.group_id === groupId
+          : chat.chat_type === 'private' && chat.user_id === userId
+      })?.session_id
     : undefined
   const observeInternalSession = internalSessionId
     ? () => selectObservedSession(internalSessionId)
@@ -1492,8 +1510,8 @@ export function ChatPage() {
               files={filesEnabled ? filesByTab[activeTabId] || [] : []}
               onAddFiles={filesEnabled ? handleAddFiles : undefined}
               onRemoveFile={ref => setFilesByTab(previous => ({ ...previous, [activeTabId]: (previous[activeTabId] || []).filter(file => file.file_ref !== ref) }))}
-              value={inputValue}
-              onChange={setInputValue}
+              value={inputValue.current}
+              onChange={(value) => { inputValue.current = value }}
               onAddImages={handleAddImages}
               onRemoveImage={handleRemoveImage}
               onSendEmoji={sendUserEmoji}

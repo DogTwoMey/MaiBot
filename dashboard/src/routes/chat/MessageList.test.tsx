@@ -318,7 +318,7 @@ describe('MessageList', () => {
         botDisplayName="MaiBot"
         isLoadingHistory={false}
         language="zh-CN"
-        messages={messages}
+        messages={[...messages]}
         userName="测试用户"
       />
     )
@@ -331,7 +331,7 @@ describe('MessageList', () => {
         botDisplayName="MaiBot"
         isLoadingHistory={false}
         language="zh-CN"
-        messages={messages}
+        messages={[...messages]}
         userName="测试用户"
       />
     )

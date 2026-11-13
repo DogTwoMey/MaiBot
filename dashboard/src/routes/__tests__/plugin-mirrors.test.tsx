@@ -14,7 +14,7 @@ vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mocks.toast }) }
 vi.mock('@/lib/http', () => ({ backendApi: { get: vi.fn(), put: vi.fn() } }))
 vi.mock('@/lib/plugin-api', () => ({ invalidatePluginMarketCache: vi.fn() }))
 
-const initial = { information_source: 'official', download_source: 'cnb', custom_download_prefix: null }
+const initial = { information_source: 'cnb', download_source: 'cnb', custom_download_prefix: null }
 const endpoint = '/api/webui/plugins/marketplace/source'
 
 function renderSettings() {
@@ -40,13 +40,15 @@ afterEach(cleanup)
 describe('插件信息源和下载源设置', () => {
   it('加载当前来源，两个来源独立回显且未修改不能保存', async () => {
     renderSettings()
-    expect(await screen.findByRole('combobox', { name: '插件信息源' })).toHaveTextContent('麦麦官方')
+    expect(await screen.findByRole('combobox', { name: '插件信息源' })).toHaveTextContent('CNB镜像')
     expect(screen.getByRole('combobox', { name: '插件下载源' })).toHaveTextContent('CNB镜像')
     expect(backendApi.get).toHaveBeenCalledWith(endpoint, { errorMessage: '获取插件商店设置失败' })
     expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
   })
 
   it.each([['CNB镜像', 'cnb'], ['Github源', 'github']])('保存插件信息源 %s，不改变下载源', async (label, value) => {
+    const starting = { ...initial, information_source: value === 'cnb' ? 'github' : 'cnb' }
+    vi.mocked(backendApi.get).mockResolvedValue(starting)
     const { onSaved, client } = renderSettings()
     await selectSource('插件信息源', label)
     await userEvent.click(screen.getByRole('button', { name: '保存设置' }))
@@ -62,7 +64,7 @@ describe('插件信息源和下载源设置', () => {
     const { onClose } = renderSettings()
     await selectSource('插件下载源', 'Github源')
     expect(backendApi.put).not.toHaveBeenCalled()
-    expect(screen.getByRole('combobox', { name: '插件信息源' })).toHaveTextContent('麦麦官方')
+    expect(screen.getByRole('combobox', { name: '插件信息源' })).toHaveTextContent('CNB镜像')
     await userEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(onClose).toHaveBeenCalledOnce()
     expect(backendApi.put).not.toHaveBeenCalled()
@@ -100,7 +102,7 @@ describe('插件信息源和下载源设置', () => {
     renderSettings()
     await selectSource('插件信息源', 'Github源')
     expect(screen.getByRole('button', { name: '保存设置' })).toBeEnabled()
-    await selectSource('插件信息源', '麦麦官方')
+    await selectSource('插件信息源', 'CNB镜像')
     expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
   })
 
@@ -118,7 +120,7 @@ describe('插件信息源和下载源设置', () => {
     renderSettings()
     expect(await screen.findByText('读取来源失败')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '重试' }))
-    expect(await screen.findByRole('combobox', { name: '插件信息源' })).toHaveTextContent('麦麦官方')
+    expect(await screen.findByRole('combobox', { name: '插件信息源' })).toHaveTextContent('CNB镜像')
     expect(backendApi.get).toHaveBeenCalledTimes(2)
   })
 

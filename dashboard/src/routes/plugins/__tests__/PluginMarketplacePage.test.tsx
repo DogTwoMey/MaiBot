@@ -1673,7 +1673,7 @@ describe('PluginMarketplacePage 合并、兼容性边界与进度清理', () => 
   it('缓存清单的统计按清单 ID 映射，缺统计的条目保持空 likes', async () => {
     const stats = { plugin_id: 'plugin-a-stats', likes: 9, dislikes: 0, downloads: 3, rating: 5, rating_count: 1, comment_count: 1 }
     vi.mocked(pluginApi.getCachedPluginList).mockReturnValue([
-      makeMarketPlugin('plugin-a', { marketplace_stats: stats, market_data_source: 'official' }, { id: 'plugin-a-stats' }), makeMarketPlugin('plugin-b'),
+      makeMarketPlugin('plugin-a', { marketplace_stats: stats, market_data_source: 'github' }, { id: 'plugin-a-stats' }), makeMarketPlugin('plugin-b'),
     ])
     vi.mocked(pluginApi.fetchPluginList).mockReturnValue(new Promise(() => {}))
     render(<PluginMarketplacePage />)
