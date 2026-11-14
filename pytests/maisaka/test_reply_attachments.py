@@ -71,8 +71,8 @@ def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, ena
     names = {spec.name for spec in get_all_builtin_tool_specs(availability)}
     schema = reply_tool.get_tool_spec(availability).parameters_schema
     properties = schema["properties"]
-    assert schema["required"] == ["msg_id", "reply_reference"]
-    assert properties["reply_reference"]["minLength"] == 1
+    assert schema["required"] == ["msg_id", "chat_anlyze"]
+    assert properties["chat_anlyze"]["minLength"] == 1
     assert "attach_pic" in properties
     assert ("attach_at" in properties) == (enable_at and is_group)
     assert "attach_emoji" in properties
@@ -85,13 +85,13 @@ def test_reply_tools_follow_independent_switches(reply_context, monkeypatch, ena
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reference_args", [
     {},
-    {"reply_reference": None},
-    {"reply_reference": ""},
-    {"reply_reference": " \n\t "},
-    {"reply_reference": 123},
-    {"reply_reference": False},
-    {"reply_reference": []},
-    {"reply_reference": {}},
+    {"chat_anlyze": None},
+    {"chat_anlyze": ""},
+    {"chat_anlyze": " \n\t "},
+    {"chat_anlyze": 123},
+    {"chat_anlyze": False},
+    {"chat_anlyze": []},
+    {"chat_anlyze": {}},
 ])
 async def test_reply_requires_nonempty_reference_before_generation(reply_context, monkeypatch, reference_args):
     generator = AsyncMock()
@@ -101,7 +101,7 @@ async def test_reply_requires_nonempty_reference_before_generation(reply_context
         ToolInvocation("reply", arguments={"msg_id": "msg-1", **reference_args}, reasoning="不能代替必填参考"),
     )
     assert not result.success
-    assert "reply_reference" in result.error_message
+    assert "chat_anlyze" in result.error_message
     generator.assert_not_called()
 
 
@@ -117,7 +117,7 @@ async def test_reply_sends_selected_picture_separately_from_at_text(reply_contex
     sender = AsyncMock(return_value=SimpleNamespace(message_id="sent-1"))
     monkeypatch.setattr(reply_tool.send_service, "_send_to_target_with_message", sender)
     arguments = {
-        "msg_id": "msg-1", "reply_reference": "  展示第二张图片  ",
+        "msg_id": "msg-1", "chat_anlyze": "  展示第二张图片  ",
         "attach_at": ["msg-1"], "attach_pic": [{"msg_id": "msg-1", "index": 1}],
     }
 
@@ -133,7 +133,7 @@ async def test_reply_sends_selected_picture_separately_from_at_text(reply_contex
     assert isinstance(image_components[0], ImageComponent) and image_components[0].binary_data == b"second"
     assert generator.generate_reply_with_context.call_args.kwargs["reply_tool_args"] == {
         "_plugin_reply_prompt": "",
-        "reply_reference": "展示第二张图片",
+        "chat_anlyze": "展示第二张图片",
         "attach_at": ["msg-1"], "attach_pic": [{"msg_id": "msg-1", "index": 1}],
     }
     assert generator.generate_reply_with_context.call_args.kwargs["reply_reason"] == ""
@@ -175,7 +175,7 @@ async def test_reply_attached_emoji_renders_like_inbound_emoji(
 
     result = await reply_tool.handle_tool(
         reply_context,
-        ToolInvocation("reply", arguments={"msg_id": "msg-1", "reply_reference": "庆祝任务完成", "attach_emoji": "开心"}),
+        ToolInvocation("reply", arguments={"msg_id": "msg-1", "chat_anlyze": "庆祝任务完成", "attach_emoji": "开心"}),
     )
 
     assert result.success
@@ -273,7 +273,7 @@ async def test_disabled_attachment_rejected_before_generation(reply_context, mon
     generator = AsyncMock()
     monkeypatch.setattr(reply_tool.replyer_manager, "get_replyer", generator)
     result = await reply_tool.handle_tool(
-        reply_context, ToolInvocation("reply", arguments={"msg_id": "msg-1", "reply_reference": "测试附件", **argument})
+        reply_context, ToolInvocation("reply", arguments={"msg_id": "msg-1", "chat_anlyze": "测试附件", **argument})
     )
     assert not result.success
     generator.assert_not_called()

@@ -130,7 +130,7 @@ async def test_before_post_process_hook_controls_current_reply_only() -> None:
         tool_ctx,
         "本次保持原文",
         "message-1",
-        {"reply_reference": "测试"},
+        {"chat_anlyze": "测试"},
     )
 
     assert reply_text == "本次保持原文"

@@ -128,8 +128,8 @@ async def test_text_executes_once_preserves_guidance_and_ends(engine, monkeypatc
 
     execute.assert_awaited_once()
     arguments = execute.call_args.args[1]
-    assert arguments["reply_reference"] == response.content == "安慰对方，简短回应。"
-    assert arguments == {"msg_id": target.message_id, "reply_reference": response.content}
+    assert arguments["chat_anlyze"] == response.content == "安慰对方，简短回应。"
+    assert arguments == {"msg_id": target.message_id, "chat_anlyze": response.content}
     assert callable(execute.call_args.kwargs["supplement_runner"])
     assert execute.call_args.kwargs["target_message"] is target
     assert not hasattr(engine, "_reply_options")
@@ -253,7 +253,7 @@ async def test_passive_tools_use_supplement_and_focus_provider_keeps_reply(engin
     assert "与不调用任何工具时一致" not in by_name["wait"]["description"]
     # Focus 直接使用 Provider，不经过普通模式的定义转换。
     focus_spec = await engine._runtime._tool_registry.get_tool_spec("reply")
-    assert focus_spec.parameters_schema["required"] == ["msg_id", "reply_reference"]
+    assert focus_spec.parameters_schema["required"] == ["msg_id", "chat_anlyze"]
     assert not await engine._runtime._tool_registry.has_tool("set_reply_options")
 
 
@@ -288,7 +288,7 @@ async def test_old_reply_call_cannot_send_in_passive_mode(engine, monkeypatch):
     execute = AsyncMock()
     monkeypatch.setattr(reply_module, "execute_reply", execute)
     _, _, _, results = await engine._handle_tool_calls(
-        [ToolCall("old", "reply", {"msg_id": "original", "reply_reference": "旧指令"})],
+        [ToolCall("old", "reply", {"msg_id": "original", "chat_anlyze": "旧指令"})],
         "",
         SimpleNamespace(),
         CycleRuntimeState(),
@@ -307,7 +307,7 @@ def test_prompt_and_tail_reminder_follow_experimental_switch(monkeypatch, locale
     with use_locale(locale):
         prompt = service._build_chat_system_prompt()
         reminder = service._build_planner_final_user_reminder()
-    assert ("reply_reference" in prompt) is (not enabled)
+    assert ("chat_anlyze" in prompt) is (not enabled)
     assert "set_reply_options" not in prompt
     tools = get_builtin_tools(ToolAvailabilityContext(is_focus=False), passive_replyer=enabled)
     names = [tool["name"] for tool in tools]
@@ -336,7 +336,7 @@ async def test_disabled_mode_restores_reply_tool_and_does_not_send_text(engine, 
     assert state.cycle_end.reason == "planner_no_tool_end"
     passive_execute.assert_not_awaited()
     _, _, _, results = await engine._handle_tool_calls(
-        [ToolCall("normal", "reply", {"msg_id": "original", "reply_reference": "回复指导"})],
+        [ToolCall("normal", "reply", {"msg_id": "original", "chat_anlyze": "回复指导"})],
         "", SimpleNamespace(), CycleRuntimeState(),
     )
     assert results[0]["success"]
@@ -360,8 +360,8 @@ def test_focus_prompt_ignores_passive_replyer_switch(monkeypatch, enabled):
     assert prompt
     tools = get_builtin_tools(ToolAvailabilityContext(is_focus=True))
     reply = next(tool for tool in tools if tool["name"] == "reply")
-    assert "reply_reference" in reply["parameters_schema"]["required"]
-    assert reply["parameters_schema"]["properties"]["reply_reference"]["minLength"] == 1
+    assert "chat_anlyze" in reply["parameters_schema"]["required"]
+    assert reply["parameters_schema"]["properties"]["chat_anlyze"]["minLength"] == 1
     assert "set_reply_options" not in prompt
 
 
@@ -416,7 +416,7 @@ async def test_shared_reply_service_preserves_extensions_attachments_and_send_co
     engine._runtime.record_planner_reply = Mock()
     arguments = {
         "msg_id": target.message_id,
-        "reply_reference": "指导正文",
+        "chat_anlyze": "指导正文",
         "attach_at": [target.message_id],
         "attach_pic": [{"msg_id": target.message_id, "index": 0}],
         "attach_emoji": 1,
@@ -429,7 +429,7 @@ async def test_shared_reply_service_preserves_extensions_attachments_and_send_co
     generator.generate_reply_with_context.assert_awaited_once()
     request = generator.generate_reply_with_context.call_args.kwargs
     assert request["reply_message"] is target
-    for key in ("reply_reference", "attach_at", "attach_pic", "attach_emoji", "plugin_options"):
+    for key in ("chat_anlyze", "attach_at", "attach_pic", "attach_emoji", "plugin_options"):
         assert request["reply_tool_args"][key] == arguments[key]
     extension.prepare.assert_awaited_once_with(arguments["plugin_options"])
     extension.transform.assert_awaited_once()
@@ -447,7 +447,7 @@ async def test_shared_reply_service_preserves_extensions_attachments_and_send_co
 async def test_focus_reply_adapter_preserves_arguments_and_execution_id(engine, monkeypatch):
     execute = AsyncMock(return_value=ToolExecutionResult(tool_name="reply", success=True))
     monkeypatch.setattr(reply_module, "execute_reply", execute)
-    arguments = {"msg_id": "original", "reply_reference": "Focus 指导", "attach_pic": []}
+    arguments = {"msg_id": "original", "chat_anlyze": "Focus 指导", "attach_pic": []}
     await reply_module.handle_tool(
         BuiltinToolRuntimeContext(engine, engine._runtime),
         ToolInvocation(tool_name="reply", arguments=arguments, call_id="focus-call"),
@@ -523,7 +523,7 @@ async def test_body_failure_cancels_supplement_and_never_sends(engine, monkeypat
     monkeypatch.setattr(reply_module.send_service, "_send_to_target_with_message", send)
     result = await reply_module.execute_reply(
         BuiltinToolRuntimeContext(engine, engine._runtime),
-        {"msg_id": target.message_id, "reply_reference": "guidance"}, call_id="test",
+        {"msg_id": target.message_id, "chat_anlyze": "guidance"}, call_id="test",
         target_message=target, supplement_runner=supplement,
     )
     assert not result.success

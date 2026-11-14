@@ -531,7 +531,7 @@ def test_build_request_messages_switches_to_retro_mode(monkeypatch: pytest.Monke
 
 @pytest.mark.parametrize("locale", RETRO_LOCALES)
 @pytest.mark.parametrize("retro_mode", [False, True])
-def test_reply_reference_takes_priority_over_planner_content(
+def test_chat_anlyze_takes_priority_over_planner_content(
     locale: str, retro_mode: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     generator = build_retro_generator(is_group_session=True)
@@ -544,22 +544,22 @@ def test_reply_reference_takes_priority_over_planner_content(
         reply_message=None,
         reply_reason="PLANNER_VISIBLE_BODY",
         think_level=0,
-        reply_tool_args={"reply_reference": "REPLY_REFERENCE_BODY"},
+        reply_tool_args={"chat_anlyze": "REPLY_REFERENCE_BODY"},
     )
 
     text = "\n".join(read_item_text(item) for item in items)
     assert "REPLY_REFERENCE_BODY" in text
     assert "PLANNER_VISIBLE_BODY" not in text
     assert (
-        generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", "REPLY_REFERENCE_BODY")
-        == {"zh-CN": "当前想法：\n“REPLY_REFERENCE_BODY”", "en-US": 'Current thought:\n"REPLY_REFERENCE_BODY"',
-            "ja-JP": "現在の考え：\n「REPLY_REFERENCE_BODY」"}[locale]
+        generator._build_chat_anlyze_message("PLANNER_VISIBLE_BODY", "REPLY_REFERENCE_BODY")
+        == {"zh-CN": "对话局面与关键事实：\n“REPLY_REFERENCE_BODY”", "en-US": 'Conversation situation and key facts:\n"REPLY_REFERENCE_BODY"',
+            "ja-JP": "会話の状況と重要な事実：\n「REPLY_REFERENCE_BODY」"}[locale]
     )
-    assert generator._build_reply_reference_message("PLANNER_VISIBLE_BODY", " \n ") == {
-        "zh-CN": "当前想法：\n“PLANNER_VISIBLE_BODY”", "en-US": 'Current thought:\n"PLANNER_VISIBLE_BODY"',
-        "ja-JP": "現在の考え：\n「PLANNER_VISIBLE_BODY」",
+    assert generator._build_chat_anlyze_message("PLANNER_VISIBLE_BODY", " \n ") == {
+        "zh-CN": "对话局面与关键事实：\n“PLANNER_VISIBLE_BODY”", "en-US": 'Conversation situation and key facts:\n"PLANNER_VISIBLE_BODY"',
+        "ja-JP": "会話の状況と重要な事実：\n「PLANNER_VISIBLE_BODY」",
     }[locale]
-    assert generator._build_reply_reference_message("", "") == ""
+    assert generator._build_chat_anlyze_message("", "") == ""
 
 
 def test_retro_templates_are_localized_consistently() -> None:
@@ -596,7 +596,7 @@ def test_retro_template_context_covers_every_placeholder(monkeypatch: pytest.Mon
         chat_history=[build_history_message("晚上吃什么")],
         reply_message=None,
         reply_reason="",
-        reply_reference="",
+        chat_anlyze="",
         expression_habits="",
         reply_requirements="",
     )
