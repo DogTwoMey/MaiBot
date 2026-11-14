@@ -484,7 +484,8 @@ def integration_state(tmp_path_factory: pytest.TempPathFactory) -> Generator[Dic
             "tuning_probe_phrase": "Carol 在翡翠仓库校准星图仪",
         }
 
-    asyncio.run(host_service_module.a_memorix_host_service.stop())
+        assert client.portal is not None
+        client.portal.call(host_service_module.a_memorix_host_service.stop)
     host_service_module.a_memorix_host_service._config_cache = None  # type: ignore[attr-defined]
     patches.undo()
 

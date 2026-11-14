@@ -164,7 +164,7 @@ def test_prompts_have_matching_placeholders_and_valid_json_examples():
     root = Path(__file__).resolve().parents[2] / "prompts"
     for locale in ("zh-CN", "en-US", "ja-JP"):
         for kind in ("expression", "jargon"):
-            template = (root / locale / f"text_learning_{kind}.prompt").read_text(encoding="utf-8")
+            template = (root / locale / "main" / f"text_learning_{kind}.prompt").read_text(encoding="utf-8")
             assert not {field for _, field, _, _ in Formatter().parse(template) if field is not None}
             json.loads(template.format().splitlines()[-1])
 

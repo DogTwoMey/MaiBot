@@ -8,7 +8,9 @@
  * useMaisakaMonitor hook 已有独立单测（同目录），此处整体打桩以便精确控制视图状态；
  * 虚拟滚动与路由跳转按仓库既有样板打桩。
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as renderView, screen, waitFor } from '@testing-library/react'
+import type { ReactElement, ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +31,13 @@ import type {
 import { MaisakaMonitor } from './maisaka-monitor'
 import { setSubagentPanelState } from './subagent-panel-state'
 import type { SessionInfo, StageStatusInfo, TimelineEntry } from './use-maisaka-monitor'
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderView(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  })
+}
 
 const SIDEBAR_COLLAPSED_KEY = 'maisaka-monitor-sidebar-collapsed'
 

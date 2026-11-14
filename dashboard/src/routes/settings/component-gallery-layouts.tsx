@@ -51,6 +51,7 @@ import { OrderControls } from '@/components/ui/order-controls'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SelectionListItem } from '@/components/ui/selection-list-item'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { VirtualList } from '@/components/ui/virtual-list'
 import { ZoomableChart } from '@/components/ui/zoomable-chart'
 
 import type { ComponentExample } from './component-gallery-types'
@@ -414,6 +415,21 @@ export const layoutExamples: ComponentExample[] = [
     category: '基础',
     description: '带选中、禁用状态的列表行。',
     preview: <SelectionExample />,
+  },
+  {
+    file: 'virtual-list',
+    name: 'VirtualList',
+    category: '布局',
+    description: '仅挂载可视区域附近的长列表行，支持动态行高。',
+    preview: (
+      <VirtualList
+        className="h-40 flex-none rounded border"
+        items={Array.from({ length: 100 }, (_, index) => String(index + 1))}
+        getKey={(item) => item}
+        estimateSize={() => 40}
+        renderItem={(item) => <p className="h-10 p-2">列表内容 {item}</p>}
+      />
+    ),
   },
   {
     file: 'zoomable-chart',

@@ -15,9 +15,10 @@ from src.common.data_models.message_component_data_model import MessageSequence,
 from src.common.data_models.reply_generation_data_models import LLMCompletionResult, ReplyGenerationResult
 from src.common.i18n import use_locale
 from src.config.config import global_config
-from src.core.tooling import ToolExecutionResult, ToolInvocation, ToolRegistry
+from src.core.tooling import ToolAvailabilityContext, ToolExecutionResult, ToolInvocation, ToolRegistry
 from src.llm_models.payload_content.tool_option import ToolCall
 from src.maisaka import reasoning_engine as engine_module
+from src.maisaka.builtin_tool import get_builtin_tools
 from src.maisaka.builtin_tool import reply as reply_module
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext, PostProcessedReplyMessage
 from src.maisaka.builtin_tool.provider import MaisakaBuiltinToolProvider
@@ -249,7 +250,7 @@ async def test_passive_tools_use_supplement_and_focus_provider_keeps_reply(engin
     assert "reply" not in by_name
     assert "set_reply_options" not in by_name
     assert "show_emoji_list" not in by_name
-    assert "与不调用任何工具时一致" not in by_name["stop"]["description"]
+    assert "与不调用任何工具时一致" not in by_name["wait"]["description"]
     # Focus 直接使用 Provider，不经过普通模式的定义转换。
     focus_spec = await engine._runtime._tool_registry.get_tool_spec("reply")
     assert focus_spec.parameters_schema["required"] == ["msg_id", "reply_reference"]
@@ -308,9 +309,13 @@ def test_prompt_and_tail_reminder_follow_experimental_switch(monkeypatch, locale
         reminder = service._build_planner_final_user_reminder()
     assert ("reply_reference" in prompt) is (not enabled)
     assert "set_reply_options" not in prompt
-    assert "- stop" in prompt and "- wait" in prompt
+    tools = get_builtin_tools(ToolAvailabilityContext(is_focus=False), passive_replyer=enabled)
+    names = [tool["name"] for tool in tools]
+    assert names.count("wait") == 1
+    assert "stop" not in names
+    assert ("reply" in names) is (not enabled)
     if enabled:
-        assert "stop" in reminder and "wait" in reminder
+        assert "wait" in reminder
     else:
         assert "reply" in reminder
 
@@ -352,7 +357,11 @@ def test_focus_prompt_ignores_passive_replyer_switch(monkeypatch, enabled):
     service.passive_replyer_override = enabled
     assert service._get_chat_prompt_name() == "maisaka_chat_focus"
     prompt = service._build_chat_system_prompt()
-    assert "reply_reference" in prompt
+    assert prompt
+    tools = get_builtin_tools(ToolAvailabilityContext(is_focus=True))
+    reply = next(tool for tool in tools if tool["name"] == "reply")
+    assert "reply_reference" in reply["parameters_schema"]["required"]
+    assert reply["parameters_schema"]["properties"]["reply_reference"]["minLength"] == 1
     assert "set_reply_options" not in prompt
 
 

@@ -1,4 +1,4 @@
-"""默认 stop 工具的可用性与收尾行为。"""
+"""无参数 wait 的可用性与收尾行为。"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.common.i18n import use_locale
-from src.core.tooling import ToolRegistry
+from src.core.tooling import ToolAvailabilityContext, ToolRegistry
 from src.llm_models.payload_content.tool_option import ToolCall
+from src.maisaka.builtin_tool import get_builtin_tools
 from src.maisaka.builtin_tool.provider import MaisakaBuiltinToolProvider
 from src.maisaka.chat_loop_service import MaisakaChatLoopService
 from src.maisaka.mode_policy import is_idle_cycle_reason
@@ -16,63 +17,60 @@ from src.maisaka.reasoning_engine import CycleRuntimeState, MaisakaReasoningEngi
 
 @pytest.mark.parametrize("locale", ["zh-CN", "en-US", "ja-JP"])
 @pytest.mark.parametrize("prompt_name", ["maisaka_chat", "maisaka_chat_focus"])
-def test_stop_prompt_is_always_available(monkeypatch: pytest.MonkeyPatch, locale: str, prompt_name: str) -> None:
+def test_end_wait_prompt_is_always_available(monkeypatch: pytest.MonkeyPatch, locale: str, prompt_name: str) -> None:
     service = MaisakaChatLoopService(is_group_chat=True)
     monkeypatch.setattr(service, "_get_chat_prompt_name", lambda: prompt_name)
     with use_locale(locale):
         prompt = service._build_chat_system_prompt()
 
-    stop_lines = [line for line in prompt.splitlines() if line.startswith("- stop")]
-    assert len(stop_lines) == 1
-    assert "{stop_rule}" not in prompt
+    tools = get_builtin_tools(ToolAvailabilityContext(is_focus=prompt_name == "maisaka_chat_focus"))
+    assert [tool["name"] for tool in tools].count("wait") == 1
+    assert not any(tool["name"] == "stop" for tool in tools)
+    spec = next(tool for tool in tools if tool["name"] == "wait")
+    assert spec["parameters_schema"]["properties"]["seconds"]["minimum"] == 0
+    assert "seconds" not in spec["parameters_schema"].get("required", [])
+    assert prompt
+    assert "{wait_rule}" not in prompt
 
 
 @pytest.mark.asyncio
-async def test_stop_ends_thinking_like_no_tools() -> None:
+async def test_end_wait_finishes_thinking_without_tool_history() -> None:
     registry = ToolRegistry()
     runtime = SimpleNamespace(
-        _tool_registry=registry,
-        _chat_history=[],
-        session_id="test-stop",
+        _tool_registry=registry, _chat_history=[], session_id="test-end-wait",
         chat_stream=SimpleNamespace(is_group_session=True, group_id="group", user_id="", platform="test"),
         is_action_tool_currently_available=lambda name: True,
         expand_message_id_aliases=lambda arguments: arguments,
-        _update_stage_status=Mock(),
-        _focus_group=None,
-        _reset_consecutive_wait_count=Mock(),
-        _has_pending_messages=lambda: False,
-        _end_planner_continuation=Mock(),
-        _enter_stop_state=Mock(),
-        log_prefix="[test]",
+        _update_stage_status=Mock(), _focus_group=None,
+        _reset_consecutive_wait_count=Mock(), _has_pending_messages=lambda: False,
+        _end_planner_continuation=Mock(), _enter_stop_state=Mock(), log_prefix="[test]",
     )
     engine = MaisakaReasoningEngine(runtime)
-    registry.register_provider(MaisakaBuiltinToolProvider(engine.build_builtin_tool_handlers()))
-    engine._record_tool_execution_effects = AsyncMock()
-    engine._append_tool_execution_result = Mock()
     engine._emit_planner_progress = AsyncMock()
-
-    assert await registry.has_tool("stop")
-    spec = await registry.get_tool_spec("stop")
+    engine._append_tool_execution_result = Mock()
+    registry.register_provider(MaisakaBuiltinToolProvider())
+    assert await registry.has_tool("wait")
+    assert not await registry.has_tool("stop")
+    spec = await registry.get_tool_spec("wait")
     assert spec is not None
-    assert spec.parameters_schema == {"type": "object", "properties": {}, "required": []}
-
-    should_pause, reason, _, results = await engine._handle_tool_calls(
-        [ToolCall(call_id="stop-1", func_name="stop", args={})],
-        "已经没有需要继续的操作。",
-        SimpleNamespace(),
-        CycleRuntimeState(),
+    assert spec.parameters_schema["properties"]["seconds"]["minimum"] == 0
+    assert "seconds" not in spec.parameters_schema.get("required", [])
+    state = CycleRuntimeState()
+    ended = await engine._handle_planner_response_actions(
+        response=SimpleNamespace(content="", raw_messages=[], output_items=[],
+                                 tool_calls=[ToolCall(call_id="end-wait-1", func_name="wait", args={})]),
+        cycle_detail=SimpleNamespace(), state=state, planner_extra_lines=state.planner_extra_lines,
     )
-
-    assert should_pause
-    assert reason == "stop"
-    assert results[0]["success"]
-    assert engine._cycle_end_for_pause_tool(reason).reason == "planner_no_tool_end"
-    assert is_idle_cycle_reason(engine._cycle_end_for_pause_tool(reason).reason)
+    assert ended
+    assert state.cycle_end.reason == "planner_no_tool_end"
+    assert is_idle_cycle_reason(state.cycle_end.reason)
     runtime._end_planner_continuation.assert_called_once_with()
     runtime._enter_stop_state.assert_called_once_with()
     runtime._reset_consecutive_wait_count.assert_any_call("planner_no_tool_end")
     assert runtime._chat_history == []
-    engine._append_tool_execution_result.assert_called_once()
+    assert state.tool_result_summaries == []
+    assert state.tool_monitor_results == []
+    engine._append_tool_execution_result.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -116,14 +114,14 @@ async def test_empty_no_tool_response_ends_without_retry(content: str | None) ->
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_focus", [False, True])
-async def test_stop_respects_shared_loop_ownership(is_focus: bool) -> None:
+async def test_end_wait_respects_shared_loop_ownership(is_focus: bool) -> None:
     from src.core.tooling import ToolAvailabilityContext, ToolExecutionContext, ToolInvocation
-    from src.maisaka.builtin_tool import get_builtin_tools, stop
+    from src.maisaka.builtin_tool import get_builtin_tools, wait
     from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
 
     engine = SimpleNamespace(_end_planner_no_tool_cycle=Mock())
     ctx = SimpleNamespace(engine=engine, build_success_result=BuiltinToolRuntimeContext.build_success_result)
-    result = await stop.handle_tool(ctx, ToolInvocation(tool_name="stop", arguments={}), ToolExecutionContext(is_focus=is_focus))
+    result = await wait.handle_tool(ctx, ToolInvocation(tool_name="wait", arguments={}), ToolExecutionContext(is_focus=is_focus))
     assert result.success and result.metadata["pause_execution"] is True
     assert engine._end_planner_no_tool_cycle.call_count == (0 if is_focus else 1)
-    assert any(tool["name"] == "stop" for tool in get_builtin_tools(ToolAvailabilityContext(is_focus=is_focus)))
+    assert any(tool["name"] == "wait" for tool in get_builtin_tools(ToolAvailabilityContext(is_focus=is_focus)))

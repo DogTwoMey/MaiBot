@@ -574,7 +574,7 @@ def test_retro_templates_are_localized_consistently() -> None:
     for locale in RETRO_LOCALES:
         prompt_templates = list_prompt_templates(locale=locale)
         for prompt_name in expected_names:
-            prompt_path = PROMPTS_ROOT / locale / f"{prompt_name}.prompt"
+            prompt_path = PROMPTS_ROOT / locale / "main" / f"{prompt_name}.prompt"
             assert prompt_path.is_file()
 
             template_info = prompt_templates[prompt_name]

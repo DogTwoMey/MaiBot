@@ -20,8 +20,8 @@ from .read_tool_result import get_tool_spec as get_read_tool_result_tool_spec
 from .read_tool_result import handle_tool as handle_read_tool_result_tool
 from .reply import get_tool_spec as get_reply_tool_spec
 from .reply import handle_tool as handle_reply_tool
-from .stop import get_tool_spec as get_stop_tool_spec
-from .stop import handle_tool as handle_stop_tool
+from .schedule import get_tool_spec as get_schedule_tool_spec
+from .schedule import handle_tool as handle_schedule_tool
 from .subagent import get_status_tool_spec as get_subagent_status_tool_spec
 from .subagent import get_stop_tool_spec as get_subagent_stop_tool_spec
 from .subagent import get_tool_spec as get_subagent_tool_spec
@@ -85,8 +85,8 @@ def _get_query_image_memory_tool_spec() -> ToolSpec:
 
 BUILTIN_TOOL_ENTRIES: List[BuiltinToolEntry] = [
     BuiltinToolEntry("wait", get_wait_tool_spec, handle_wait_tool, stage="both"),
-    BuiltinToolEntry("stop", get_stop_tool_spec, handle_stop_tool, stage="action"),
     BuiltinToolEntry("reply", get_reply_tool_spec, handle_reply_tool, stage="action"),
+    BuiltinToolEntry("schedule", get_schedule_tool_spec, handle_schedule_tool, stage="action"),
     BuiltinToolEntry(
         "view_forward_message",
         get_view_forward_message_tool_spec,
@@ -145,8 +145,12 @@ def _is_builtin_tool_enabled_by_config(entry: BuiltinToolEntry) -> bool:
     if entry.name in {"subagent", "subagent_status", "subagent_stop"}:
         return global_config.capabilities.planner_subagent
     if entry.name == "read_tool_result":
-        # 长结果整理和统一联网工具均会暂存原文，任一开启都需要回查入口。
-        return global_config.capabilities.tool_result_condense or bool(model_config.model_task_config.web_search.model_list)
+        # 记忆预览、长结果整理和统一联网工具都会暂存原文，需要保留回查入口。
+        return (
+            global_config.capabilities.tool_result_condense
+            or bool(model_config.model_task_config.web_search.model_list)
+            or (global_config.a_memorix.plugin.enabled and global_config.a_memorix.integration.enable_memory_query_tool)
+        )
     return True
 
 

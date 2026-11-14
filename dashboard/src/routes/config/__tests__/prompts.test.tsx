@@ -147,7 +147,7 @@ async function chooseComboboxOption(
   index: number,
   next: string | RegExp
 ) {
-  const trigger = screen.getAllByRole('combobox')[index]
+  const trigger = index === 1 ? screen.getByRole('combobox', { name: 'Prompt 版本' }) : screen.getAllByRole('combobox')[index]
   await waitFor(() => expect(trigger).toBeEnabled())
   await user.click(trigger)
   await user.click(await screen.findByRole('option', { name: next }))
