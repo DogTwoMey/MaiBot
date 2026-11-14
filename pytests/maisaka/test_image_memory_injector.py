@@ -9,6 +9,7 @@ from src.maisaka.memory import image_injector as image_injector_module
 
 @pytest.mark.asyncio
 async def test_image_memory_injector_uses_current_occurrence_and_expands_memory(monkeypatch) -> None:
+    monkeypatch.setattr(image_injector_module, "is_image_memory_enabled", lambda: True)
     captured: dict[str, object] = {}
     component = SimpleNamespace(binary_hash="sha256-current")
     message = SimpleNamespace(
@@ -59,6 +60,7 @@ async def test_image_memory_injector_uses_current_occurrence_and_expands_memory(
 
 @pytest.mark.asyncio
 async def test_image_memory_injector_does_not_hide_service_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(image_injector_module, "is_image_memory_enabled", lambda: True)
     component = SimpleNamespace(binary_hash="sha256-current")
     message = SimpleNamespace(message_id="message-1", raw_message=SimpleNamespace(components=[component]))
     monkeypatch.setattr(

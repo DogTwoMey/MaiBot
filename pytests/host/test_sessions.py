@@ -27,7 +27,7 @@ def client_for(sessions: HostSessions, credentials: HostCredentials) -> TestClie
         if not sessions.valid(request.cookies.get(sessions.cookie_name)):
             raise HTTPException(401)
 
-    register_host_auth(app, sessions, credentials, require_session)
+    register_host_auth(app, sessions, credentials, require_session, lambda request: request.client.host)
     return TestClient(app)
 
 

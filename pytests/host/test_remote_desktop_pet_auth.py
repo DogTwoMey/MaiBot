@@ -47,7 +47,7 @@ async def test_remote_pet_http_and_websocket_require_current_host_session(tmp_pa
         if not sessions.valid(request.cookies.get(sessions.cookie_name)):
             raise HTTPException(401, "请先登录")
 
-    register_host_auth(host_app, sessions, credentials, require_session)
+    register_host_auth(host_app, sessions, credentials, require_session, lambda request: request.client.host)
     register_bot_proxy(host_app, BotProxy(Supervisor(), sessions), management=True)
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))

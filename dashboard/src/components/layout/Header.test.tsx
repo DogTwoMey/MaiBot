@@ -299,7 +299,7 @@ describe('Header', () => {
     expect(props.onSidebarToggle).toHaveBeenCalledOnce()
     expect(props.onTopbarToggle).toHaveBeenCalledOnce()
     expect(props.onSearchOpenChange).toHaveBeenCalledWith(true)
-    expect(window.open).toHaveBeenCalledWith('https://docs.mai-mai.org', '_blank')
+    expect(window.open).toHaveBeenCalledWith('https://docs.maibot.chat/', '_blank')
     expect(mocks.toggleTheme).toHaveBeenCalledWith('light', props.onThemeChange, expect.anything())
     expect(screen.getByTitle('sidebar.menu.settings')).toHaveAttribute('aria-label', 'sidebar.menu.settings')
     expect(props.onWorkspaceNavigate).toHaveBeenCalledWith('/logs')
