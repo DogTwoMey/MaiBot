@@ -25,7 +25,7 @@ def test_host_cookie_isolation_and_plugin_proxy(tmp_path, monkeypatch, secure):
     register_bot_proxy(app, proxy, management=True)
     def require_session(request: Request):
         proxy._require_session(request)
-    register_host_auth(app, sessions, credentials, require_session)
+    register_host_auth(app, sessions, credentials, require_session, lambda request: request.client.host)
     token = sessions.create_session()
     paths = ["api/webui/plugins/config/test/widgets", "api/webui/plugins/runtime/webui",
              "api/webui/plugins/install", "api/webui/plugins/market"]
