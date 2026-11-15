@@ -25,6 +25,7 @@ from src.common.prompt_i18n import (
     extract_prompt_placeholders,
     list_prompt_templates,
     load_prompt,
+    load_prompt_template,
 )
 from src.config.config import global_config
 from src.llm_models.payload_content.context_item import ContextImagePart, ContextItemBuilder, ContextTextPart, RoleType
@@ -574,7 +575,8 @@ def test_retro_templates_are_localized_consistently() -> None:
     for locale in RETRO_LOCALES:
         prompt_templates = list_prompt_templates(locale=locale)
         for prompt_name in expected_names:
-            prompt_path = PROMPTS_ROOT / locale / "main" / f"{prompt_name}.prompt"
+            prompt_path = load_prompt_template(prompt_name, locale=locale, include_custom=False).path
+            assert prompt_path.is_relative_to(PROMPTS_ROOT / locale)
             assert prompt_path.is_file()
 
             template_info = prompt_templates[prompt_name]

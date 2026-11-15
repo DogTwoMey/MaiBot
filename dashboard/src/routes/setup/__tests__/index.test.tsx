@@ -87,6 +87,10 @@ vi.mock('../api', () => ({
   testSetupModel: mocks.testSetupModel,
 }))
 
+vi.mock('../SetupFlip', () => ({
+  SetupFlip: ({ children }: { children: ReactNode }) => <>{children}</>,
+}))
+
 // Radix DropdownMenu 在 jsdom 有 pointer-capture 限制，桩成始终展开的普通元素
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -839,7 +843,7 @@ describe('SetupPage 连通性测试', () => {
     expect(mocks.saveModelSetupConfig).toHaveBeenLastCalledWith(defaultModelSetup, 'MyProvider', 'planner')
     expect(mocks.testSetupModel).toHaveBeenNthCalledWith(2, 'deepseek-v4')
     fireEvent.click(screen.getByRole('button', { name: 'setupPage.actions.previous' }))
-    expect(screen.getByText('401 invalid key')).toBeInTheDocument()
+    expect(await screen.findByText('401 invalid key')).toBeInTheDocument()
   })
 
   it('保存配置失败时提示错误且不调用模型测试', async () => {

@@ -121,7 +121,7 @@ async def test_replyer_failure_reaches_planner_without_sending(reply_context, mo
     monkeypatch.setattr(generator, "_get_runtime_manager", lambda: SimpleNamespace(invoke_hook=hook))
     send = AsyncMock()
     monkeypatch.setattr(send_service, "_send_to_target_with_message", send)
-    result = await reply.execute_reply(context, {"msg_id": "m1", "reply_reference": "接话"}, call_id="call1")
+    result = await reply.execute_reply(context, {"msg_id": "m1", "chat_anlyze": "接话"}, call_id="call1")
     assert not result.success
     history = json.loads(result.get_history_content())
     assert history["error_code"] == expected and history["msg_id"] == "m1"
@@ -153,7 +153,7 @@ async def test_reply_aborts_before_provider_call(reply_context, monkeypatch, hoo
         return dispatch_abort(name) if name == hook_name else HookDispatchResult(hook_name=name, kwargs=kwargs)
 
     monkeypatch.setattr(generator, "_get_runtime_manager", lambda: SimpleNamespace(invoke_hook=hook))
-    result = await reply.execute_reply(context, {"msg_id": "m1", "reply_reference": "接话"}, call_id="call1")
+    result = await reply.execute_reply(context, {"msg_id": "m1", "chat_anlyze": "接话"}, call_id="call1")
     history = json.loads(result.get_history_content())
     assert history["error_code"] == "plugin_aborted"
     assert history["hook_abort"]["hook_name"] == hook_name
@@ -167,7 +167,7 @@ async def test_post_process_abort_precedes_options_and_sending(reply_context, mo
     monkeypatch.setattr(generator, "generate_reply_with_context", AsyncMock(return_value=(True, generated)))
     hook = AsyncMock(return_value=dispatch_abort("maisaka.reply.before_post_process"))
     context.get_runtime_manager = lambda: SimpleNamespace(invoke_hook=hook)
-    result = await reply.execute_reply(context, {"msg_id": "m1", "reply_reference": "接话"}, call_id="call1")
+    result = await reply.execute_reply(context, {"msg_id": "m1", "chat_anlyze": "接话"}, call_id="call1")
     assert result.structured_content["error_code"] == "plugin_aborted"
     context.post_process_reply_message_items_async.assert_not_awaited()
 
@@ -331,7 +331,7 @@ async def test_partial_send_abort_reaches_planner_and_preserves_receipts(reply_c
         SimpleNamespace(message_id="sent1"), HookAbortedError(dispatch_abort("send_service.before_send")),
     ])
     monkeypatch.setattr(send_service, "_send_to_target_with_message", send)
-    result = await reply.execute_reply(context, {"msg_id": "m1", "reply_reference": "接话"}, call_id="call1")
+    result = await reply.execute_reply(context, {"msg_id": "m1", "chat_anlyze": "接话"}, call_id="call1")
     history = json.loads(result.get_history_content())
     assert history["error_code"] == "plugin_aborted"
     assert history["hook_abort"]["hook_name"] == "send_service.before_send"
