@@ -64,11 +64,12 @@ def test_packaged_entry_prepares_directory_before_business_import(tmp_path: Path
                 raise AssertionError("business import was not reached")
     """
     result = subprocess.run(
-        [sys.executable, "-I", "-c", textwrap.dedent(script), str(PROJECT_ROOT), str(tmp_path), entry],
+        [sys.executable, "-X", "utf8", "-I", "-c", textwrap.dedent(script), str(PROJECT_ROOT), str(tmp_path), entry],
         cwd=tmp_path,
         env=environment,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
