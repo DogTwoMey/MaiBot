@@ -28,6 +28,7 @@ from src.common.prompt_i18n import (
     load_prompt_template,
 )
 from src.config.config import global_config
+from src.maisaka.prompt_sections import build_system_guidance_prompt
 from src.llm_models.payload_content.context_item import ContextImagePart, ContextItemBuilder, ContextTextPart, RoleType
 from src.maisaka.context.messages import InternalContextMessage, ModelOutputContextMessage, SessionBackedMessage
 
@@ -404,7 +405,10 @@ def test_retro_keeps_persona_in_system_and_reply_style_in_user(
     assert [item.role for item in items] == [RoleType.System, RoleType.User]
     system_prompt = read_item_text(items[0])
     user_prompt = read_item_text(items[1])
-    assert system_prompt == "PERSONA_BLOCK"
+    assert system_prompt == "\n\n".join(
+        block.strip() for block in ("PERSONA_BLOCK", build_system_guidance_prompt(global_config.bot.nickname))
+        if block.strip()
+    )
     assert "PERSONA_BLOCK" not in user_prompt
     assert "GUIDELINES_BLOCK" not in user_prompt
     assert "REPLY_STYLE_BLOCK" not in system_prompt

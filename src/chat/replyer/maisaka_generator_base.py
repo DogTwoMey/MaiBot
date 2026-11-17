@@ -559,6 +559,8 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
     def _build_reply_instruction(self) -> str:
         return (
             "请自然地回复。不要输出多余说明、括号、@ 或额外标记，"
+            "日常聊天用完整短句和自然标点，省略号最多一处；输出前检查并改掉重复的省略号，"
+            "困倦、害羞或撒娇通过措辞表达。用户明确要求原样引用或特殊文体时保留其形式。"
             "只输出实际要发言的内容。"
         )
 

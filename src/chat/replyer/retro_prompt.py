@@ -54,6 +54,7 @@ from src.maisaka.context.messages import (
     SessionBackedMessage,
     build_context_items_from_history_entry,
 )
+from src.maisaka.prompt_sections import build_system_guidance_prompt
 from src.maisaka.visual.deferred_images import transform_context_image
 
 RETRO_REPLY_TARGET_CONTENT_LIMIT = 300
@@ -139,6 +140,7 @@ class RetroReplyPromptMixin:
             block.strip()
             for block in (
                 self._build_personality_prompt(),
+                build_system_guidance_prompt(global_config.bot.nickname),
             )
             if block.strip()
         )

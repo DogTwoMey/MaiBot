@@ -8,11 +8,42 @@
       "description": "SearXNG 本地搜索引擎（供 hsd221.searxng-search 插件使用）",
       "container_name": "maibot-searxng",
       "image": "searxng/searxng:latest",
-      "ports": ["8888:8080"],
+      "ports": [
+        "8888:8080"
+      ],
       "environment": {},
       "volumes": [],
       "health_check": {
         "url": "http://localhost:8888",
+        "timeout_sec": 15
+      }
+    },
+    {
+      "name": "local-image-gen",
+      "enabled": true,
+      "type": "process",
+      "description": "Local image generation service shared by both MaiBot instances",
+      "command": ".venv\\Scripts\\python.exe scripts\\ensure_services.py",
+      "cwd": "D:\\Image-Local-Gen",
+      "health_check": {
+        "url": "http://127.0.0.1:8189/health",
+        "timeout_sec": 120
+      }
+    },
+    {
+      "name": "maibot2-searxng",
+      "enabled": true,
+      "type": "docker",
+      "description": "SearXNG 本地搜索引擎（供 hsd221.searxng-search 插件使用）",
+      "container_name": "maibot2-searxng",
+      "image": "searxng/searxng:latest",
+      "ports": [
+        "8898:8080"
+      ],
+      "environment": {},
+      "volumes": [],
+      "health_check": {
+        "url": "http://localhost:8898",
         "timeout_sec": 15
       }
     }

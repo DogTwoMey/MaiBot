@@ -19,6 +19,26 @@ logger = get_logger("plugin_runtime.integration")
 
 
 class RuntimeDataCapabilityMixin:
+    async def _cap_knowledge_search_canon(self, plugin_id: str, capability: str, args: Dict[str, Any]) -> Any:
+        from src.chat.message_receive.chat_manager import chat_manager
+        from src.services.memory_service import memory_service
+
+        session_id = args.get("session_id")
+        if (not isinstance(session_id, str)
+                or await asyncio.to_thread(chat_manager.get_existing_session_by_session_id, session_id) is None):
+            return {"success": False, "error": "canon_session_not_found", "hits": []}
+        try:
+            return await memory_service.search_canon_readonly(
+                query=args.get("query"), package_id=args.get("package_id"), version=args.get("version"),
+                work=args.get("work"), character=args.get("character"), route=args.get("route"),
+                known_at=args.get("known_at"), limit=args.get("limit", 20),
+            )
+        except (TypeError, ValueError):
+            return {"success": False, "error": "invalid_canon_request_or_package", "hits": []}
+        except Exception:
+            logger.exception("原作只读检索失败: plugin=%s", plugin_id)
+            return {"success": False, "error": "canon_search_failed", "hits": []}
+
     async def _cap_chat_get_avatar(self, plugin_id: str, capability: str, args: Dict[str, Any]) -> Any:
         """查询独立头像资源；不把图片字节或缓存路径放入消息。"""
         from src.platform_io.avatar import avatar_service

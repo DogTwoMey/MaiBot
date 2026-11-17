@@ -43,6 +43,18 @@ def _upload_staging_root() -> Path:
     return a_memorix_host_service.get_runtime_data_dir() / "imports" / "staging"
 
 
+class CanonSearchRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    query: str = Field(..., min_length=1, max_length=500)
+    package_id: str = Field(..., pattern=r"^canon\.[a-z0-9][a-z0-9._-]{0,100}$")
+    version: str = Field(..., min_length=1, max_length=200)
+    work: str = Field(..., min_length=1, max_length=200)
+    character: str = Field(..., min_length=1, max_length=200)
+    route: str = Field(..., min_length=1, max_length=200)
+    known_at: int = Field(..., ge=0, strict=True)
+    limit: int = Field(default=20, ge=1, le=20, strict=True)
+
+
 class NodeRequest(BaseModel):
     name: str = Field(..., min_length=1)
     reason: str = ""
@@ -4060,6 +4072,14 @@ async def _stage_upload_files(files: list[UploadFile]) -> tuple[Path, list[dict[
             }
         )
     return staging_dir, staged_files
+
+
+@router.post("/query/canon")
+async def query_canon_memory(payload: CanonSearchRequest):
+    try:
+        return await memory_service.search_canon_readonly(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/records/search")

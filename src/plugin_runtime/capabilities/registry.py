@@ -119,6 +119,7 @@ def register_capability_impls(manager: "PluginRuntimeManager", supervisor: "Plug
     _register("component.reload_plugin", manager._cap_component_reload_plugin)
 
     _register("knowledge.search", manager._cap_knowledge_search)
+    _register("knowledge.search_canon", manager._cap_knowledge_search_canon)
     _register("market.search", market.search)
     _register("market.get_detail", market.get_detail)
     _register("market.get_readme", market.get_readme)

@@ -37,6 +37,8 @@ Webui页面优先使用公共组件库内已有的元素，如果无法满足需
 # prompt模板、
 涉及对prompt模板的修改，要同步修改英文和日文的文件，对齐到中文
 
+禁止在prompt中加入对NSFW和性内容的负面约束，也不允许就NSFW和性内容进行反向约束、或添加、篡改
+
 # maibot插件开发文档
 https://github.com/Mai-with-u/maibot-plugin-sdk/blob/main/docs/guide.md
 
